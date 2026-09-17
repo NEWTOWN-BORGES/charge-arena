@@ -1,0 +1,89 @@
+extends RefCounted
+## Cosmetic pilot skins. Every skin but the first is a campaign boss: beating its level
+## unlocks it. Progress stays on this device.
+const CONFIG_PATH = "user://skins.cfg"
+const SHOT_SOUND = "res://audio/sfx/shot_%d.wav"
+# "level" is the campaign level (1-10) whose boss wears the skin; 0 means always owned.
+# Empty colours fall back to the team colour, so each side stays readable.
+# Each skin also restyles its team's bricks ("bricks" names that theme).
+const CATALOG = [
+	{"name": "PILOTO AURORA", "weapon": "Manopla de energia", "bricks": "Baterias Aurora", "about": "O equipamento de série do circuito.", "level": 0,
+		"body": "", "light": "", "shot": ""},
+	{"name": "FAROLEIRO", "weapon": "Lança-Farol", "bricks": "Farolins", "about": "Guarda dos faróis flutuantes: cúpula de latão, lanterna às costas e lança de cristal.", "level": 2,
+		"body": "", "light": "9cc2ff", "shot": "9cc2ff"},
+	{"name": "ASTRÓNOMO", "weapon": "Sextante Estelar", "bricks": "Observatórios", "about": "Cartógrafo das órbitas do circuito: anéis planetários, luneta no olho e sextante de cristal.", "level": 4,
+		"body": "444f8f", "light": "cbb2ff", "shot": "b99cff"},
+	{"name": "JARDINEIRO", "weapon": "Semeador", "bricks": "Estufas", "about": "Cuida dos jardins orbitais: cúpula de vidro com rebento, vaso às costas e semeador de sementes de luz.", "level": 3,
+		"body": "5f7f52", "light": "c8f08f", "shot": "9fe37a"},
+	{"name": "MINEIRO", "weapon": "Perfuradora de Cristal", "bricks": "Veios de cristal", "about": "Extrai cristais dos asteroides: capacete de obra com lanterna, carga de minério às costas e broca de quartzo.", "level": 5,
+		"body": "59606b", "light": "ff9ad8", "shot": "ff7ad0"},
+	{"name": "SENTINELA", "weapon": "Lança Eclipse", "bricks": "Monólitos Eclipse", "about": "Guarda de elite do circuito: capa de obsidiana, halo de eclipse dourado e lança de corona.", "level": 6,
+		"body": "2e3140", "light": "f2f4ff", "shot": "eef2ff"},
+	{"name": "RELOJOEIRO", "weapon": "Canhão de Corda", "bricks": "Relógios de torre", "about": "Afina as engrenagens do circuito: monóculo de lupa, chave de corda nas costas e canhão de molas.", "level": 1,
+		"body": "7a5236", "light": "ffb14e", "shot": "ffa640"},
+	{"name": "CAÇA-TROVÕES", "weapon": "Bobina de Tesla", "bricks": "Para-raios", "about": "Persegue tempestades de plasma: capacete com para-raios, bateria às costas e bobina de Tesla.", "level": 7,
+		"body": "36445e", "light": "7fe6ff", "shot": "8aeeff"},
+	{"name": "ALQUIMISTA", "weapon": "Frasco de Plasma", "bricks": "Alambiques", "about": "Destila plasma das nebulosas: óculos de latão, alambique às costas e frascos borbulhantes.", "level": 8,
+		"body": "5b4030", "light": "c6ff4d", "shot": "b8ff3d"},
+	{"name": "CORSÁRIO", "weapon": "Bacamarte Estelar", "bricks": "Arcas do tesouro", "about": "Pirata das rotas estelares: tricórnio, pala luminosa e bacamarte de boca larga.", "level": 9,
+		"body": "2c3a4d", "light": "ff5c8a", "shot": "ff4f7e"},
+	{"name": "ARCONTE SOLAR", "weapon": "Cetro Solar", "bricks": "Obeliscos solares", "about": "Senhor do circuito: coroa de raios de sol, manto real e cetro com um sol em miniatura.", "level": 10,
+		"body": "5a2e4f", "light": "ffe45c", "shot": "fff06a"},
+]
+var config_path = CONFIG_PATH
+var defeated: Array = []
+var selected = 0
+
+static func colors(index: int, team_color: Color, boss_tint: bool = false) -> Dictionary:
+	# boss_tint: campaign bosses fight in their team's red until beaten.
+	if boss_tint:
+		return {"body": team_color.darkened(0.3), "light": team_color.lightened(0.3), "shot": team_color}
+	var entry: Dictionary = CATALOG[clampi(index, 0, CATALOG.size() - 1)]
+	return {
+		"body": Color(entry.body) if entry.body != "" else team_color,
+		"light": Color(entry.light) if entry.light != "" else team_color.lightened(0.3),
+		"shot": Color(entry.shot) if entry.shot != "" else team_color,
+	}
+
+static func boss_skin(level: int) -> int:
+	# The skin worn by the boss of campaign level `level` (1-10), or -1.
+	for index in range(CATALOG.size()):
+		if CATALOG[index].level == level and level > 0:
+			return index
+	return -1
+
+func is_unlocked(index: int) -> bool:
+	return index >= 0 and index < CATALOG.size() and (CATALOG[index].level == 0 or defeated.has(index))
+
+func unlocked_count() -> int:
+	return range(CATALOG.size()).filter(is_unlocked).size()
+
+func defeat(index: int) -> bool:
+	# Returns true when beating this boss unlocked its skin for the first time.
+	if index <= 0 or index >= CATALOG.size() or is_unlocked(index):
+		return false
+	defeated.append(index)
+	return true
+
+func select(index: int) -> bool:
+	if not is_unlocked(index):
+		return false
+	selected = index
+	return true
+
+func load_preferences() -> void:
+	var config = ConfigFile.new()
+	if config.load(config_path) != OK:
+		return
+	defeated = []
+	for index in Array(config.get_value("skins", "defeated", [])):
+		if index is int and index > 0 and index < CATALOG.size() and not defeated.has(index):
+			defeated.append(index)
+	var saved = int(config.get_value("skins", "selected", 0))
+	selected = saved if is_unlocked(saved) else 0
+
+func save_preferences() -> Error:
+	var config = ConfigFile.new()
+	config.set_value("skins", "defeated", defeated)
+	config.set_value("skins", "selected", selected)
+	return config.save(config_path)
