@@ -59,6 +59,12 @@ var aim_step = 0
 var aim_left = Vector2.ZERO
 var aim_right = Vector2.ZERO
 var aim_flash = [0.0, 0.0]
+# A tap on an arrow jumps to the next target; holding it walks that way, all the way to
+# the wall if the thumb stays down.
+var aim_hold_dir = 0
+var aim_hold_id = -1
+var aim_hold_time = 0.0
+const AIM_HOLD_DELAY = 0.26
 var target_name = ""
 var move_vector = Vector2.ZERO
 var move_center = Vector2.ZERO
@@ -616,6 +622,10 @@ func _process(dt: float) -> void:
 	for index in range(aim_flash.size()):
 		if aim_flash[index] > 0:
 			aim_flash[index] = maxf(aim_flash[index] - dt, 0)
+			queue_redraw()
+	if aim_hold_dir != 0:
+		aim_hold_time += dt
+		if aim_hold_time >= AIM_HOLD_DELAY:
 			queue_redraw()
 	if skins_overlay.visible and is_instance_valid(viewer_pilot):
 		animate_viewer(dt)
@@ -1668,6 +1678,9 @@ func reset_touch() -> void:
 	move_vector = Vector2.ZERO
 	target_pick = Vector2.INF
 	aim_step = 0
+	aim_hold_dir = 0
+	aim_hold_id = -1
+	aim_hold_time = 0.0
 	move_vector = Vector2.ZERO
 	move_center = move_home
 	power_request = -1
@@ -1683,6 +1696,10 @@ func request_aim_step(direction: int) -> void:
 	aim_step = direction
 	aim_flash[0 if direction < 0 else 1] = 0.22
 	queue_redraw()
+
+func aim_hold() -> int:
+	# Only after a short delay, so a quick tap still means "next target".
+	return aim_hold_dir if aim_hold_time >= AIM_HOLD_DELAY else 0
 
 func take_aim_step() -> int:
 	var step = aim_step
@@ -1729,7 +1746,15 @@ func _input(event: InputEvent) -> void:
 			var arrow = arrow_at(event.position)
 			if arrow != 0:
 				request_aim_step(arrow)
+				aim_hold_dir = arrow
+				aim_hold_id = event.index
+				aim_hold_time = 0.0
 				return
+		else:
+			if event.index == aim_hold_id:
+				aim_hold_dir = 0
+				aim_hold_id = -1
+				aim_hold_time = 0.0
 	queue_redraw()
 
 func write(text: String, pos: Vector2, font_size: int, color: Color, bold: bool = false) -> void:
@@ -2182,7 +2207,8 @@ func _draw() -> void:
 	# Two keys that step from target to target; the stadium itself is the third control.
 	for side in range(2):
 		var at = aim_left if side == 0 else aim_right
-		var pressed = aim_flash[side] > 0
+		var way_held = aim_hold_dir == (-1 if side == 0 else 1) and aim_hold_time >= AIM_HOLD_DELAY
+		var pressed = aim_flash[side] > 0 or way_held
 		draw_circle(at + Vector2(0, 3), AIM_RADIUS, Color(0.01, 0.04, 0.05, 0.5), true, -1, true)
 		draw_circle(at, AIM_RADIUS, Color(0.08, 0.15, 0.16, 0.92), true, -1, true)
 		draw_arc(at, AIM_RADIUS - 1.5, 0, TAU, 64, Color(BRASS, 0.55), 1.3, true)
@@ -2193,7 +2219,7 @@ func _draw() -> void:
 		draw_polyline(PackedVector2Array([tip - Vector2(way * 16, 13), tip, tip - Vector2(way * 16, -13)]), INK if pressed else WHITE, 4.0, true)
 	centered("ALVO ANTERIOR", aim_left + Vector2(0, AIM_RADIUS + 20), 9, Color(WHITE, 0.6), true)
 	centered("ALVO SEGUINTE", aim_right + Vector2(0, AIM_RADIUS + 20), 9, Color(WHITE, 0.6), true)
-	centered("AS SETAS SALTAM DE ALVO EM ALVO", (aim_left + aim_right) * 0.5 + Vector2(0, AIM_RADIUS + 38), 10, CYAN, true)
+	centered("TOCA: ALVO SEGUINTE  ·  MANTÉM: ANDA ATÉ À PAREDE", (aim_left + aim_right) * 0.5 + Vector2(0, AIM_RADIUS + 38), 10, CYAN, true)
 	if target_name != "":
 		centered(target_name, (aim_left + aim_right) * 0.5 - Vector2(0, AIM_RADIUS + 14), 11, LIME, true)
 	draw_powers()

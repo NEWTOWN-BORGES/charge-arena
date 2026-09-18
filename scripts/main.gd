@@ -582,8 +582,9 @@ func local_command() -> Dictionary:
 		hud.take_power()
 		return {"move": Vector2.ZERO, "fire": false, "power": -1}
 	read_aiming()
-	# Walking to the chosen target, unless a key is held: then the pilot obeys the key.
-	var move = Vector2(steer_to_target(), 0)
+	# Walking to the chosen target, unless a key or an arrow is held: then the pilot obeys
+	# the thumb and may travel the whole arc.
+	var move = Vector2(steer_to_target() + hud.aim_hold(), 0)
 	if DisplayServer.get_name() != "headless":
 		var keys = Vector2(float(Input.is_physical_key_pressed(KEY_D) or Input.is_physical_key_pressed(KEY_RIGHT)) - float(Input.is_physical_key_pressed(KEY_A) or Input.is_physical_key_pressed(KEY_LEFT)), float(Input.is_physical_key_pressed(KEY_S) or Input.is_physical_key_pressed(KEY_DOWN)) - float(Input.is_physical_key_pressed(KEY_W) or Input.is_physical_key_pressed(KEY_UP)))
 		if keys.x != 0:
@@ -599,7 +600,13 @@ func local_command() -> Dictionary:
 	return {"move": Vector2(clampf(move.x, -1, 1), 0), "fire": settled, "power": hud.take_power()}
 
 func read_aiming() -> void:
-	# The arrows step from target to target; there is no aiming by dragging on the map.
+	# A tap on an arrow steps to the next target; holding it hands the pilot back to the
+	# thumb, so it can walk the whole arc, right up to the wall.
+	if hud.aim_hold() != 0:
+		aim_angle = INF
+		hud.target_name = "A ANDAR"
+		hud.take_aim_step()
+		return
 	var step: int = hud.take_aim_step()
 	if step != 0:
 		step_target(step)
