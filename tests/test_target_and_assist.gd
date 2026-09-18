@@ -1,6 +1,6 @@
 extends SceneTree
-# Validates target selection (map tap, left/right arrows), direct character track control,
-# and enhanced assisted aim magnetism.
+# Validates the firing-angle table, the assisted-aim magnetism in the rules, and the way
+# the joystick and that magnetism share the pilot's arc.
 const Rules = preload("res://scripts/arena_rules.gd")
 var failures = 0
 
@@ -44,33 +44,38 @@ func run() -> void:
 	var assisted_hit = r.predict_shot(0, Rules.forward_direction(0, r.players[0].angle).angle_to(assisted) + r.players[0].angle)
 	check(assisted != r.players[0].aim or direct.get("kind", "") == "brick", "Assist magnetism bends the shot toward an enemy brick when slightly off-angle")
 
-	# 3. Main scene interaction: tap on brick, step with arrows, tap on character
+	# 3. The stick and the magnetism sharing the same arc
 	var scene = load("res://scenes/main.tscn").instantiate()
 	root.add_child(scene)
 	scene.start_pve()
 	await process_frame
 	var hud = scene.hud
-	var arena = scene.arena
+	scene.game_settings.aim_assist = true
 
-	# 3a. Tap on the enemy brick area of the stadium -> picks target
-	var brick_world = targets[0].p
-	var ray_screen = arena.camera.unproject_position(Vector3(brick_world.x, 0.58, brick_world.y))
-	scene.aim_at_point(brick_world)
-	check(scene.aim_angle != INF and is_equal_approx(scene.aim_angle, targets[0].angle), "Tapping on an enemy brick area lines up that target angle")
+	# 3a. Standing a hair beside a target, a still thumb is eased onto it.
+	var aim_targets = scene.rules.firing_angles(0)
+	var mark = aim_targets[aim_targets.size() / 2]
+	scene.rules.players[0].angle = mark.angle + 0.02
+	hud.move_vector = Vector2.ZERO
+	var nudge: float = scene.local_command().move.x
+	check(nudge < 0.0 and absf(nudge) < 0.4, "A still thumb beside a target is eased onto it (%.3f)" % nudge)
 
-	# 3b. Step target with right arrow
-	var before_angle = scene.aim_angle
-	scene.step_target(1)
-	check(scene.aim_angle > before_angle, "Right arrow steps to the next target on the right")
+	# 3b. Too far away, the magnetism keeps quiet: the thumb decides.
+	scene.rules.players[0].angle = mark.angle + 0.4
+	check(is_equal_approx(scene.local_command().move.x, 0.0), "Far from every target, a still thumb means standing still")
 
-	# 3c. Step target with left arrow
-	scene.step_target(-1)
-	check(is_equal_approx(scene.aim_angle, before_angle), "Left arrow steps back to the previous target on the left")
+	# 3c. And it never fights a real push.
+	scene.rules.players[0].angle = mark.angle + 0.02
+	hud.move_vector = Vector2(-1, 0)
+	check(is_equal_approx(scene.local_command().move.x, -1.0), "A full push of the stick is never fought by the magnetism")
+	hud.move_vector = Vector2.ZERO
 
-	# 3d. Tap directly on character (bottom of stadium, y >= 4.8) -> directly sets character position
-	scene.aim_at_point(Vector2(0.5, 6.0))
-	var expected_angle = asin(clampf(0.5 / Rules.TRACK_RADIUS, -sin(Rules.TRACK_LIMIT), sin(Rules.TRACK_LIMIT)))
-	check(is_equal_approx(scene.aim_angle, expected_angle) and hud.target_name == "PILOTO", "Tapping or dragging the character sets position directly on the track")
+	# 3d. Switched off in the options, the pilot is left entirely to the thumb.
+	scene.game_settings.aim_assist = false
+	scene.rules.players[0].angle = mark.angle + 0.02
+	check(is_equal_approx(scene.local_command().move.x, 0.0), "With assisted aim off, nothing moves the pilot but the thumb")
+	scene.game_settings.aim_assist = true
+	scene.return_to_menu()
 
 	print("TARGET_ASSIST_RESULT failures=", failures)
 	quit(failures)

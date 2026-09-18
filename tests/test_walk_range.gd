@@ -1,7 +1,6 @@
 extends SceneTree
-# The pilot has to be able to reach both ends of its arc, not only the angles where the
-# rival's bricks happen to be: a tap on an arrow jumps to the next target, holding it
-# walks all the way to the wall.
+# The pilot has to be able to reach both ends of its arc with the stick, well past the
+# narrow band where the rival's bricks stand, and the aiming magnetism must only nudge.
 const Rules = preload("res://scripts/arena_rules.gd")
 const TMP = "res://tests/walk-range.tmp"
 var failures = 0
@@ -16,19 +15,12 @@ func check(ok: bool, description: String) -> void:
 func _initialize() -> void:
 	call_deferred("run")
 
-func hold(game, direction: int, seconds: float) -> void:
-	# A finger on the arrow: pressed, held past the delay, then driven tick by tick.
-	var hud = game.hud
-	var touch = InputEventScreenTouch.new()
-	touch.index = 3
-	touch.pressed = true
-	touch.position = hud.aim_right if direction > 0 else hud.aim_left
-	hud._input(touch)
-	hud._process(hud.AIM_HOLD_DELAY + 0.01)
+func push(game, direction: float, seconds: float) -> void:
+	# A thumb holding the stick to one side for a while.
+	game.hud.move_vector = Vector2(direction, 0)
 	for tick in range(roundi(seconds * 60)):
 		game.rules.step(1.0 / 60, [game.local_command(), {"move": Vector2.ZERO, "fire": false}])
-	touch.pressed = false
-	hud._input(touch)
+	game.hud.move_vector = Vector2.ZERO
 
 func run() -> void:
 	var game = load("res://scenes/main.tscn").instantiate()
@@ -46,21 +38,19 @@ func run() -> void:
 	check(targets.size() > 20, "The wall offers plenty of targets (%d)" % targets.size())
 	check(targets.max() < Rules.TRACK_LIMIT - 0.2 and targets.min() > -Rules.TRACK_LIMIT + 0.2, "But they sit well inside the arc, far from either wall")
 
-	var touch = InputEventScreenTouch.new()
-	touch.index = 1
-	touch.pressed = true
-	touch.position = hud.aim_left
-	hud._input(touch)
-	check(hud.aim_hold() == 0 and hud.take_aim_step() == -1, "A quick tap only asks for the previous target")
-	touch.pressed = false
-	hud._input(touch)
-	check(hud.aim_hold() == 0, "Letting go stops any walking")
-
-	hold(game, -1, 3.0)
-	check(game.rules.players[0].angle < -Rules.TRACK_LIMIT + 0.02, "Holding the left arrow walks the pilot to the left wall (%.2f de %.2f)" % [game.rules.players[0].angle, -Rules.TRACK_LIMIT])
-	hold(game, 1, 6.0)
-	check(game.rules.players[0].angle > Rules.TRACK_LIMIT - 0.02, "And the right arrow takes it all the way back to the other wall (%.2f)" % game.rules.players[0].angle)
-	check(game.aim_angle == INF, "Walking by hand drops whatever target was chosen")
+	push(game, -1.0, 3.0)
+	check(game.rules.players[0].angle < -Rules.TRACK_LIMIT + 0.02, "Holding the stick left walks the pilot to the left wall (%.2f de %.2f)" % [game.rules.players[0].angle, -Rules.TRACK_LIMIT])
+	push(game, 1.0, 6.0)
+	check(game.rules.players[0].angle > Rules.TRACK_LIMIT - 0.02, "And to the right wall on the way back (%.2f)" % game.rules.players[0].angle)
+	# Magnetism only nudges, and only with the thumb almost still.
+	game.rules.players[0].angle = game.rules.firing_angles(0)[3].angle + 0.02
+	game.hud.move_vector = Vector2.ZERO
+	var pull: float = game.local_command().move.x
+	game.hud.move_vector = Vector2(1.0, 0)
+	var pushed: float = game.local_command().move.x
+	game.hud.move_vector = Vector2.ZERO
+	check(absf(pull) > 0.0 and absf(pull) < 0.4, "Standing beside a target, the pilot is eased onto it (%.2f)" % pull)
+	check(is_equal_approx(pushed, 1.0), "A real push of the stick is never fought by the magnetism")
 	game.return_to_menu()
 	DirAccess.remove_absolute(ProjectSettings.globalize_path(TMP))
 	print("WALK_RANGE_RESULT failures=", failures)

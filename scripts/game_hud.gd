@@ -4,7 +4,6 @@ const GameSettings = preload("res://scripts/game_settings.gd")
 const Campaign = preload("res://scripts/campaign.gd")
 const Rules = preload("res://scripts/arena_rules.gd")
 const STICK_RADIUS = 62.0
-const AIM_RADIUS = 54.0
 # Power buttons sit in the free band between the two thumb controls, above the FPS line.
 const POWER_RADIUS = 40.0
 const POWER_GAP = 100.0
@@ -52,20 +51,6 @@ var mode = "menu"
 var network_status = ""
 var touches: Dictionary = {}
 var move_id = -1
-# Aiming by target: a tap on the stadium, or a step with the arrow keys.
-var target_pick = Vector2.INF
-var last_drag_pos = Vector2.ZERO
-var aim_step = 0
-var aim_left = Vector2.ZERO
-var aim_right = Vector2.ZERO
-var aim_flash = [0.0, 0.0]
-# A tap on an arrow jumps to the next target; holding it walks that way, all the way to
-# the wall if the thumb stays down.
-var aim_hold_dir = 0
-var aim_hold_id = -1
-var aim_hold_time = 0.0
-const AIM_HOLD_DELAY = 0.26
-var target_name = ""
 var move_vector = Vector2.ZERO
 var move_center = Vector2.ZERO
 var power_centers: Array = [Vector2.ZERO, Vector2.ZERO, Vector2.ZERO]
@@ -618,14 +603,6 @@ func _process(dt: float) -> void:
 	for index in range(power_flash.size()):
 		if power_flash[index] > 0:
 			power_flash[index] = maxf(power_flash[index] - dt, 0)
-			queue_redraw()
-	for index in range(aim_flash.size()):
-		if aim_flash[index] > 0:
-			aim_flash[index] = maxf(aim_flash[index] - dt, 0)
-			queue_redraw()
-	if aim_hold_dir != 0:
-		aim_hold_time += dt
-		if aim_hold_time >= AIM_HOLD_DELAY:
 			queue_redraw()
 	if skins_overlay.visible and is_instance_valid(viewer_pilot):
 		animate_viewer(dt)
@@ -1531,8 +1508,6 @@ func layout() -> void:
 	# sit the two arrows that step from target to target; the power keys stay on the left.
 	move_home = Vector2(size.x * (0.70 if vertical else 0.88), size.y - safe_bottom - (132 if vertical else 139))
 	move_center = move_home
-	aim_left = move_home - Vector2(74, 0)
-	aim_right = move_home + Vector2(74, 0)
 	var menu_height = menu.get_combined_minimum_size().y
 	levels_grid.columns = 2 if vertical else 5
 	var levels_width = minf(size.x - 48, 660)
@@ -1676,40 +1651,9 @@ func reset_touch() -> void:
 	touches.clear()
 	move_id = -1
 	move_vector = Vector2.ZERO
-	target_pick = Vector2.INF
-	aim_step = 0
-	aim_hold_dir = 0
-	aim_hold_id = -1
-	aim_hold_time = 0.0
 	move_vector = Vector2.ZERO
 	move_center = move_home
 	power_request = -1
-
-func arrow_at(point: Vector2) -> int:
-	if point.distance_to(aim_left) <= AIM_RADIUS + 8:
-		return -1
-	if point.distance_to(aim_right) <= AIM_RADIUS + 8:
-		return 1
-	return 0
-
-func request_aim_step(direction: int) -> void:
-	aim_step = direction
-	aim_flash[0 if direction < 0 else 1] = 0.22
-	queue_redraw()
-
-func aim_hold() -> int:
-	# Only after a short delay, so a quick tap still means "next target".
-	return aim_hold_dir if aim_hold_time >= AIM_HOLD_DELAY else 0
-
-func take_aim_step() -> int:
-	var step = aim_step
-	aim_step = 0
-	return step
-
-func take_target() -> Vector2:
-	var point = target_pick
-	target_pick = Vector2.INF
-	return point
 
 func power_at(point: Vector2) -> int:
 	for index in range(power_centers.size()):
@@ -1743,18 +1687,20 @@ func _input(event: InputEvent) -> void:
 			if slot >= 0:
 				request_power(slot)
 				return
-			var arrow = arrow_at(event.position)
-			if arrow != 0:
-				request_aim_step(arrow)
-				aim_hold_dir = arrow
-				aim_hold_id = event.index
-				aim_hold_time = 0.0
+			if event.position.y < touch_top:
 				return
+			# The pilot fires by itself, so any press down here takes hold of the stick,
+			# wherever the thumb lands.
+			if move_id < 0:
+				move_id = event.index
+				move_center = event.position
 		else:
-			if event.index == aim_hold_id:
-				aim_hold_dir = 0
-				aim_hold_id = -1
-				aim_hold_time = 0.0
+			if event.index == move_id:
+				move_id = -1
+				move_vector = Vector2.ZERO
+				move_center = move_home
+	if event is InputEventScreenDrag and event.index == move_id:
+		move_vector = ((event.position - move_center) / 58).limit_length()
 	queue_redraw()
 
 func write(text: String, pos: Vector2, font_size: int, color: Color, bold: bool = false) -> void:
@@ -2204,24 +2150,23 @@ func _draw() -> void:
 		panel(Rect2(at.x - 190, at.y - 34, 380, 68), Color(0.065, 0.125, 0.14, 0.96))
 		centered("✦  NOVA SKIN DESBLOQUEADA  ✦", at + Vector2(0, -8), 11, LIME, true)
 		centered(unlock_text, at + Vector2(0, 21), 22, WHITE, true)
-	# Two keys that step from target to target; the stadium itself is the third control.
-	for side in range(2):
-		var at = aim_left if side == 0 else aim_right
-		var way_held = aim_hold_dir == (-1 if side == 0 else 1) and aim_hold_time >= AIM_HOLD_DELAY
-		var pressed = aim_flash[side] > 0 or way_held
-		draw_circle(at + Vector2(0, 3), AIM_RADIUS, Color(0.01, 0.04, 0.05, 0.5), true, -1, true)
-		draw_circle(at, AIM_RADIUS, Color(0.08, 0.15, 0.16, 0.92), true, -1, true)
-		draw_arc(at, AIM_RADIUS - 1.5, 0, TAU, 64, Color(BRASS, 0.55), 1.3, true)
-		draw_circle(at, AIM_RADIUS - 10, CYAN.darkened(0.15 if pressed else 0.6), true, -1, true)
-		draw_arc(at, AIM_RADIUS - 10, PI * 1.15, PI * 1.85, 20, Color(CERAMIC, 0.2), 1.2, true)
-		var way = -1 if side == 0 else 1
-		var tip = at + Vector2(way * 13, 0)
-		draw_polyline(PackedVector2Array([tip - Vector2(way * 16, 13), tip, tip - Vector2(way * 16, -13)]), INK if pressed else WHITE, 4.0, true)
-	centered("ALVO ANTERIOR", aim_left + Vector2(0, AIM_RADIUS + 20), 9, Color(WHITE, 0.6), true)
-	centered("ALVO SEGUINTE", aim_right + Vector2(0, AIM_RADIUS + 20), 9, Color(WHITE, 0.6), true)
-	centered("TOCA: ALVO SEGUINTE  ·  MANTÉM: ANDA ATÉ À PAREDE", (aim_left + aim_right) * 0.5 + Vector2(0, AIM_RADIUS + 38), 10, CYAN, true)
-	if target_name != "":
-		centered(target_name, (aim_left + aim_right) * 0.5 - Vector2(0, AIM_RADIUS + 14), 11, LIME, true)
+	# The stick: grabbed anywhere in the band, it slides the pilot along its arc.
+	var stick = move_center
+	draw_circle(stick + Vector2(0, 3), STICK_RADIUS, Color(0.01, 0.04, 0.05, 0.5), true, -1, true)
+	draw_circle(stick, STICK_RADIUS, Color(0.08, 0.15, 0.16, 0.9), true, -1, true)
+	draw_arc(stick, STICK_RADIUS - 1.5, 0, TAU, 72, Color(BRASS, 0.5), 1.3, true)
+	draw_arc(stick, STICK_RADIUS - 10, 0.2, PI - 0.2, 40, Color(CYAN, 0.07), 5, true)
+	draw_arc(stick, STICK_RADIUS - 10, PI + 0.2, TAU - 0.2, 40, Color(CYAN, 0.07), 5, true)
+	for side in [-1, 1]:
+		var tip = stick + Vector2(side * (STICK_RADIUS - 15), 0)
+		draw_polyline(PackedVector2Array([tip - Vector2(side * 8, 9), tip, tip - Vector2(side * 8, -9)]), Color(CYAN, 0.45), 2.6, true)
+	var knob = stick + move_vector * 39
+	draw_circle(knob + Vector2(0, 3), 26, Color(0.02, 0.05, 0.06, 0.45), true, -1, true)
+	draw_circle(knob, 26, CYAN.darkened(0.2 if move_id >= 0 else 0.55), true, -1, true)
+	draw_arc(knob, 26, 0, TAU, 48, Color(CYAN, 0.65), 1.2, true)
+	draw_circle(knob, 3, INK if move_id >= 0 else CYAN, true, -1, true)
+	centered("MOVER E APONTAR", stick + Vector2(0, 99), 10, CYAN, true)
+	centered("DISPARO AUTOMÁTICO  ·  MIRA ASSISTIDA", stick + Vector2(0, 114), 9, Color(LIME, 0.75), true)
 	draw_powers()
 
 func stun_banner_rect() -> Rect2:

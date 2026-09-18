@@ -44,9 +44,7 @@ var power_shop = PowerShop.new()
 var credited_bricks = 0
 # The angle the pilot is walking to, chosen by tapping the stadium or stepping with the
 # arrows. INF means "stay where you are".
-var aim_angle = INF
-# How long the pilot has been walking to that angle, so it never holds fire forever.
-var aim_travel = 0.0
+const MAGNET_ANGLE = 0.05
 var game_settings = GameSettings.new()
 var campaign = Campaign.new()
 # Campaign level being played, or -1 for quick play, PvP and the menu.
@@ -581,86 +579,35 @@ func local_command() -> Dictionary:
 		# Drop anything tapped while the match was on hold.
 		hud.take_power()
 		return {"move": Vector2.ZERO, "fire": false, "power": -1}
-	read_aiming()
-	# Walking to the chosen target, unless a key or an arrow is held: then the pilot obeys
-	# the thumb and may travel the whole arc.
-	var move = Vector2(steer_to_target() + hud.aim_hold(), 0)
+	# Gentle response curve: small thumb movements aim finely, full deflection still runs.
+	var stick: float = hud.move_vector.x
+	var response = signf(stick) * pow(absf(stick), 1.7) * game_settings.sensitivity_scale()
+	if absf(stick) < 0.12:
+		# Nearly still: let the magnetism settle the pilot on the target it is beside.
+		response += magnet_pull()
+	var move = Vector2(response, 0)
 	if DisplayServer.get_name() != "headless":
 		var keys = Vector2(float(Input.is_physical_key_pressed(KEY_D) or Input.is_physical_key_pressed(KEY_RIGHT)) - float(Input.is_physical_key_pressed(KEY_A) or Input.is_physical_key_pressed(KEY_LEFT)), float(Input.is_physical_key_pressed(KEY_S) or Input.is_physical_key_pressed(KEY_DOWN)) - float(Input.is_physical_key_pressed(KEY_W) or Input.is_physical_key_pressed(KEY_UP)))
-		if keys.x != 0:
-			aim_angle = INF
-			hud.target_name = ""
 		move += keys
-	# The pilot fires on its own, but holds the shot while it is still walking onto the
-	# chosen angle: firing in transit is what used to waste two or three rounds.
-	var settled: bool = true
-	if aim_angle != INF and rules.players.size() > local_team:
-		var gap = absf(aim_angle - rules.players[local_team].angle)
-		settled = gap <= 0.025 or aim_travel > 1.2
-	return {"move": Vector2(clampf(move.x, -1, 1), 0), "fire": settled, "power": hud.take_power()}
+	# The pilot fires on its own as soon as the weapon is ready; the thumb only aims.
+	return {"move": Vector2(clampf(move.x, -1, 1), 0), "fire": true, "power": hud.take_power()}
 
-func read_aiming() -> void:
-	# A tap on an arrow steps to the next target; holding it hands the pilot back to the
-	# thumb, so it can walk the whole arc, right up to the wall.
-	if hud.aim_hold() != 0:
-		aim_angle = INF
-		hud.target_name = "A ANDAR"
-		hud.take_aim_step()
-		return
-	var step: int = hud.take_aim_step()
-	if step != 0:
-		step_target(step)
-
-func aim_at_point(at: Vector2) -> void:
-	aim_travel = 0.0
-	# If tapped near the baseline / character track (bottom of the stadium): directly steer the character.
-	if at.y >= 4.8:
-		var sin_val = clampf(at.x / Rules.TRACK_RADIUS, -sin(Rules.TRACK_LIMIT), sin(Rules.TRACK_LIMIT))
-		aim_angle = asin(sin_val)
-		hud.target_name = "PILOTO"
-		return
-	var angle: float = rules.angle_for_target(local_team, at)
-	if angle == INF:
-		hud.target_name = "SEM LINHA PARA AÍ"
-		return
-	aim_angle = angle
-	hud.target_name = "ALVO ESCOLHIDO"
-
-func step_target(direction: int) -> void:
-	# The next angle, in that direction, that still lands on a brick.
-	aim_travel = 0.0
-	var options: Array = rules.firing_angles(local_team)
-	if options.is_empty():
-		hud.target_name = "SEM ALVO À VISTA"
-		return
-	var from: float = aim_angle if aim_angle != INF else rules.players[local_team].angle
+func magnet_pull() -> float:
+	# With the thumb nearly still, the pilot eases onto the nearest firing angle instead
+	# of hovering a hair beside it. It never fights a real push of the stick.
+	if not game_settings.aim_assist or rules.players.size() <= local_team:
+		return 0.0
+	var player: Dictionary = rules.players[local_team]
 	var best = INF
-	for option in options:
-		var gap: float = option.angle - from
-		if direction > 0 and gap > 0.012 and (best == INF or option.angle < best):
-			best = option.angle
-		elif direction < 0 and gap < -0.012 and (best == INF or option.angle > best):
+	var best_gap = MAGNET_ANGLE
+	for option in rules.firing_angles(local_team):
+		var gap: float = absf(option.angle - player.angle)
+		if gap < best_gap:
+			best_gap = gap
 			best = option.angle
 	if best == INF:
-		# At the end of the wall: stay there. Wrapping around sent the pilot running to
-		# the far side of the arc, which read as the character walking off on its own.
-		hud.target_name = "ÚLTIMO ALVO À %s" % ("DIREITA" if direction > 0 else "ESQUERDA")
-		return
-	aim_angle = best
-	hud.target_name = "ALVO %s" % ("DIREITA" if direction > 0 else "ESQUERDA")
-
-func steer_to_target() -> float:
-	if aim_angle == INF or rules.players.size() <= local_team:
-		aim_travel = 0.0
 		return 0.0
-	aim_travel += 1.0 / 60.0
-	var gap: float = aim_angle - rules.players[local_team].angle
-	if absf(gap) < 0.004:
-		hud.target_name = "NO ALVO"
-		return 0.0
-	# Fast while far, gentle on arrival, so the pilot settles exactly on the angle. The
-	# sensitivity setting decides how briskly it walks.
-	return clampf(gap * 7.0 * game_settings.sensitivity_scale(), -1.0, 1.0)
+	return clampf((best - player.angle) * 5.0, -0.35, 0.35)
 
 func _physics_process(dt: float) -> void:
 	if mode == "menu":

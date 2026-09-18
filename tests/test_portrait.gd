@@ -32,9 +32,9 @@ func drawn_arena(game) -> Rect2:
 	return result
 
 func control_rects(hud) -> Array:
-	# The two aiming keys with their captions, and each power key beside them.
-	var aim = hud.AIM_RADIUS
-	var rects = [Rect2(hud.aim_left - Vector2(aim, aim), Vector2(aim * 2, aim + 96)), Rect2(hud.aim_right - Vector2(aim, aim), Vector2(aim * 2, aim + 96))]
+	# The stick disc with the captions under it, and each power key beside it.
+	var stick = hud.STICK_RADIUS
+	var rects = [Rect2(hud.move_home - Vector2(stick, stick), Vector2(stick * 2, stick + 124))]
 	for spot in hud.power_centers:
 		rects.append(Rect2(spot - Vector2.ONE * hud.POWER_RADIUS, Vector2.ONE * hud.POWER_RADIUS * 2))
 	return rects
@@ -92,13 +92,13 @@ func run() -> void:
 	hud.show_game("pve", 0)
 	await settle()
 
-	touch(hud, 0, hud.arena_rect.get_center(), true)
-	check(hud.take_aim_step() == 0, "The stadium itself is not a control: only the two keys aim")
+	touch(hud, 0, Vector2(120, hud.touch_top - 20), true)
+	check(hud.move_id == -1, "Touches over the stadium do not grab the stick")
+	touch(hud, 0, hud.move_home, true)
+	check(hud.move_id == 0, "The thumb grabs the stick in the vertical layout")
 	check(game.local_command().fire, "The pilot fires by itself in the vertical layout")
-	touch(hud, 0, hud.arena_rect.get_center(), false)
-	touch(hud, 1, hud.aim_right, true)
-	check(hud.take_aim_step() == 1, "The aiming keys sit under the right thumb")
-	touch(hud, 1, hud.aim_right, false)
+	touch(hud, 0, hud.move_home, false)
+	check(hud.move_center == hud.move_home and hud.move_id == -1, "Releasing returns the stick to its resting place")
 
 	hud.open_video()
 	await settle()

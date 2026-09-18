@@ -77,24 +77,23 @@ func run() -> void:
 	var hud = game.hud
 	var arena = game.arena
 
-	# Walking to a chosen angle: gentle when it is close, full speed when it is far.
+	# The stick: a light push aims finely, full deflection runs.
 	game.rules.players[0].angle = 0.0
-	game.aim_angle = 0.03
-	var near: Dictionary = game.local_command()
-	game.aim_angle = 0.5
-	var far: Dictionary = game.local_command()
-	game.aim_angle = INF
-	check(near.move.x > 0 and near.move.x < 0.6 and is_equal_approx(far.move.x, 1.0), "The pilot eases onto a near angle and runs to a far one")
-	game.rules.players[0].angle = 0.0
-	game.aim_angle = 0.06
+	hud.move_vector = Vector2(0.5, 0)
+	var half: Dictionary = game.local_command()
+	hud.move_vector = Vector2(1, 0)
+	var full: Dictionary = game.local_command()
+	hud.move_vector = Vector2.ZERO
+	check(half.move.x > 0.2 and half.move.x < 0.45 and is_equal_approx(full.move.x, 1.0), "Half stick moves slowly for fine aim, full stick still runs")
+	hud.move_vector = Vector2(0.75, 0)
 	game.game_settings.configure(1, true, 0)
 	var slow: float = game.local_command().move.x
 	game.game_settings.configure(1, true, 2)
 	var normal: float = game.local_command().move.x
 	game.game_settings.configure(1, true, 4)
 	var fast: float = game.local_command().move.x
-	game.aim_angle = INF
-	check(slow < normal and normal < fast and fast <= 1.0, "Five sensitivity levels decide how briskly the pilot walks to its target")
+	hud.move_vector = Vector2.ZERO
+	check(slow < normal and normal < fast and fast <= 1.0, "Five sensitivity levels scale the same stick movement from precise to fast")
 	check(hud.sensitivity_choice.item_count == 5, "Options expose five joystick sensitivity levels")
 
 	check(hud.difficulty_buttons.size() == 3, "The menu offers three AI levels")
