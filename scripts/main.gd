@@ -635,8 +635,10 @@ func step_target(direction: int) -> void:
 		elif direction < 0 and gap < -0.012 and (best == INF or option.angle > best):
 			best = option.angle
 	if best == INF:
-		# Past the last one: wrap to the far end, so the keys never feel dead.
-		best = options.back().angle if direction < 0 else options.front().angle
+		# At the end of the wall: stay there. Wrapping around sent the pilot running to
+		# the far side of the arc, which read as the character walking off on its own.
+		hud.target_name = "ÚLTIMO ALVO À %s" % ("DIREITA" if direction > 0 else "ESQUERDA")
+		return
 	aim_angle = best
 	hud.target_name = "ALVO %s" % ("DIREITA" if direction > 0 else "ESQUERDA")
 
@@ -706,14 +708,24 @@ func _physics_process(dt: float) -> void:
 		elif event.kind == "shock":
 			arena.shock_pulse(event.p)
 		elif event.kind == "ultimate_charge":
-			play_tone("ready")
+			# Two seconds of rising charge, heard by both sides.
+			play_tone("charging")
+		elif event.kind == "ultimate":
+			play_tone("unleash")
+			if tones.has(String(event.get("id", ""))):
+				play_tone(String(event.id))
 		elif event.kind == "sun_ray":
 			# The beam is drawn from the gun; this is the discharge around it.
 			arena.sun_ray(event.p, event.heading, event.width)
+			play_tone("sun_ray")
 		elif event.kind == "meteor":
 			arena.meteor_fall(event.p, event.radius, randf() < 0.5)
+			# Fourteen rocks in a second would be a wall of noise: every other one sounds.
+			if randf() < 0.5:
+				play_tone("meteor")
 		elif event.kind == "thunder":
 			arena.thunder_bolt(event.p, event.radius)
+			play_tone("thunder")
 		elif event.kind == "bloom":
 			arena.bloom_flash(event.bricks.map(func(i): return rules.bricks[i].p), event.heal)
 		elif event.kind == "plunder":
@@ -863,6 +875,79 @@ func build_audio() -> void:
 	tones["power"] = sweep_wave(0.26, 640.0, 250.0, 0.45)
 	tones["ready"] = sweep_wave(0.34, 720.0, 1220.0, 0.0)
 	tones["blast"] = sweep_wave(0.42, 300.0, 68.0, 0.8)
+	# Ultimates: two seconds of rising charge, a heavy discharge, and one voice each so
+	# the sun ray, the meteors, the storm, the bloom and the plunder never sound alike.
+	tones["charging"] = sweep_wave(1.9, 120.0, 940.0, 0.12)
+	tones["unleash"] = sweep_wave(0.75, 520.0, 52.0, 0.55)
+	tones["sun_ray"] = roar_wave(0.55, 210.0, 0.5)
+	tones["meteor"] = sweep_wave(0.34, 430.0, 74.0, 0.85)
+	tones["thunder"] = crack_wave(0.42)
+	tones["bloom"] = chime_wave(0.7, 523.25)
+	tones["plunder"] = sweep_wave(0.5, 180.0, 760.0, 0.3)
+
+func roar_wave(seconds: float, base_hz: float, grit: float) -> AudioStreamWAV:
+	# A held, throaty beam: two detuned saws under a slow tremolo.
+	var wave = AudioStreamWAV.new()
+	wave.format = AudioStreamWAV.FORMAT_16_BITS
+	wave.mix_rate = 22050
+	var count = int(22050 * seconds)
+	var bytes = PackedByteArray()
+	bytes.resize(count * 2)
+	var noise = RandomNumberGenerator.new()
+	noise.seed = int(base_hz)
+	for i in range(count):
+		var t = float(i) / 22050.0
+		var progress = float(i) / count
+		var saw = fmod(t * base_hz, 1.0) * 2.0 - 1.0 + fmod(t * base_hz * 1.004, 1.0) * 2.0 - 1.0
+		var tremolo = 0.75 + 0.25 * sin(t * TAU * 21.0)
+		var envelope = minf(t * 24.0, 1.0) * minf((1.0 - progress) * 4.0, 1.0)
+		var value = saw * 0.4 + grit * noise.randf_range(-1.0, 1.0) * 0.5
+		bytes.encode_s16(i * 2, int(clampf(value * tremolo * envelope * 0.8, -1.0, 1.0) * 19000))
+	wave.data = bytes
+	return wave
+
+func crack_wave(seconds: float) -> AudioStreamWAV:
+	# Lightning: a white crack that collapses into a rolling tail.
+	var wave = AudioStreamWAV.new()
+	wave.format = AudioStreamWAV.FORMAT_16_BITS
+	wave.mix_rate = 22050
+	var count = int(22050 * seconds)
+	var bytes = PackedByteArray()
+	bytes.resize(count * 2)
+	var noise = RandomNumberGenerator.new()
+	noise.seed = 4711
+	var rumble = 0.0
+	for i in range(count):
+		var t = float(i) / 22050.0
+		var progress = float(i) / count
+		var snap = noise.randf_range(-1.0, 1.0) * pow(1.0 - progress, 5.0)
+		rumble = lerpf(rumble, noise.randf_range(-1.0, 1.0), 0.06)
+		var body = rumble * pow(1.0 - progress, 1.6) * 0.9 + sin(t * TAU * lerpf(90.0, 40.0, progress)) * 0.3 * pow(1.0 - progress, 2.0)
+		bytes.encode_s16(i * 2, int(clampf(snap + body, -1.0, 1.0) * 19000))
+	wave.data = bytes
+	return wave
+
+func chime_wave(seconds: float, base_hz: float) -> AudioStreamWAV:
+	# Bloom: a soft major chord that opens upwards, like the wall breathing again.
+	var wave = AudioStreamWAV.new()
+	wave.format = AudioStreamWAV.FORMAT_16_BITS
+	wave.mix_rate = 22050
+	var count = int(22050 * seconds)
+	var bytes = PackedByteArray()
+	bytes.resize(count * 2)
+	for i in range(count):
+		var t = float(i) / 22050.0
+		var progress = float(i) / count
+		var value = 0.0
+		for step in range(3):
+			var partial = base_hz * [1.0, 1.26, 1.5][step]
+			var start = step * 0.08
+			if t < start:
+				continue
+			value += sin((t - start) * TAU * partial) * pow(1.0 - progress, 1.8) * [0.5, 0.36, 0.3][step]
+		bytes.encode_s16(i * 2, int(clampf(value, -1.0, 1.0) * 19000))
+	wave.data = bytes
+	return wave
 
 func sweep_wave(seconds: float, from_hz: float, to_hz: float, grit: float) -> AudioStreamWAV:
 	# Continuous phase keeps the sweep free of clicks; the noise share gives each cue its body.

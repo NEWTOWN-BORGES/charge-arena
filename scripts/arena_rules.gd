@@ -786,10 +786,12 @@ func firing_angles(team: int, _samples: int = 0) -> Array:
 		if not brick.alive or brick.team == team:
 			continue
 		var angle = direct_angle(team, brick.p)
-		# Bricks stacked behind one another share an angle; keep the nearest of them.
+		# Bricks stacked exactly behind one another share an angle; keep one of them. The
+		# whole wall only spans about a third of a radian, so this window has to be tight
+		# or most of the targets disappear.
 		var duplicate = false
 		for option in found:
-			if absf(option.angle - angle) < 0.02:
+			if absf(option.angle - angle) < 0.004:
 				duplicate = true
 				break
 		if duplicate:
