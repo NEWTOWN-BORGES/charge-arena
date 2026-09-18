@@ -1582,8 +1582,10 @@ func update_aim_guide(rules, local_team: int, dt: float) -> void:
 	guide_timer -= dt
 	if guide_timer > 0.0:
 		return
-	# Refresh quickly while aiming, slowly while still (obstacles keep moving).
-	guide_timer = 0.05 if absf(player.angle - guide_angle) > 0.0005 else 0.15
+	# Refresh quickly while aiming, slowly while still (obstacles keep moving). Predicting
+	# a whole path costs over a millisecond, so a phone refreshes it less often.
+	var moving: bool = absf(player.angle - guide_angle) > 0.0005
+	guide_timer = ([0.14, 0.09, 0.05][quality_level] if moving else [0.4, 0.25, 0.15][quality_level])
 	guide_angle = player.angle
 	var path: Dictionary = rules.predict_path(local_team, player.angle)
 	var points: PackedVector2Array = path.points

@@ -93,7 +93,7 @@ func run() -> void:
 	await settle()
 
 	touch(hud, 0, hud.arena_rect.get_center(), true)
-	check(hud.take_target() != Vector2.INF, "A tap on the stadium chooses the target in the vertical layout")
+	check(hud.take_aim_step() == 0, "The stadium itself is not a control: only the two keys aim")
 	check(game.local_command().fire, "The pilot fires by itself in the vertical layout")
 	touch(hud, 0, hud.arena_rect.get_center(), false)
 	touch(hud, 1, hud.aim_right, true)

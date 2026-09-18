@@ -321,7 +321,8 @@ func run() -> void:
 	game.rules.powers[0].charge[1] = game.rules.power_charge_cost(0, 1)
 	hud.request_power(1)
 	game._physics_process(1.0 / 60)
-	check(game.rules.powers[0].charge[1] == 0 and game.rules.balls.size() == Rules.AIR_PELLETS, "A button press fires the power in the match")
+	var pellets: int = game.rules.balls.filter(func(b): return b.power == 3).size()
+	check(game.rules.powers[0].charge[1] == 0 and pellets == Rules.AIR_PELLETS, "A button press fires the power in the match (%d balas do leque)" % pellets)
 	check(Rules.power_label("") == "ULTIMATE" and Rules.power_label("sun_ray") == "SOL", "An empty third slot reads ULTIMATE; a skin with one names it")
 	check(game.audio_voices.any(func(v): return v.playing and v.stream == game.tones.power), "Using a power has its own sound")
 	for voice in game.audio_voices:

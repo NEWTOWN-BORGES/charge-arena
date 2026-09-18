@@ -761,77 +761,69 @@ func explode(ball: Dictionary) -> void:
 		damage_player(enemy, EXPLOSION_DAMAGE, ball.p)
 	events.append({"kind": "explosion", "p": ball.p, "team": ball.owner, "radius": EXPLOSION_RADIUS})
 
-func firing_angles(team: int, samples: int = 31) -> Array:
+func direct_angle(team: int, target: Vector2) -> float:
+	# The place on the arc from which the pilot points straight at a spot. Solved by a
+	# couple of refinements instead of by simulating shots: it costs microseconds, and the
+	# whole aiming system leans on it every frame.
+	var goal = goal_center(team)
+	var sign_y = 1.0 if team == 0 else -1.0
+	var depth = maxf((goal.y - target.y) * sign_y, 0.25)
+	var angle = clampf(atan2(target.x, depth) / FACING_FACTOR, -TRACK_LIMIT, TRACK_LIMIT)
+	for pass_index in range(3):
+		var from = track_position(team, angle)
+		var error = angle_difference((target - from).angle(), forward_direction(team, angle).angle())
+		angle = clampf(angle + error / FACING_FACTOR, -TRACK_LIMIT, TRACK_LIMIT)
+	return angle
+
+func firing_angles(team: int, _samples: int = 0) -> Array:
+	# One entry per enemy brick still standing, sorted along the arc. No ball is simulated
+	# here: sweeping 31 predicted shots used to cost 58 ms and froze the frame.
 	if cached_firing_angles.has(team):
 		return cached_firing_angles[team]
-	# Finds reachable enemy bricks and computes the central aiming angle for each.
-	var brick_angles: Dictionary = {}
-	for step in range(samples):
-		var angle = lerpf(-TRACK_LIMIT, TRACK_LIMIT, float(step) / (samples - 1))
-		var outcome = predict_shot(team, angle)
-		if outcome.get("kind", "") != "brick":
-			continue
-		var target_id = outcome.target
-		var brick: Dictionary = bricks[target_id]
-		if brick.team == team:
-			continue
-		if not brick_angles.has(target_id):
-			brick_angles[target_id] = {"min": angle, "max": angle, "p": brick.p}
-		else:
-			brick_angles[target_id]["max"] = angle
 	var found: Array = []
-	for target_id in brick_angles:
-		var info = brick_angles[target_id]
-		var center_angle = (info["min"] + info["max"]) * 0.5
-		found.append({"angle": center_angle, "brick": target_id, "p": info["p"]})
+	for index in range(bricks.size()):
+		var brick: Dictionary = bricks[index]
+		if not brick.alive or brick.team == team:
+			continue
+		var angle = direct_angle(team, brick.p)
+		# Bricks stacked behind one another share an angle; keep the nearest of them.
+		var duplicate = false
+		for option in found:
+			if absf(option.angle - angle) < 0.02:
+				duplicate = true
+				break
+		if duplicate:
+			continue
+		found.append({"angle": angle, "brick": index, "p": brick.p})
 	found.sort_custom(func(a, b): return a.angle < b.angle)
 	cached_firing_angles[team] = found
 	return found
 
 func angle_for_target(team: int, at: Vector2) -> float:
-	# Check cached firing angles first: O(N) where N is only reachable targets
-	var options = firing_angles(team)
+	# The angle that points at whatever brick is nearest the chosen spot.
 	var best = INF
 	var best_distance = INF
-	for option in options:
+	for option in firing_angles(team):
 		var distance: float = option.p.distance_to(at)
 		if distance < best_distance:
 			best_distance = distance
 			best = option.angle
-	if best_distance < 4.5:
-		return best
-	# If touch didn't hit a cached shot trajectory, find nearest alive enemy brick directly
-	var nearest_dist = INF
-	var nearest_brick_p = Vector2.ZERO
-	for brick in bricks:
-		if brick.alive and brick.team != team:
-			var d = brick.p.distance_to(at)
-			if d < nearest_dist:
-				nearest_dist = d
-				nearest_brick_p = brick.p
-	if nearest_dist < 3.2:
-		var goal_y = goal_center(team).y
-		var dy = (goal_y - nearest_brick_p.y) if team == 0 else (nearest_brick_p.y - goal_y)
-		return clampf(atan2(nearest_brick_p.x, dy) / FACING_FACTOR, -TRACK_LIMIT, TRACK_LIMIT)
-	return INF
+	return best if best_distance < 4.5 else INF
 
 func assist_heading(team: int) -> Vector2:
-	# Magnetism: if the shot as aimed misses an enemy brick, but a neighbouring angle lands on an
-	# enemy brick, the round leaves on that angle instead.
+	# Small magnetism: if a brick sits within a few hundredths of a radian of where the
+	# pilot points, the round leaves on that angle instead. Pure geometry, no prediction.
 	var player: Dictionary = players[team]
 	if team != assist_team:
 		return player.aim
-	var direct = predict_shot(team, player.angle)
-	if direct.get("kind", "") == "brick" and bricks[direct.target].team != team:
-		return player.aim
-	for step in range(1, ASSIST_STEPS + 1):
-		var offset = ASSIST_ANGLE * step / float(ASSIST_STEPS)
-		for side in [-1.0, 1.0]:
-			var angle = clampf(player.angle + offset * side, -TRACK_LIMIT, TRACK_LIMIT)
-			var outcome = predict_shot(team, angle)
-			if outcome.get("kind", "") == "brick" and bricks[outcome.target].team != team:
-				return forward_direction(team, angle)
-	return player.aim
+	var best = INF
+	var best_gap = ASSIST_ANGLE
+	for option in firing_angles(team):
+		var gap: float = absf(option.angle - player.angle)
+		if gap < best_gap:
+			best_gap = gap
+			best = option.angle
+	return forward_direction(team, best) if best != INF else player.aim
 
 func shoot(team: int, power: int = 0) -> void:
 	# The machine gun keeps the cadence of its own stream; every other shot is single.

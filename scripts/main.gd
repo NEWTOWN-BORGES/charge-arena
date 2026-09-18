@@ -338,6 +338,7 @@ func host_game() -> void:
 	mode = "host"
 	local_team = 0
 	leave_campaign(Rules.pvp_map())
+	use_loadouts(PowerShop.STARTER_KIT.duplicate())
 	rules.reset_match()
 	dress_pilots(local_team)
 	var peer = ENetMultiplayerPeer.new()
@@ -375,6 +376,7 @@ func join_game(address: String) -> void:
 	connection_timer = 10.0
 	network_status = "A ligar ao rival…"
 	leave_campaign(Rules.pvp_map())
+	use_loadouts(PowerShop.STARTER_KIT.duplicate())
 	rules.reset_match()
 	dress_pilots(local_team)
 	hud.show_game(mode, local_team)
@@ -387,6 +389,7 @@ func peer_connected(id: int) -> void:
 		network_status = ""
 		rules.reset_match()
 		share_skin.rpc_id(id, skins.selected)
+		share_kit.rpc_id(id, String(power_shop.kit[0]), String(power_shop.kit[1]))
 		print("HOST_PEER_CONNECTED ", id)
 
 func joined_server() -> void:
@@ -394,6 +397,7 @@ func joined_server() -> void:
 		connected = true
 		network_status = ""
 		share_skin.rpc_id(1, skins.selected)
+		share_kit.rpc_id(1, String(power_shop.kit[0]), String(power_shop.kit[1]))
 		print("CLIENT_CONNECTED")
 
 func peer_disconnected(_id: int) -> void:
@@ -504,6 +508,22 @@ func share_skin(skin: int) -> void:
 	if skin < 0 or skin >= Skins.CATALOG.size():
 		return
 	arena.set_skin(1 - local_team, skin)
+	# The rival's third key is the ultimate of the skin it just showed.
+	var kit: Array = rules.loadouts[1 - local_team]
+	rules.loadouts[1 - local_team] = [kit[0], kit[1], String(Skins.CATALOG[skin].ultimate)]
+
+@rpc("any_peer", "call_remote", "reliable")
+func share_kit(first: String, second: String) -> void:
+	# The two bought powers the rival brought; the ultimate rides with the skin.
+	if mode != "host" and mode != "client":
+		return
+	if mode == "host" and multiplayer.get_remote_sender_id() != remote_id:
+		return
+	var kit: Array = [first, second]
+	for id in kit:
+		if PowerShop.index_of(id) < 0:
+			return
+	rules.loadouts[1 - local_team] = kit + [rules.power_id(1 - local_team, 2)]
 
 func fit_content_scale() -> void:
 	# Keep 720 HUD units on the short side, whichever way the screen is held.
@@ -579,10 +599,7 @@ func local_command() -> Dictionary:
 	return {"move": Vector2(clampf(move.x, -1, 1), 0), "fire": settled, "power": hud.take_power()}
 
 func read_aiming() -> void:
-	# A tap on the stadium picks the brick under it; the arrows step along the targets.
-	var tap: Vector2 = hud.take_target()
-	if tap != Vector2.INF:
-		aim_at_point(arena.world_at(tap))
+	# The arrows step from target to target; there is no aiming by dragging on the map.
 	var step: int = hud.take_aim_step()
 	if step != 0:
 		step_target(step)

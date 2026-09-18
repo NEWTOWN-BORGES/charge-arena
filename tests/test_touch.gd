@@ -30,13 +30,14 @@ func run() -> void:
 	scene.start_pve()
 	await process_frame
 	var hud = scene.hud
-	# Aiming is by target now: the stadium chooses one, the arrows step between them.
+	# Aiming is by target now, and only through the two keys: touching the stadium does
+	# nothing, which is what keeps the frame from stalling on a drag.
 	var spot = hud.arena_rect.get_center()
 	touch(hud, 0, spot, true)
-	check(hud.take_target() == spot and hud.take_target() == Vector2.INF, "A tap on the stadium is offered once as the chosen target")
+	check(hud.take_target() == Vector2.INF and hud.take_aim_step() == 0, "Touching the stadium no longer aims")
 	check(scene.local_command().fire, "The pilot fires on its own, with no button to hold")
 	drag(hud, 0, spot + Vector2(40, 10))
-	check(hud.take_target() == spot + Vector2(40, 10), "Dragging over the stadium keeps choosing, so aiming can be swept")
+	check(hud.take_target() == Vector2.INF, "Dragging over the stadium does nothing either")
 	touch(hud, 0, spot + Vector2(40, 10), false)
 	touch(hud, 1, hud.aim_right, true)
 	check(hud.take_aim_step() == 1 and hud.take_aim_step() == 0, "The right key asks for the next target, once")

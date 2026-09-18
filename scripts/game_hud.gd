@@ -1730,19 +1730,6 @@ func _input(event: InputEvent) -> void:
 			if arrow != 0:
 				request_aim_step(arrow)
 				return
-			# Anywhere on the stadium: that is the target the pilot will line up on.
-			if event.position.y < touch_top or arena_rect.has_point(event.position):
-				target_pick = event.position
-				return
-	if event is InputEventScreenDrag:
-		# A finger dragged over the stadium keeps choosing, so aiming can be swept.
-		# Throttle: ignore sub-pixel noise and cap at ~20 Hz to avoid CPU spikes
-		# on 120/240 Hz touch screens.
-		if arena_rect.has_point(event.position) or event.position.y < touch_top:
-			var moved = event.position.distance_to(last_drag_pos)
-			if moved >= 18.0:
-				target_pick = event.position
-				last_drag_pos = event.position
 	queue_redraw()
 
 func write(text: String, pos: Vector2, font_size: int, color: Color, bold: bool = false) -> void:
@@ -2206,7 +2193,7 @@ func _draw() -> void:
 		draw_polyline(PackedVector2Array([tip - Vector2(way * 16, 13), tip, tip - Vector2(way * 16, -13)]), INK if pressed else WHITE, 4.0, true)
 	centered("ALVO ANTERIOR", aim_left + Vector2(0, AIM_RADIUS + 20), 9, Color(WHITE, 0.6), true)
 	centered("ALVO SEGUINTE", aim_right + Vector2(0, AIM_RADIUS + 20), 9, Color(WHITE, 0.6), true)
-	centered("TOCA NO ESTÁDIO PARA ESCOLHER O ALVO", (aim_left + aim_right) * 0.5 + Vector2(0, AIM_RADIUS + 38), 10, CYAN, true)
+	centered("AS SETAS SALTAM DE ALVO EM ALVO", (aim_left + aim_right) * 0.5 + Vector2(0, AIM_RADIUS + 38), 10, CYAN, true)
 	if target_name != "":
 		centered(target_name, (aim_left + aim_right) * 0.5 - Vector2(0, AIM_RADIUS + 14), 11, LIME, true)
 	draw_powers()
