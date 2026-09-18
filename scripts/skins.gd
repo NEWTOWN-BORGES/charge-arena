@@ -3,34 +3,40 @@ extends RefCounted
 ## unlocks it. Progress stays on this device.
 const CONFIG_PATH = "user://skins.cfg"
 const SHOT_SOUND = "res://audio/sfx/shot_%d.wav"
-# "level" is the campaign level (1-10) whose boss wears the skin; 0 means always owned.
+# "level" is the campaign level (2-11) whose boss wears the skin; 0 means always owned.
+# "ultimate" is the power in the third slot (see Powers.ULTIMATES); "" while one is missing.
+# Level 1 is a training bout against a copy of the standard pilot, so it unlocks nothing.
 # Empty colours fall back to the team colour, so each side stays readable.
 # Each skin also restyles its team's bricks ("bricks" names that theme).
 const CATALOG = [
-	{"name": "PILOTO AURORA", "weapon": "Manopla de energia", "bricks": "Baterias Aurora", "about": "O equipamento de série do circuito.", "level": 0,
+	{"name": "PILOTO AURORA", "ultimate": "", "weapon": "Manopla de energia", "bricks": "Baterias Aurora", "about": "O equipamento de série do circuito.", "level": 0,
 		"body": "", "light": "", "shot": ""},
-	{"name": "FAROLEIRO", "weapon": "Lança-Farol", "bricks": "Farolins", "about": "Guarda dos faróis flutuantes: cúpula de latão, lanterna às costas e lança de cristal.", "level": 2,
+	{"name": "FAROLEIRO", "ultimate": "", "weapon": "Lança-Farol", "bricks": "Farolins", "about": "Guarda dos faróis flutuantes: cúpula de latão, lanterna às costas e lança de cristal.", "level": 3,
 		"body": "", "light": "9cc2ff", "shot": "9cc2ff"},
-	{"name": "ASTRÓNOMO", "weapon": "Sextante Estelar", "bricks": "Observatórios", "about": "Cartógrafo das órbitas do circuito: anéis planetários, luneta no olho e sextante de cristal.", "level": 4,
+	{"name": "ASTRÓNOMO", "ultimate": "meteors", "weapon": "Sextante Estelar", "bricks": "Observatórios", "about": "Cartógrafo das órbitas do circuito: anéis planetários, luneta no olho e sextante de cristal.", "level": 5,
 		"body": "444f8f", "light": "cbb2ff", "shot": "b99cff"},
-	{"name": "JARDINEIRO", "weapon": "Semeador", "bricks": "Estufas", "about": "Cuida dos jardins orbitais: cúpula de vidro com rebento, vaso às costas e semeador de sementes de luz.", "level": 3,
+	{"name": "JARDINEIRO", "ultimate": "bloom", "weapon": "Semeador", "bricks": "Estufas", "about": "Cuida dos jardins orbitais: cúpula de vidro com rebento, vaso às costas e semeador de sementes de luz.", "level": 4,
 		"body": "5f7f52", "light": "c8f08f", "shot": "9fe37a"},
-	{"name": "MINEIRO", "weapon": "Perfuradora de Cristal", "bricks": "Veios de cristal", "about": "Extrai cristais dos asteroides: capacete de obra com lanterna, carga de minério às costas e broca de quartzo.", "level": 5,
+	{"name": "MINEIRO", "ultimate": "", "weapon": "Perfuradora de Cristal", "bricks": "Veios de cristal", "about": "Extrai cristais dos asteroides: capacete de obra com lanterna, carga de minério às costas e broca de quartzo.", "level": 6,
 		"body": "59606b", "light": "ff9ad8", "shot": "ff7ad0"},
-	{"name": "SENTINELA", "weapon": "Lança Eclipse", "bricks": "Monólitos Eclipse", "about": "Guarda de elite do circuito: capa de obsidiana, halo de eclipse dourado e lança de corona.", "level": 6,
+	{"name": "SENTINELA", "ultimate": "", "weapon": "Lança Eclipse", "bricks": "Monólitos Eclipse", "about": "Guarda de elite do circuito: capa de obsidiana, halo de eclipse dourado e lança de corona.", "level": 7,
 		"body": "2e3140", "light": "f2f4ff", "shot": "eef2ff"},
-	{"name": "RELOJOEIRO", "weapon": "Canhão de Corda", "bricks": "Relógios de torre", "about": "Afina as engrenagens do circuito: monóculo de lupa, chave de corda nas costas e canhão de molas.", "level": 1,
+	{"name": "RELOJOEIRO", "ultimate": "", "weapon": "Canhão de Corda", "bricks": "Relógios de torre", "about": "Afina as engrenagens do circuito: monóculo de lupa, chave de corda nas costas e canhão de molas.", "level": 2,
 		"body": "7a5236", "light": "ffb14e", "shot": "ffa640"},
-	{"name": "CAÇA-TROVÕES", "weapon": "Bobina de Tesla", "bricks": "Para-raios", "about": "Persegue tempestades de plasma: capacete com para-raios, bateria às costas e bobina de Tesla.", "level": 7,
+	{"name": "CAÇA-TROVÕES", "ultimate": "thunder", "weapon": "Bobina de Tesla", "bricks": "Para-raios", "about": "Persegue tempestades de plasma: capacete com para-raios, bateria às costas e bobina de Tesla.", "level": 8,
 		"body": "36445e", "light": "7fe6ff", "shot": "8aeeff"},
-	{"name": "ALQUIMISTA", "weapon": "Frasco de Plasma", "bricks": "Alambiques", "about": "Destila plasma das nebulosas: óculos de latão, alambique às costas e frascos borbulhantes.", "level": 8,
+	{"name": "ALQUIMISTA", "ultimate": "", "weapon": "Frasco de Plasma", "bricks": "Alambiques", "about": "Destila plasma das nebulosas: óculos de latão, alambique às costas e frascos borbulhantes.", "level": 9,
 		"body": "5b4030", "light": "c6ff4d", "shot": "b8ff3d"},
-	{"name": "CORSÁRIO", "weapon": "Bacamarte Estelar", "bricks": "Arcas do tesouro", "about": "Pirata das rotas estelares: tricórnio, pala luminosa e bacamarte de boca larga.", "level": 9,
+	{"name": "CORSÁRIO", "ultimate": "plunder", "weapon": "Bacamarte Estelar", "bricks": "Arcas do tesouro", "about": "Pirata das rotas estelares: tricórnio, pala luminosa e bacamarte de boca larga.", "level": 10,
 		"body": "2c3a4d", "light": "ff5c8a", "shot": "ff4f7e"},
-	{"name": "ARCONTE SOLAR", "weapon": "Cetro Solar", "bricks": "Obeliscos solares", "about": "Senhor do circuito: coroa de raios de sol, manto real e cetro com um sol em miniatura.", "level": 10,
+	{"name": "ARCONTE SOLAR", "ultimate": "sun_ray", "weapon": "Cetro Solar", "bricks": "Obeliscos solares", "about": "Senhor do circuito: coroa de raios de sol, manto real e cetro com um sol em miniatura.", "level": 11,
 		"body": "5a2e4f", "light": "ffe45c", "shot": "fff06a"},
 ]
+# Testing build: every skin can be worn without beating its boss first. Set to false to
+# earn them again; the bosses you have beaten are saved either way.
+const UNLOCK_ALL_FOR_TESTS = true
 var config_path = CONFIG_PATH
+var unlock_all = UNLOCK_ALL_FOR_TESTS
 var defeated: Array = []
 var selected = 0
 
@@ -53,7 +59,7 @@ static func boss_skin(level: int) -> int:
 	return -1
 
 func is_unlocked(index: int) -> bool:
-	return index >= 0 and index < CATALOG.size() and (CATALOG[index].level == 0 or defeated.has(index))
+	return index >= 0 and index < CATALOG.size() and (unlock_all or CATALOG[index].level == 0 or defeated.has(index))
 
 func unlocked_count() -> int:
 	return range(CATALOG.size()).filter(is_unlocked).size()

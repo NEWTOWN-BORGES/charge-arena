@@ -5,6 +5,7 @@ const HUD = preload("res://scripts/game_hud.gd")
 const VideoSettings = preload("res://scripts/video_settings.gd")
 const Music = preload("res://scripts/music_player.gd")
 const Skins = preload("res://scripts/skins.gd")
+const PowerShop = preload("res://scripts/powers.gd")
 const GameSettings = preload("res://scripts/game_settings.gd")
 const Campaign = preload("res://scripts/campaign.gd")
 const PORT = 27940
@@ -38,6 +39,14 @@ var hud_timer = 0.0
 var fps_timer = 0.0
 var pve_paused = false
 var skins = Skins.new()
+var power_shop = PowerShop.new()
+# Bricks already paid into the shop wallet this match.
+var credited_bricks = 0
+# The angle the pilot is walking to, chosen by tapping the stadium or stepping with the
+# arrows. INF means "stay where you are".
+var aim_angle = INF
+# How long the pilot has been walking to that angle, so it never holds fire forever.
+var aim_travel = 0.0
 var game_settings = GameSettings.new()
 var campaign = Campaign.new()
 # Campaign level being played, or -1 for quick play, PvP and the menu.
@@ -64,6 +73,7 @@ func _ready() -> void:
 	hud.play_requested.connect(start_pve)
 	hud.host_requested.connect(host_game)
 	hud.join_requested.connect(join_game)
+	hud.pvp_ai_requested.connect(start_pvp_ai)
 	hud.menu_requested.connect(request_menu)
 	hud.resume_requested.connect(resume_pve)
 	hud.quit_requested.connect(return_to_menu)
@@ -80,6 +90,10 @@ func _ready() -> void:
 	hud.sync_audio(music)
 	music.play("menu")
 	skins.load_preferences()
+	power_shop.load_preferences()
+	hud.sync_powers(power_shop)
+	hud.power_bought.connect(buy_power)
+	hud.power_equipped.connect(equip_power)
 	hud.team_skins = arena.unit_skins
 	hud.team_tints = arena.unit_tints
 	hud.arena_view = arena
@@ -89,6 +103,7 @@ func _ready() -> void:
 	game_settings.load_preferences()
 	rules.ai_level = game_settings.difficulty
 	arena.guide_enabled = game_settings.aim_guide
+	rules.assist_team = local_team if game_settings.aim_assist else -1
 	hud.sync_game(game_settings)
 	hud.difficulty_changed.connect(change_difficulty)
 	hud.guide_changed.connect(change_guide)
@@ -115,20 +130,41 @@ func _ready() -> void:
 	for arg in OS.get_cmdline_user_args():
 		if arg == "--pve":
 			start_pve()
+		if arg == "--pvp-ai" or arg == "--colosseum":
+			start_pvp_ai()
 		if arg.begins_with("--capture="):
 			capture_preview(arg.trim_prefix("--capture="))
 
-func start_pve() -> void:
+func use_loadouts(boss_kit: Array, boss_skin: int = 0) -> void:
+	# Two bought powers plus the ultimate that comes with each pilot's skin.
+	rules.loadouts = [power_shop.loadout(String(Skins.CATALOG[skins.selected].ultimate)), boss_kit + [String(Skins.CATALOG[boss_skin].ultimate)]]
+	credited_bricks = 0
+	if PowerShop.START_WITH_ULTIMATE_FOR_TESTS:
+		# Testing build: both sides walk in with the ultimate ready.
+		charge_ultimates.call_deferred()
+
+func charge_ultimates() -> void:
+	for team in range(rules.powers.size()):
+		var cost = rules.power_charge_cost(team, 2)
+		if cost > 0:
+			rules.powers[team].charge[2] = cost
+
+func start_pve(layout: Dictionary = {}) -> void:
 	pve_paused = false
 	close_network()
 	mode = "pve"
 	local_team = 0
 	network_status = ""
-	leave_campaign()
+	leave_campaign(layout)
+	use_loadouts(["blast", "rapid"])
 	rules.reset_match()
 	dress_pilots(local_team)
 	hud.show_game(mode, local_team)
+	sync_assist()
 	music.play_skin(skins.selected)
+
+func start_pvp_ai() -> void:
+	start_pve(Rules.pvp_map())
 
 func start_level(index: int) -> void:
 	if not campaign.is_unlocked(index):
@@ -144,6 +180,7 @@ func start_level(index: int) -> void:
 	hud.sync_menu_level(index)
 	use_map(level.map)
 	rules.ai_profile = Campaign.ai_profile(index, game_settings.difficulty)
+	use_loadouts(Campaign.boss_kit(index), level.boss)
 	rules.reset_match()
 	dress_pilots(local_team)
 	# The boss wears its own skin and bricks, all in red until beaten, and brings its theme.
@@ -152,6 +189,7 @@ func start_level(index: int) -> void:
 	hud.level_result = ""
 	hud.level_skin = ""
 	hud.show_game(mode, local_team)
+	sync_assist()
 	music.play_skin(level.boss)
 
 func leave_campaign(layout: Dictionary = {}) -> void:
@@ -258,6 +296,7 @@ func return_to_menu(message: String = "") -> void:
 	leave_campaign(Campaign.LEVELS[menu_level].map)
 	rules.reset_match()
 	save_skins()
+	save_powers()
 	dress_pilots(0)
 	show_menu_boss()
 	hud.sync_skins(skins)
@@ -296,17 +335,17 @@ func _notification(what: int) -> void:
 
 func host_game() -> void:
 	close_network()
+	mode = "host"
+	local_team = 0
+	leave_campaign(Rules.pvp_map())
+	rules.reset_match()
+	dress_pilots(local_team)
 	var peer = ENetMultiplayerPeer.new()
 	var error = peer.create_server(PORT, 1)
 	if error != OK:
 		hud.show_menu("Não foi possível criar a sala. A porta pode estar ocupada.")
 		return
 	multiplayer.multiplayer_peer = peer
-	mode = "host"
-	local_team = 0
-	leave_campaign()
-	rules.reset_match()
-	dress_pilots(local_team)
 	network_status = "À espera do rival…"
 	hud.show_game(mode, local_team)
 	music.play_skin(skins.selected)
@@ -335,7 +374,7 @@ func join_game(address: String) -> void:
 	local_team = 1
 	connection_timer = 10.0
 	network_status = "A ligar ao rival…"
-	leave_campaign()
+	leave_campaign(Rules.pvp_map())
 	rules.reset_match()
 	dress_pilots(local_team)
 	hud.show_game(mode, local_team)
@@ -405,6 +444,8 @@ func _unhandled_key_input(event: InputEvent) -> void:
 			hud.close_skins()
 		elif hud.levels_overlay.visible:
 			hud.close_levels()
+		elif hud.powers_overlay.visible:
+			hud.close_powers()
 		elif hud.pvp_overlay.visible:
 			hud.close_pvp()
 		elif pve_paused:
@@ -424,6 +465,31 @@ func select_skin(index: int) -> void:
 	hud.sync_skins(skins)
 	if mode == "menu":
 		arena.set_skin(0, index)
+
+func bank_bricks() -> void:
+	# Bricks destroyed in any mode are the shop currency; they are banked as they fall.
+	var earned: int = int(rules.powers[local_team].destroyed) - credited_bricks
+	if earned <= 0:
+		return
+	credited_bricks += earned
+	power_shop.add_bricks(earned)
+	hud.sync_powers(power_shop)
+
+func save_powers() -> void:
+	if power_shop.save_preferences() != OK:
+		push_warning("Could not save power progress to " + power_shop.config_path)
+
+func buy_power(id: String) -> void:
+	if not power_shop.buy(id):
+		return
+	save_powers()
+	hud.sync_powers(power_shop)
+
+func equip_power(slot: int, id: String) -> void:
+	if not power_shop.equip(slot, id):
+		return
+	save_powers()
+	hud.sync_powers(power_shop)
 
 func save_skins() -> void:
 	if skins.save_preferences() != OK:
@@ -456,6 +522,10 @@ func change_difficulty(level: int) -> void:
 	if level_index >= 0:
 		rules.ai_profile = Campaign.ai_profile(level_index, game_settings.difficulty)
 	save_game_settings()
+
+func sync_assist() -> void:
+	# PvE and PvP alike: only the pilot on this device gets the magnetism.
+	rules.assist_team = local_team if (game_settings.aim_assist and mode != "menu") else -1
 
 func change_guide(on: bool) -> void:
 	game_settings.configure(game_settings.difficulty, on)
@@ -491,13 +561,80 @@ func local_command() -> Dictionary:
 		# Drop anything tapped while the match was on hold.
 		hud.take_power()
 		return {"move": Vector2.ZERO, "fire": false, "power": -1}
-	# Gentle response curve: small thumb movements aim finely, full deflection still runs.
-	var stick: float = hud.move_vector.x
-	var response = signf(stick) * pow(absf(stick), 1.7) * game_settings.sensitivity_scale()
-	var move = Vector2(response, 0)
+	read_aiming()
+	# Walking to the chosen target, unless a key is held: then the pilot obeys the key.
+	var move = Vector2(steer_to_target(), 0)
 	if DisplayServer.get_name() != "headless":
-		move += Vector2(float(Input.is_physical_key_pressed(KEY_D) or Input.is_physical_key_pressed(KEY_RIGHT)) - float(Input.is_physical_key_pressed(KEY_A) or Input.is_physical_key_pressed(KEY_LEFT)), float(Input.is_physical_key_pressed(KEY_S) or Input.is_physical_key_pressed(KEY_DOWN)) - float(Input.is_physical_key_pressed(KEY_W) or Input.is_physical_key_pressed(KEY_UP)))
-	return {"move": Vector2(clampf(move.x, -1, 1), 0), "fire": hud.touch_fire or mouse_firing, "power": hud.take_power()}
+		var keys = Vector2(float(Input.is_physical_key_pressed(KEY_D) or Input.is_physical_key_pressed(KEY_RIGHT)) - float(Input.is_physical_key_pressed(KEY_A) or Input.is_physical_key_pressed(KEY_LEFT)), float(Input.is_physical_key_pressed(KEY_S) or Input.is_physical_key_pressed(KEY_DOWN)) - float(Input.is_physical_key_pressed(KEY_W) or Input.is_physical_key_pressed(KEY_UP)))
+		if keys.x != 0:
+			aim_angle = INF
+			hud.target_name = ""
+		move += keys
+	# The pilot fires on its own, but holds the shot while it is still walking onto the
+	# chosen angle: firing in transit is what used to waste two or three rounds.
+	var settled: bool = true
+	if aim_angle != INF and rules.players.size() > local_team:
+		var gap = absf(aim_angle - rules.players[local_team].angle)
+		settled = gap <= 0.025 or aim_travel > 1.2
+	return {"move": Vector2(clampf(move.x, -1, 1), 0), "fire": settled, "power": hud.take_power()}
+
+func read_aiming() -> void:
+	# A tap on the stadium picks the brick under it; the arrows step along the targets.
+	var tap: Vector2 = hud.take_target()
+	if tap != Vector2.INF:
+		aim_at_point(arena.world_at(tap))
+	var step: int = hud.take_aim_step()
+	if step != 0:
+		step_target(step)
+
+func aim_at_point(at: Vector2) -> void:
+	aim_travel = 0.0
+	# If tapped near the baseline / character track (bottom of the stadium): directly steer the character.
+	if at.y >= 4.8:
+		var sin_val = clampf(at.x / Rules.TRACK_RADIUS, -sin(Rules.TRACK_LIMIT), sin(Rules.TRACK_LIMIT))
+		aim_angle = asin(sin_val)
+		hud.target_name = "PILOTO"
+		return
+	var angle: float = rules.angle_for_target(local_team, at)
+	if angle == INF:
+		hud.target_name = "SEM LINHA PARA AÍ"
+		return
+	aim_angle = angle
+	hud.target_name = "ALVO ESCOLHIDO"
+
+func step_target(direction: int) -> void:
+	# The next angle, in that direction, that still lands on a brick.
+	aim_travel = 0.0
+	var options: Array = rules.firing_angles(local_team)
+	if options.is_empty():
+		hud.target_name = "SEM ALVO À VISTA"
+		return
+	var from: float = aim_angle if aim_angle != INF else rules.players[local_team].angle
+	var best = INF
+	for option in options:
+		var gap: float = option.angle - from
+		if direction > 0 and gap > 0.012 and (best == INF or option.angle < best):
+			best = option.angle
+		elif direction < 0 and gap < -0.012 and (best == INF or option.angle > best):
+			best = option.angle
+	if best == INF:
+		# Past the last one: wrap to the far end, so the keys never feel dead.
+		best = options.back().angle if direction < 0 else options.front().angle
+	aim_angle = best
+	hud.target_name = "ALVO %s" % ("DIREITA" if direction > 0 else "ESQUERDA")
+
+func steer_to_target() -> float:
+	if aim_angle == INF or rules.players.size() <= local_team:
+		aim_travel = 0.0
+		return 0.0
+	aim_travel += 1.0 / 60.0
+	var gap: float = aim_angle - rules.players[local_team].angle
+	if absf(gap) < 0.004:
+		hud.target_name = "NO ALVO"
+		return 0.0
+	# Fast while far, gentle on arrival, so the pilot settles exactly on the angle. The
+	# sensitivity setting decides how briskly it walks.
+	return clampf(gap * 7.0 * game_settings.sensitivity_scale(), -1.0, 1.0)
 
 func _physics_process(dt: float) -> void:
 	if mode == "menu":
@@ -531,6 +668,7 @@ func _physics_process(dt: float) -> void:
 		remote_power = -1
 	arena.capture_motion(rules)
 	rules.step(dt, [command, other])
+	bank_bricks()
 	for event in rules.events:
 		if event.kind == "shot" and event.team == local_team:
 			play_tone("shot_%d" % arena.unit_skins[local_team])
@@ -540,8 +678,29 @@ func _physics_process(dt: float) -> void:
 			play_tone("bounce")
 		elif event.kind == "power":
 			# Both sides are announced: a power launched at you should never be silent.
-			arena.power_flash(event.p, event.power)
+			arena.power_flash(event.p, String(event.get("id", "")))
 			play_tone("power")
+		elif event.kind == "laser":
+			arena.laser_beam(event.p, event.heading, event.team)
+		elif event.kind == "rebuild":
+			arena.rebuild_flash(event.bricks.map(func(i): return rules.bricks[i].p))
+		elif event.kind == "mirror":
+			arena.burst(event.p, Rules.power_color("mirror"), false)
+		elif event.kind == "shock":
+			arena.shock_pulse(event.p)
+		elif event.kind == "ultimate_charge":
+			play_tone("ready")
+		elif event.kind == "sun_ray":
+			# The beam is drawn from the gun; this is the discharge around it.
+			arena.sun_ray(event.p, event.heading, event.width)
+		elif event.kind == "meteor":
+			arena.meteor_fall(event.p, event.radius, randf() < 0.5)
+		elif event.kind == "thunder":
+			arena.thunder_bolt(event.p, event.radius)
+		elif event.kind == "bloom":
+			arena.bloom_flash(event.bricks.map(func(i): return rules.bricks[i].p), event.heal)
+		elif event.kind == "plunder":
+			arena.plunder_flash(event.team)
 		elif event.kind == "power_ready" and event.team == local_team:
 			play_tone("ready")
 		elif event.kind == "explosion":
@@ -569,7 +728,7 @@ func submit_power(power: int) -> void:
 	# Reliable and separate: a dropped movement packet must not swallow a power.
 	if mode != "host" or multiplayer.get_remote_sender_id() != remote_id:
 		return
-	if power < 0 or power >= Rules.POWER_COSTS.size():
+	if power < 0 or power >= Rules.POWER_SLOTS:
 		return
 	remote_power = power
 

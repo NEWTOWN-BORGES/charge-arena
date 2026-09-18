@@ -43,16 +43,22 @@ func _init() -> void:
 	var b = projectile(r, 0, Vector2(0, 2.4), Vector2.UP * Rules.BALL_SPEED)
 	r.advance_ball(b, 0.05)
 	check(r.balls.has(b) and b.bounces == 2, "A long-travelled ball still reflects on an obstacle")
-	# Walls no longer consume anything: the same ball crosses the arena over and over.
-	for crossing in range(12):
+	# Walls reflect, but only until the shot runs out of ricochets.
+	b.bounces = 0
+	for crossing in range(Rules.MAX_BOUNCES):
 		b.p = Vector2(Rules.HALF_WIDTH - 0.2, 1.6)
 		b.v = Vector2.RIGHT * Rules.BALL_SPEED
 		r.advance_ball(b, 0.02)
-		check(r.balls.has(b) and b.v.x < 0, "Wall %d reflects the shot instead of ending it" % crossing)
+		check(r.balls.has(b) and b.v.x < 0 and b.bounces == crossing + 1, "Wall %d reflects the shot instead of ending it" % crossing)
 		b.p = Vector2(-(Rules.HALF_WIDTH - 0.2), 1.6)
 		b.v = Vector2.LEFT * Rules.BALL_SPEED
-		r.advance_ball(b, 0.02)
-	check(r.balls.has(b) and b.bounces >= 24, "Twenty-four wall contacts later the shot is still alive (%d bounces)" % b.bounces)
+		if crossing < Rules.MAX_BOUNCES - 1:
+			r.advance_ball(b, 0.02)
+			b.bounces = crossing + 1
+	b.p = Vector2(Rules.HALF_WIDTH - 0.2, 1.6)
+	b.v = Vector2.RIGHT * Rules.BALL_SPEED
+	var spent = r.advance_ball(b, 0.02)
+	check(not r.balls.has(b) and spent.get("kind", "") == "spent", "The wall after the third ricochet swallows the shot (%d bounces)" % b.bounces)
 	r = active()
 	b = projectile(r, 0, Vector2(0, 2.4), Vector2.UP * Rules.BALL_SPEED, 2)
 	r.advance_ball(b, 0.05)

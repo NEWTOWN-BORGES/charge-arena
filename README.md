@@ -12,7 +12,7 @@ O menu foi pensado para o polegar: fica encostado ao fundo do ecrã, com a leitu
 
 **Carrossel de níveis.** Por trás do menu aparece a arena do nível escolhido, com o boss e os seus tijolos, o nome e o desafio por cima e pontos de página por baixo. Deslizar o dedo para a esquerda ou direita sobre a arena muda de nível (no PC: arrastar com o rato ou setas ← / →). Um toque, um arrasto curto ou vertical e deslizes sobre os botões não mudam o nível. O nome muda de imediato e a arena é reconstruída quando o dedo pára (cerca de 0,1 s num PC). O menu abre no primeiro nível ainda não vencido e volta ao último nível jogado. O PvP (criar sala ou entrar por IP) abre num painel próprio. Na vertical, os painéis de níveis e PvP também ficam junto ao fundo.
 
-No PC: **A / D ou setas esquerda / direita** para deslocar o personagem ao longo do arco e mudar a direção do disparo. **O rato não aponta:** manter o botão esquerdo pressionado apenas dispara. As teclas **1, 2 e 3** lançam os poderes. Escape regressa ao menu. No telemóvel, em orientação vertical: arrastar o polegar esquerdo lateralmente para mover e manter o botão **Disparar** do lado direito pressionado. Não é necessário arrastar esse botão. Largar ou arrastar para fora dele interrompe o disparo. Os dois controlos aceitam toque simultâneo. W/S e deslocamento vertical do controlo esquerdo não permitem sair do arco. Em **OPÇÕES**, a sensibilidade do movimento tem cinco níveis, de Muito lenta a Muito rápida.
+**O disparo é automático:** o piloto dispara sempre em frente assim que a arma está pronta, por isso só há que apontar. No PC: **A / D ou setas esquerda / direita** para deslocar o personagem ao longo do arco e mudar a direção do disparo; as teclas **1, 2 e 3** lançam os poderes e Escape regressa ao menu. No telemóvel, em orientação vertical: arrastar o polegar no joystick, que fica à **direita** da faixa inferior, com as três teclas de poder à **esquerda**. Qualquer toque nessa faixa agarra o joystick, onde quer que o dedo caia. Há também **assistência de mira**: se o tiro como está apontado falha por pouco, sai no ângulo vizinho que acerta num tijolo (no máximo 0,045 rad, `ASSIST_ANGLE`), e desliga-se em OPÇÕES. W/S e deslocamento vertical do controlo esquerdo não permitem sair do arco. Em **OPÇÕES**, a sensibilidade do movimento tem cinco níveis, de Muito lenta a Muito rápida.
 
 ## Orientação vertical
 
@@ -22,23 +22,41 @@ A escala do conteúdo acompanha a forma do ecrã: 720 unidades no lado curto, `c
 
 ## Poderes
 
-Três poderes ganhos dentro de cada partida, destruindo tijolos do adversário. Cada tijolo destruído carrega **um ponto em cada um dos três**, e cada poder tem a sua própria carga: ao usar um, só esse volta a zero e recomeça a encher; os outros mantêm o que tinham.
+Cada piloto leva **três poderes** para a partida: **dois comprados** na aba PODERES e postos no kit, e um terceiro que é a **ultimate da skin equipada** (cinco skins já a têm; nas outras o botão aparece como `ULTIMATE · EM BREVE`). Dentro da partida cada poder enche a sua própria carga: cada tijolo inimigo destruído dá **um ponto a cada um dos três**, e ao usar um só esse volta a zero.
 
-| Botão | Poder | Custo | Efeito |
-| --- | --- | --- | --- |
-| 1 | **Explosão** | 5 tijolos | Uma bala que rebenta ao acertar (ou ao fim dos 4 s): **2 de dano a tudo o que for inimigo num raio de 1,65**, tijolos e piloto. O impacto direto tira a vida normal antes da explosão. |
-| 2 | **Metralhadora** | 10 tijolos | **3 segundos a disparar sozinho**: uma bala a cada 6 passos da simulação, ou seja 0,1 s — exatamente **30 balas**. Não é preciso manter o dedo no botão; durante a rajada os outros poderes ficam bloqueados. |
-| 3 | **Rajada de ar** | 15 tijolos | **9 balas de uma vez** num leque de ±0,72 rad à frente do piloto, com um desvio aleatório em cada uma, por isso nunca sai duas vezes igual. |
+| Poder | Tipo | Carga | Preço | Efeito |
+| --- | --- | --- | --- | --- |
+| **Explosão** | ataque | 5 | inicial | Bala que rebenta ao acertar (ou ao fim dos 4 s): 2 de dano a tudo o que for inimigo num raio de 1,65. |
+| **Metralhadora** | ataque | 10 | 200 | Uma rajada de 10 balas seguidas, umas atrás das outras, uma a cada 0,1 s. |
+| **Rajada de Ar** | ataque | 12 | inicial | 5 balas de uma vez num leque de ±0,72 rad, cada uma com **2 de dano** e desvio aleatório. |
+| **Balas Fantasma** | ataque | 4 | 250 | 8 s com as balas a atravessar pilares, barreiras e obstáculos; as paredes continuam a reflectir. Saem em roxo-claro. |
+| **Raio Laser** | ataque | 18 | 800 | 3 s de feixe contínuo que atravessa tudo menos as paredes e morde duas vezes por segundo: 2 de vida por tijolo, seis dentadas ao todo. |
+| **Reconstrução** | defesa | 15 | 600 | Devolve 7 tijolos inteiros ao teu campo, os mais próximos da baliza primeiro, cada um dentro de um anel de luz. |
+| **Capa Espelho** | defesa | 12 | 700 | 4,5 s de capa nos teus tijolos: a bala inimiga volta como **bala de boost** — muda de dono e de cor, viaja mais depressa, tira 2 de vida e já não ricocheteia. |
+| **Muralhas** | defesa | 10 | 300 | Uma muralha de cerâmica sobe à frente de cada banco de tijolos teus durante 6,5 s e volta à terra. Seguem a disposição do mapa e deixam frestas: o rival ainda acerta, mas tem de apontar. Os teus tiros atravessam-nas. |
+| **Pulso de Choque** | defesa | 15 | 500 | Uma onda limpa **todas as balas do campo** e deixa o rival atordoado **4,5 s**. Os obstáculos móveis congelam no sítio durante o mesmo tempo, com estrelas a rodar por cima. |
 
-No telemóvel os botões ficam em fila entre o joystick e o botão de disparo, na faixa livre por baixo da arena. Na horizontal essa faixa é o próprio estádio — e o teu piloto —, por isso passam para uma coluna entre o teu cartão e a arena, onde não tapam nada. O anel à volta de cada um mostra a carga (por exemplo `3/5`), acende quando o poder está pronto e, na metralhadora, passa a contar os segundos que faltam. No PC são as teclas **1, 2 e 3**.
+**Ultimates** (`Powers.ULTIMATES`, uma por skin, custo de carga 20 e nunca à venda). Todas **brilham 2 segundos** antes de sair — um anel de latão fecha-se sobre o piloto enquanto faíscas são puxadas para dentro e a luz cresce, e a tecla conta o tempo —, por isso o adversário vê o golpe a chegar. Os efeitos usam partículas (CPUParticles3D com faísca redonda), luzes de impacto, marcas queimadas no chão e abalo de câmara; o raio de sol sai da própria arma, opaco, com núcleo branco, corpo dourado, coroa e anéis a descer pelo feixe. Nenhum outro poder pode ser lançado durante esse tempo.
 
-As balas dos poderes seguem as mesmas regras das outras: ricocheteiam até acertar num alvo, apanham aceleradores e atravessam os tijolos da própria equipa. A bala explosiva é maior e cor de âmbar, as da rajada são mais pequenas e azul-claro. Um poder só pode ser lançado em jogo, com o piloto de pé e sem outra rajada a decorrer.
+| Skin | Ultimate | Efeito |
+| --- | --- | --- |
+| Arconte Solar | **Coroa Solar** | Um raio de sol grosso, largo para quatro tijolos em fila, que atravessa a arena e segue para lá dela; morde três vezes, 2 de dano de cada vez. |
+| Astrónomo | **Chuva de Meteoros** | 1 segundo com 14 meteoros roxos e âmbar a cair sobre o campo do rival, 1 de dano cada. |
+| Caça-Trovões | **Trovoada** | 2 segundos com 8 raios a cair ao acaso no campo do rival, 2 de dano cada. |
+| Jardineiro | **Florescer** | Cura 2 de vida em cada tijolo teu; os que já estão inteiros vão até 5 e ficam maiores, com anéis de luz e um +2 a subir. |
+| Corsário | **Pilhagem** | Troca a tua muralha com a do rival, tijolo a tijolo e em espelho: os números e as posições passam para o outro lado. |
 
-**O boss também usa poderes.** Ganha carga pela mesma regra — destruindo os teus tijolos — e gasta-a com critério: só lança a explosão ou a metralhadora quando já tem um tiro certo num tijolo (a metralhadora primeiro, para não ficar parada atrás da explosão mais barata), e guarda a rajada de ar para quando não tem ângulo nenhum, porque o leque não precisa de pontaria. Entre dois poderes espera um intervalo próprio: **8 / 5 / 3 segundos** em Fácil / Normal / Difícil no jogo rápido, e na campanha de **9,5 s no primeiro boss a 3 s no último**, com a dificuldade escolhida a deslocar toda a curva. O cartão do adversário mostra três pontos, um por poder, que acendem quando ele o tem pronto — e qualquer poder lançado, teu ou dele, faz som.
+**Loja e kit** (`scripts/powers.gd`, aba PODERES do menu). Cada poder escolhido mostra uma **demonstração animada** em ciclo — uma arena em miniatura onde se vê o efeito a acontecer: a bala a rebentar, o jorro da metralhadora, o feixe a comer tijolos, as muralhas a subir, a capa a devolver a bala como boost, a onda a limpar o campo. A moeda são os **tijolos destruídos**, contados em qualquer modo e guardados em `user://powers.cfg` com as compras e o kit. Nesta versão de testes `UNLOCK_ALL_FOR_TESTS` entrega os nove já comprados com a carteira cheia; põe-no a `false` para voltar à progressão. Começas com Explosão e Rajada de Ar, que são de série e já vêm equipadas. Cada poder ocupa um slot de cada vez: equipá-lo no outro slot troca os dois.
 
-**PvP.** O cliente envia o pedido num canal fiável próprio, para não se perder com um pacote de movimento; as cargas, a rajada e o tipo de cada bala vão no estado sincronizado, e o cliente reproduz a explosão na posição onde a bala desapareceu.
+No telemóvel os botões ficam em fila ao lado do joystick, na faixa livre por baixo da arena. Na horizontal essa faixa é o próprio estádio — e o teu piloto —, por isso passam para a bolsa por baixo do teu cartão, à esquerda da arena e acima do joystick, onde não tapam nada. O anel à volta de cada um mostra a carga (por exemplo `3/5`), acende quando o poder está pronto e, na metralhadora e no laser, passa a contar os segundos que faltam. No PC são as teclas **1, 2 e 3**.
 
-**Valores ajustáveis** em `scripts/arena_rules.gd`: `POWER_COSTS`, `EXPLOSION_RADIUS`, `EXPLOSION_DAMAGE`, `RAPID_SECONDS`, `RAPID_INTERVAL`, `AIR_PELLETS`, `AIR_SPREAD` e o `power_gap` de `AI_LEVELS`; na campanha, o `power_gap` de `Campaign.ai_profile`.
+As balas dos poderes seguem as mesmas regras das outras: ricocheteiam **até três vezes** (`MAX_BOUNCES`) antes de se apagarem, apanham aceleradores e atravessam os tijolos da própria equipa. A bala explosiva é maior e cor de âmbar, as da rajada mais pequenas e azul-claro, as fantasma roxo-claro, e as devolvidas pela capa espelho passam a douradas de boost. Um poder só pode ser lançado em jogo, com o piloto de pé e sem uma rajada ou um laser a decorrer.
+
+**O boss também usa poderes**, com o kit próprio do seu nível (`Campaign.BOSS_KITS`): os primeiros só disparam, os últimos trazem laser e reconstrução. Ganha carga pela mesma regra e gasta-a com critério — os poderes pesados primeiro quando já tem um tiro certo num tijolo, a rajada de ar quando não tem ângulo nenhum, e os defensivos quando a muralha dele está a cair. Entre dois poderes espera um intervalo próprio: **8 / 5 / 3 segundos** em Fácil / Normal / Difícil no jogo rápido, e na campanha de **9,5 s no primeiro boss a 3 s no último**. O cartão do adversário mostra três pontos, um por poder, que acendem quando ele o tem pronto — e qualquer poder lançado, teu ou dele, faz som.
+
+**PvP.** O cliente envia o pedido num canal fiável próprio, para não se perder com um pacote de movimento; as cargas, os temporizadores de cada efeito e o tipo de cada bala vão no estado sincronizado, e o cliente reproduz a explosão na posição onde a bala desapareceu.
+
+**Valores ajustáveis**: preços, custos de carga e cores em `scripts/powers.gd`; em `scripts/arena_rules.gd`, `EXPLOSION_RADIUS`, `EXPLOSION_DAMAGE`, `RAPID_ROUNDS`, `RAPID_INTERVAL`, `AIR_PELLETS`, `AIR_DAMAGE`, `AIR_SPREAD`, `GHOST_SECONDS`, `LASER_SECONDS`, `LASER_TICK`, `LASER_DAMAGE`, `REBUILD_BRICKS`, `MIRROR_SECONDS`, `WALLS_SECONDS`, `WALL_CLEARANCE`, `WALL_GROUP_GAP`, `WALL_MAX_SPAN`, `WALL_SPLIT_GAP`, `STUN_POWER_SECONDS` e o `power_gap` de `AI_LEVELS`; na campanha, `Campaign.BOSS_KITS` e o `power_gap` de `Campaign.ai_profile`.
 
 ## Música
 
@@ -67,30 +85,31 @@ As faixas foram verificadas objetivamente quanto à duração, repetição, inde
 
 ## Campanha
 
-Dez níveis PvE. Cada um tem arena, desafio e boss próprios; vencer desbloqueia o seguinte e o progresso fica em `user://campaign.cfg`. **Nesta versão de testes todos os níveis estão abertos** (`UNLOCK_ALL_FOR_TESTS = true` em `scripts/campaign.gd`); as vitórias continuam a ser guardadas, e pôr a constante a `false` repõe o desbloqueio nível a nível. O ecrã de níveis mostra o boss, o desafio, o estado (concluído / bloqueado) e o progresso. No início de cada nível a contagem mostra o nome e o desafio; no fim aparecem **PRÓXIMO NÍVEL**, **REPETIR NÍVEL** / **TENTAR DE NOVO** e **NÍVEIS**.
+Onze níveis PvE. Cada um tem arena, desafio e boss próprios; vencer desbloqueia o seguinte e o progresso fica em `user://campaign.cfg`. **Nesta versão de testes todos os níveis estão abertos** (`UNLOCK_ALL_FOR_TESTS = true` em `scripts/campaign.gd`); as vitórias continuam a ser guardadas, e pôr a constante a `false` repõe o desbloqueio nível a nível. **Nesta versão de testes todos os níveis estão abertos** (`UNLOCK_ALL_FOR_TESTS = true` em `scripts/campaign.gd`); as vitórias continuam a ser guardadas, e pôr a constante a `false` repõe o desbloqueio nível a nível. O ecrã de níveis mostra o boss, o desafio, o estado (concluído / bloqueado) e o progresso. No início de cada nível a contagem mostra o nome e o desafio; no fim aparecem **PRÓXIMO NÍVEL**, **REPETIR NÍVEL** / **TENTAR DE NOVO** e **NÍVEIS**.
 
 | Nível | Arena | Contorno | Tijolos | Desafio | Boss |
 | --- | --- | --- | --- | --- | --- |
-| 1 | Circuito Aurora | hexágono | bancos | dois deslizadores (a arena original) | Piloto Aurora |
-| 2 | Baía do Farol | octógono | muralha | três pilares fixos no meio | Faroleiro |
-| 3 | Estufa Suspensa | cintura estreita | arcos | dois vasos em órbita | Jardineiro |
-| 4 | Observatório Lunar | hexágono | ilhas | três luas em órbita, sem aceleradores | Astrónomo |
-| 5 | Mina Profunda | bojo largo | chevron | vagonetas verticais e barreira central | Mineiro |
-| 6 | Santuário Eclipse | octógono | bancos | monólito central e duas luas | Sentinela |
-| 7 | Farol da Tempestade | cintura estreita | ilhas | quatro defletores e deslizador rápido | Faroleiro |
-| 8 | Jardim de Cristal | bojo largo | arcos | losango de pilares e dois deslizadores | Jardineiro |
-| 9 | Veio Profundo | hexágono | muralha | barreira, duas órbitas e vagonetas, sem aceleradores | Mineiro |
-| 10 | Coroa do Eclipse | octógono | chevron | monólito, três luas e defletores em V | Sentinela |
+| 1 | Circuito Aurora | hexágono | bancos | treino | Piloto Aurora (cópia de série) |
+| 2 | Oficina do Relógio | hexágono | bancos | deslizadores | Relojoeiro |
+| 3 | Baía do Farol | octógono | muralha | pilares e muralha | Faroleiro |
+| 4 | Estufa Suspensa | cintura estreita | arcos | cintura estreita | Jardineiro |
+| 5 | Observatório Lunar | hexágono | ilhas | duas luas | Astrónomo |
+| 6 | Mina Profunda | bojo largo | chevron | vagonetas | Mineiro |
+| 7 | Santuário Eclipse | octógono | bancos | monólito central | Sentinela |
+| 8 | Torre da Tempestade | cintura estreita | ilhas | defletores | Caça-Trovões |
+| 9 | Laboratório de Cristal | bojo largo | arcos | losango de pilares | Alquimista |
+| 10 | Recife dos Corsários | hexágono | muralha | órbita e barreira | Corsário |
+| 11 | Coroa Solar | octógono | chevron | tudo junto | Arconte Solar |
 
-Com seis skins e dez níveis, quatro bosses repetem-se na segunda metade, com IA mais forte. O boss usa a skin e os tijolos do seu tema. A força do boss sobe de nível para nível (menos pausa entre disparos, mais velocidade, esquiva a partir do nível 3, poderes cada vez mais seguidos) e a dificuldade escolhida no menu desloca toda a curva: FÁCIL abranda cada boss, DIFÍCIL acelera-o.
+O nível 1 é um treino contra uma cópia do piloto de série, sem obstáculos. Cada um dos dez níveis seguintes tem o seu próprio boss, com skin, tijolos e tema musical próprios: vencê-lo desbloqueia essa skin. A força do boss sobe de nível para nível (menos pausa entre disparos, mais velocidade, esquiva a partir do terceiro, poderes cada vez mais seguidos e kits melhores) e a dificuldade escolhida no menu desloca toda a curva: FÁCIL abranda cada boss, DIFÍCIL acelera-o.
 
-**Mapas por dados.** `scripts/arena_rules.gd` guarda o mapa ativo (`map`): contorno, aceleradores, disposição dos tijolos, obstáculos (`fixed`, `slide` com eixo, `orbit`) e barreiras interiores (muros arredondados que gastam ricochete como uma parede). Balizas e arcos dos pilotos nunca mudam, por isso regras de golo, IA, guia de mira e rede são as mesmas. O mapa de omissão reproduz exatamente a arena original, usada no jogo rápido e no PvP. `scripts/campaign.gd` tem os dez níveis; a arena 3D é reconstruída só quando o mapa muda. Pilares fixos têm tampa dourada e obstáculos móveis tampa escura; deslizadores e órbitas mostram o percurso pintado no chão.
+**Mapas por dados.** `scripts/arena_rules.gd` guarda o mapa ativo (`map`): contorno, aceleradores, disposição dos tijolos, obstáculos (`fixed`, `slide` com eixo, `orbit`) e barreiras interiores (muros arredondados que gastam ricochete como uma parede). Balizas e arcos dos pilotos nunca mudam, por isso regras de golo, IA, guia de mira e rede são as mesmas. O mapa de omissão reproduz exatamente a arena original, usada no jogo rápido e no PvP. `scripts/campaign.gd` tem os onze níveis; a arena 3D é reconstruída só quando o mapa muda. Pilares fixos têm tampa dourada e obstáculos móveis tampa escura; deslizadores e órbitas mostram o percurso pintado no chão.
 
-Todos os mapas são verificados em `tests/test_campaign.gd`: tijolos dentro das paredes e sem sobreposição, obstáculos que nunca tocam tijolos, arcos, balizas ou barreiras, e 12 s de jogo em cada mapa sem nenhuma bola a escapar. Capturas: `tests/capture_levels.gd` (as dez arenas) e `tests/capture_campaign_ui.gd` (menu, níveis, PvP, início e fim de nível).
+Todos os mapas são verificados em `tests/test_campaign.gd`: tijolos dentro das paredes e sem sobreposição, obstáculos que nunca tocam tijolos, arcos, balizas ou barreiras, e 12 s de jogo em cada mapa sem nenhuma bola a escapar. Capturas: `tests/capture_levels.gd` (as onze arenas) e `tests/capture_campaign_ui.gd` (menu, níveis, PvP, início e fim de nível).
 
 ## Skins
 
-Destruir tijolos inimigos desbloqueia pilotos, um a cada 10 tijolos (valores de teste; a progressão prevista é 50, 100, …). Os tiros atravessam os tijolos aliados sem os danificar, por isso cada tijolo inimigo que cai conta para quem joga nesse aparelho (PvE, anfitrião ou cliente PvP). Ao atingir um limiar a meio da partida aparece **NOVA SKIN DESBLOQUEADA**. O progresso e a skin equipada ficam em `user://skins.cfg`.
+Cada boss da campanha veste uma skin. Durante o nível luta todo vermelho, na cor da equipa; ao derrotá-lo a skin revela as cores originais ali mesmo no campo e fica desbloqueada na aba SKINS, com **NOVA SKIN DESBLOQUEADA** e o nome no ecrã de vitória. São dez bosses (níveis 2 a 11) mais o Piloto Aurora, de série. **Nesta versão de testes todas as skins estão abertas** (`UNLOCK_ALL_FOR_TESTS = true` em `scripts/skins.gd`); as vitórias continuam guardadas em `user://skins.cfg` com a skin equipada.
 
 Cada skin muda o piloto, a arma, as cores dos disparos **e os tijolos da sua equipa**.
 
@@ -103,7 +122,7 @@ Cada skin muda o piloto, a arma, as cores dos disparos **e os tijolos da sua equ
 | 40 | **Mineiro** — capacete de obra com lanterna, carga de cristais | Perfuradora de Cristal | Veios de cristal: pedra, cinta de aço, cristais rosa | corpo carvão, disparos magenta |
 | 50 | **Sentinela** — capa de obsidiana, halo de eclipse dourado | Lança Eclipse | Monólitos Eclipse: obsidiana em plinto dourado, eclipse em cada face | corpo obsidiana, disparos pérola |
 
-**Visualizador.** O botão **SKINS** abre um painel com o piloto em 3D num pedestal, junto de dois tijolos do tema em exposição (o segundo com uma vida perdida, mais pequeno e com uma luz apagada). Arrastar roda o pedestal, que volta a girar sozinho após 1,5 s; o piloto dispara de vez em quando para mostrar a cor do raio. Ao lado ficam nome, arma, tema dos tijolos, descrição, amostras de cor (corpo, luz, disparo), progresso e uma grelha de miniaturas para pré-visualizar qualquer skin — também as bloqueadas. **EQUIPAR** só fica ativo quando a skin está desbloqueada; caso contrário mostra quantos tijolos faltam.
+**Visualizador.** O botão **SKINS** abre um painel com o piloto em 3D num pedestal, junto de dois tijolos do tema em exposição (o segundo com uma vida perdida, mais pequeno e com uma luz apagada). Arrastar roda o pedestal, que volta a girar sozinho após 1,5 s; o piloto dispara de vez em quando para mostrar a cor do raio. Ao lado ficam nome, arma, tema dos tijolos, descrição, amostras de cor (corpo, luz, disparo), progresso e uma grelha de miniaturas para pré-visualizar qualquer skin — também as bloqueadas. **EQUIPAR** só fica ativo quando a skin está desbloqueada; caso contrário mostra que nível é preciso vencer.
 
 **Legibilidade.** A aura e o rasto dos disparos usam a cor da skin, mas o brilho no chão por baixo de cada tiro, o anel aos pés do piloto, os braços e as três luzes de vida de cada tijolo mantêm a cor da equipa. Disparos acelerados continuam dourados com qualquer skin. No PvP cada jogador envia a skin ao ligar-se e o rival vê piloto, disparos e tijolos. A skin muda só o aspeto: colisões e regras são iguais.
 
@@ -227,7 +246,7 @@ godot --headless --path . --script res://tests/test_network.gd -- --client
 - `scripts/music_player.gd`: música de fundo, transições, atenuação e preferências de som.
 - `scripts/skins.gd`: catálogo de skins, contagem de tijolos destruídos e progresso guardado.
 - `scripts/game_settings.gd`: dificuldade, guia de mira e sensibilidade do joystick.
-- `scripts/campaign.gd`: os dez níveis (mapa, desafio, boss, força da IA) e o progresso guardado.
+- `scripts/campaign.gd`: os onze níveis (mapa, desafio, boss, força da IA) e o progresso guardado.
 - `scripts/video_settings.gd`: limites de FPS, qualidade, VSync e preferências locais.
 - `audio/`: música do menu, seis temas de partida e efeitos de armas.
 - `tools/compose_music.py` e `tools/compose_skin_music.py`: composição e mistura da música (excluídos do APK).
@@ -241,7 +260,7 @@ Os personagens finais do vídeo ainda não fazem parte deste protótipo. O objet
 - Chão com linhas pintadas, arcos das balizas, textura subtil e sombreamento consistente, sem o artefacto quadriculado da primeira versão.
 - Pilotos Nova e Ember com capacete arredondado, viseira, olhos, mochila, movimento das pernas e recuo da arma.
 - Quatro grupos de tijolos em forma de baterias que encolhem, balizas curvas com energia animada, arcos de movimento visíveis e dois aceleradores laterais dourados. Disparos acelerados ganham uma aura maior e um rasto dourado.
-- Dois obstáculos circulares de cerâmica com anéis luminosos, deslocamento horizontal e pistas discretas desenhadas no chão. O controlo direito é agora um botão de disparo, em vez de um joystick para apontar.
+- Dois obstáculos circulares de cerâmica com anéis luminosos, deslocamento horizontal e pistas discretas desenhadas no chão.
 - Fragmentos na destruição, faíscas no ricochete, estrelas de paralisia e efeitos de golo.
 - Interface com retratos que reagem à paralisia, contagem de defesas e controlos de toque na mesma paleta.
 - Cerâmica com brilho suave, latão com acabamento metálico, iluminação quente/fria equilibrada, capacetes mais redondos e sombras de contacto sob os tijolos.
@@ -256,7 +275,7 @@ O protocolo de rede desta revisão sincroniza as posições em arco, orientaçã
 - 40 verificações das regras passaram, incluindo movimento em arco, os dois aceleradores, dano 1/2, colisão com tijolos rodados e encolhidos, balizas e reposição de rondas.
 - 19 verificações de orientação fixa, colisão com obstáculos móveis, imunidade ao próprio disparo e entrada do rato passaram.
 - 20 verificações de IA por objetivos, proteção dos tijolos aliados, ricochetes adicionais, previsão sem alterar o estado e desvio de ameaças. A simulação de 90 segundos mede os disparos, acertos nos tijolos e golos; também é testada uma baliza já aberta.
-- 7 verificações de eventos de toque passaram, incluindo mover e disparar simultaneamente e disparar imediatamente ao tocar no botão.
+- 7 verificações de eventos de toque passaram, incluindo agarrar o joystick em qualquer ponto da faixa e o disparo automático a continuar sem botão.
 - 7 verificações dos modelos passaram, incluindo encolhimento, marcas de vidas, aura do boost, escudo aberto e reposição dos tijolos.
 - 22 verificações de vídeo passaram com renderização gráfica: nove combinações de qualidade/FPS, persistência, valores inválidos, controlos, pausa PvE, interpolação e encolhimento/destruição/reposição dos MultiMeshes. Em modo headless executam-se 19; as três leituras de transformações na GPU exigem o renderizador gráfico, pois o renderizador dummy devolve matrizes identidade.
 - Duas instâncias em localhost ligaram-se por ENet e confirmaram disparos, projéteis acelerados, ricochetes adicionais, movimento em arco, orientação fixa, obstáculos móveis, vidas e tamanhos dos tijolos nos dois lados. Isto não equivale a testar dois telemóveis ou uma ligação pela internet.

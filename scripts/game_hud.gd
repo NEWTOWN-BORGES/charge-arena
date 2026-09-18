@@ -4,12 +4,13 @@ const GameSettings = preload("res://scripts/game_settings.gd")
 const Campaign = preload("res://scripts/campaign.gd")
 const Rules = preload("res://scripts/arena_rules.gd")
 const STICK_RADIUS = 62.0
-const FIRE_RADIUS = 76.0
+const AIM_RADIUS = 54.0
 # Power buttons sit in the free band between the two thumb controls, above the FPS line.
 const POWER_RADIUS = 40.0
 const POWER_GAP = 100.0
 const POWER_RISE = 176.0
-const POWER_LABELS = ["EXPLOSÃO", "METRALHA", "RAJADA"]
+const Powers = preload("res://scripts/powers.gd")
+signal pvp_ai_requested
 signal play_requested
 signal host_requested
 signal join_requested(address: String)
@@ -28,8 +29,12 @@ signal sensitivity_changed(level: int)
 signal level_selected(index: int)
 signal next_level_requested
 signal levels_requested
+signal power_bought(id: String)
+signal power_equipped(slot: int, id: String)
 signal menu_level_changed(step: int)
 const INK = Color("142b32")
+const BRASS = Color("d2ad73")
+const CERAMIC = Color("dedbca")
 const MUTED = Color("8fa8a5")
 const WHITE = Color("ede6d2")
 const CYAN = Color("72ddc6")
@@ -39,6 +44,7 @@ var menu: PanelContainer
 var menu_status: Label
 var ip: LineEdit
 var back: Button
+var host_ai_button: Button
 var replay: Button
 var match_data: Dictionary = {}
 var team = 0
@@ -46,12 +52,16 @@ var mode = "menu"
 var network_status = ""
 var touches: Dictionary = {}
 var move_id = -1
-var fire_id = -1
+# Aiming by target: a tap on the stadium, or a step with the arrow keys.
+var target_pick = Vector2.INF
+var last_drag_pos = Vector2.ZERO
+var aim_step = 0
+var aim_left = Vector2.ZERO
+var aim_right = Vector2.ZERO
+var aim_flash = [0.0, 0.0]
+var target_name = ""
 var move_vector = Vector2.ZERO
-var touch_fire = false
 var move_center = Vector2.ZERO
-var fire_center = Vector2.ZERO
-var fire_home = Vector2.ZERO
 var power_centers: Array = [Vector2.ZERO, Vector2.ZERO, Vector2.ZERO]
 # One-shot request, read once by the match loop; the flash is only the press animation.
 var power_request = -1
@@ -112,6 +122,23 @@ const SWIPE_DISTANCE = 70.0
 var skins_overlay: ColorRect
 var skins_panel: PanelContainer
 var skins_button: Button
+var powers_button: Button
+var powers_overlay: ColorRect
+var powers_panel: PanelContainer
+var powers_wallet: Label
+var powers_detail: Label
+var power_cards: Array = []
+var power_slot_buttons: Array = []
+var power_buy: Button
+var power_shop = null
+var shop_index = 0
+var power_demo: Control
+var skin_ultimate_name: Label
+var skin_ultimate_about: Label
+var skin_ultimate_demo: Control
+var skins_scroll: ScrollContainer
+# Seconds into the looping demonstration of the previewed power.
+var demo_clock = 0.0
 var skins_total: Label
 var skins_body: BoxContainer
 var skin_name: Label
@@ -171,11 +198,16 @@ func _ready() -> void:
 	add_child(levels_button)
 	levels_button.pressed.connect(func(): levels_requested.emit())
 	levels_button.hide()
+	host_ai_button = make_button("JOGAR COM IA AGORA", true)
+	add_child(host_ai_button)
+	host_ai_button.pressed.connect(func(): pvp_ai_requested.emit())
+	host_ai_button.hide()
 	build_video_menu()
 	build_pause_menu()
 	build_skins_menu()
 	build_pvp_menu()
 	build_levels_menu()
+	build_powers_menu()
 	resized.connect(layout)
 	layout()
 
@@ -243,10 +275,17 @@ func build_skins_menu() -> void:
 	list.add_child(skins_body)
 	build_skin_viewer()
 	skins_body.add_child(viewer)
+	# Name, weapon, palette, ultimate and the thumbnail grid: more than a phone screen
+	# holds, so the column scrolls inside the panel.
+	skins_scroll = ScrollContainer.new()
+	skins_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	skins_scroll.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	skins_scroll.custom_minimum_size.y = 420
+	skins_body.add_child(skins_scroll)
 	var details = VBoxContainer.new()
 	details.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	details.add_theme_constant_override("separation", 6)
-	skins_body.add_child(details)
+	skins_scroll.add_child(details)
 	skin_name = label("", 26, WHITE, true)
 	details.add_child(skin_name)
 	skin_weapon = label("", 13, LIME, true)
@@ -262,6 +301,19 @@ func build_skins_menu() -> void:
 	skin_swatches.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	skin_swatches.draw.connect(draw_swatches)
 	details.add_child(skin_swatches)
+	# The ultimate that comes with this skin, with its own looping demonstration.
+	skin_ultimate_name = label("", 14, BRASS, true)
+	details.add_child(skin_ultimate_name)
+	skin_ultimate_about = label("", 12, MUTED)
+	skin_ultimate_about.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	skin_ultimate_about.custom_minimum_size.x = 320
+	details.add_child(skin_ultimate_about)
+	skin_ultimate_demo = Control.new()
+	skin_ultimate_demo.clip_contents = true
+	skin_ultimate_demo.custom_minimum_size = Vector2(320, 150)
+	skin_ultimate_demo.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	skin_ultimate_demo.draw.connect(func(): draw_demo(skin_ultimate_demo, String(Skins.CATALOG[preview_index].ultimate)))
+	details.add_child(skin_ultimate_demo)
 	skin_progress = ProgressBar.new()
 	skin_progress.show_percentage = false
 	skin_progress.custom_minimum_size.y = 8
@@ -482,6 +534,11 @@ func refresh_skins() -> void:
 	else:
 		skin_state.text = "BLOQUEADA  ·  DERROTA O BOSS DO NÍVEL %d" % level
 	skin_state.add_theme_color_override("font_color", LIME if open else MUTED)
+	var ultimate: Dictionary = Powers.entry(String(entry.ultimate))
+	skin_ultimate_name.text = ("ULTIMATE  ·  " + String(ultimate.name)) if not ultimate.is_empty() else "ULTIMATE  ·  EM BREVE"
+	skin_ultimate_about.text = String(ultimate.about) if not ultimate.is_empty() else "Esta skin ainda não tem ultimate; o terceiro slot fica por preencher."
+	skin_ultimate_name.add_theme_color_override("font_color", BRASS if not ultimate.is_empty() else MUTED)
+	skin_ultimate_demo.queue_redraw()
 	if skins_progress.selected == preview_index:
 		skin_action.text = "EQUIPADA"
 	elif open:
@@ -556,8 +613,18 @@ func _process(dt: float) -> void:
 		if power_flash[index] > 0:
 			power_flash[index] = maxf(power_flash[index] - dt, 0)
 			queue_redraw()
+	for index in range(aim_flash.size()):
+		if aim_flash[index] > 0:
+			aim_flash[index] = maxf(aim_flash[index] - dt, 0)
+			queue_redraw()
 	if skins_overlay.visible and is_instance_valid(viewer_pilot):
 		animate_viewer(dt)
+	if powers_overlay != null and powers_overlay.visible:
+		demo_clock += dt
+		power_demo.queue_redraw()
+	elif skins_overlay.visible and skin_ultimate_demo != null:
+		demo_clock += dt
+		skin_ultimate_demo.queue_redraw()
 
 func show_pause(value: bool) -> void:
 	reset_touch()
@@ -565,21 +632,34 @@ func show_pause(value: bool) -> void:
 	queue_redraw()
 
 func make_button(text: String, primary: bool) -> Button:
+	# 58 px is a comfortable thumb target on a phone, and reads well on a monitor too.
 	var b = Button.new()
 	b.text = text
-	b.custom_minimum_size.y = 49
+	b.custom_minimum_size.y = 58
 	b.add_theme_font_override("font", font_bold)
-	b.add_theme_font_size_override("font_size", 16)
+	b.add_theme_font_size_override("font_size", 17)
 	paint_button(b, primary)
 	return b
+
+func raised_style(color: Color, border: Color, lift: int = 4) -> StyleBoxFlat:
+	# Ceramic key with a brass edge and a soft drop shadow, like the arena furniture.
+	var key = "raised" + str(color) + str(border) + str(lift)
+	if style_cache.has(key):
+		return style_cache[key]
+	var s: StyleBoxFlat = style(color, border).duplicate()
+	s.shadow_color = Color(0.01, 0.04, 0.05, 0.45)
+	s.shadow_size = lift
+	s.shadow_offset = Vector2(0, lift * 0.5)
+	style_cache[key] = s
+	return s
 
 func paint_button(b: Button, primary: bool) -> void:
 	b.add_theme_color_override("font_color", INK if primary else WHITE)
 	b.add_theme_color_override("font_hover_color", INK if primary else WHITE)
 	b.add_theme_color_override("font_pressed_color", INK if primary else WHITE)
-	b.add_theme_stylebox_override("normal", style(LIME if primary else Color("203b41"), Color.TRANSPARENT if primary else Color("425a59")))
-	b.add_theme_stylebox_override("hover", style(LIME.lightened(0.1) if primary else Color("304e51")))
-	b.add_theme_stylebox_override("pressed", style(LIME.darkened(0.2) if primary else Color("426561")))
+	b.add_theme_stylebox_override("normal", raised_style(LIME if primary else Color("1b3940"), Color(BRASS, 0.55) if primary else Color("42625f")))
+	b.add_theme_stylebox_override("hover", raised_style(LIME.lightened(0.1) if primary else Color("2b4e52"), Color(BRASS, 0.75) if primary else Color("5b7d76"), 5))
+	b.add_theme_stylebox_override("pressed", raised_style(LIME.darkened(0.2) if primary else Color("426561"), Color(BRASS, 0.4) if primary else Color("6d8f88"), 1))
 	b.add_theme_stylebox_override("focus", style(Color.TRANSPARENT, CYAN))
 
 func label(text: String, font_size: int, color: Color, bold: bool = false) -> Label:
@@ -595,14 +675,14 @@ func build_menu() -> void:
 	menu.add_theme_stylebox_override("panel", style(Color(0.055, 0.105, 0.125, 0.97), Color("3c5756"), 22))
 	add_child(menu)
 	var list = VBoxContainer.new()
-	list.add_theme_constant_override("separation", 11)
+	list.add_theme_constant_override("separation", 13)
 	menu.add_child(list)
 	# Reading on top, buttons below and the main action last: with the panel anchored to
 	# the bottom of the screen, that is where a thumb already rests.
 	list.add_child(label("✦  CIRCUITO AURORA", 13, CYAN, true))
 	list.add_child(label("CHARGE ARENA", 34, WHITE, true))
 	list.add_child(label("Destrói as defesas do rival e marca 2 golos.", 15, MUTED))
-	menu_status = label("Toque: esquerda move, direita dispara · PC: A/D + clique", 13, MUTED)
+	menu_status = label("Toque: arrasta para mover · o disparo é automático · PC: A/D", 13, MUTED)
 	menu_status.clip_text = true
 	menu_status.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
 	list.add_child(menu_status)
@@ -616,12 +696,12 @@ func build_menu() -> void:
 	var levels = ButtonGroup.new()
 	for level in range(GameSettings.DIFFICULTIES.size()):
 		var pick = make_button(GameSettings.DIFFICULTIES[level], false)
-		pick.custom_minimum_size.y = 40
+		pick.custom_minimum_size.y = 48
 		pick.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		pick.toggle_mode = true
 		pick.button_group = levels
 		pick.focus_mode = Control.FOCUS_NONE
-		pick.add_theme_font_size_override("font_size", 13)
+		pick.add_theme_font_size_override("font_size", 14)
 		pick.add_theme_stylebox_override("pressed", style(LIME))
 		pick.add_theme_stylebox_override("hover_pressed", style(LIME.lightened(0.1)))
 		pick.add_theme_color_override("font_pressed_color", INK)
@@ -630,18 +710,22 @@ func build_menu() -> void:
 		level_row.add_child(pick)
 		difficulty_buttons.append(pick)
 	var extras = HBoxContainer.new()
-	extras.add_theme_constant_override("separation", 8)
+	extras.add_theme_constant_override("separation", 10)
 	list.add_child(extras)
 	skins_button = make_button("SKINS", false)
 	skins_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	extras.add_child(skins_button)
 	skins_button.pressed.connect(open_skins)
+	powers_button = make_button("PODERES", false)
+	powers_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	extras.add_child(powers_button)
+	powers_button.pressed.connect(open_powers)
 	var graphics = make_button("OPÇÕES", false)
 	graphics.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	extras.add_child(graphics)
 	graphics.pressed.connect(open_video)
 	var modes = HBoxContainer.new()
-	modes.add_theme_constant_override("separation", 8)
+	modes.add_theme_constant_override("separation", 10)
 	list.add_child(modes)
 	var pvp = make_button("PvP", false)
 	pvp.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -656,8 +740,8 @@ func build_menu() -> void:
 	modes.add_child(quick_button)
 	quick_button.pressed.connect(func(): play_requested.emit())
 	campaign_button = make_button("JOGAR NÍVEL 1  →", true)
-	campaign_button.custom_minimum_size.y = 66
-	campaign_button.add_theme_font_size_override("font_size", 19)
+	campaign_button.custom_minimum_size.y = 76
+	campaign_button.add_theme_font_size_override("font_size", 21)
 	campaign_button.add_theme_stylebox_override("disabled", style(Color("203b41"), Color("425a59")))
 	campaign_button.add_theme_color_override("font_disabled_color", MUTED)
 	list.add_child(campaign_button)
@@ -698,6 +782,10 @@ func build_pvp_menu() -> void:
 	host.custom_minimum_size.y = 58
 	list.add_child(host)
 	host.pressed.connect(func(): close_pvp(); host_requested.emit())
+	var pvp_ai = make_button("JOGAR CONTRA IA (COLISEU)", false)
+	pvp_ai.custom_minimum_size.y = 56
+	list.add_child(pvp_ai)
+	pvp_ai.pressed.connect(func(): close_pvp(); pvp_ai_requested.emit())
 	var leave = make_button("VOLTAR", false)
 	list.add_child(leave)
 	leave.pressed.connect(close_pvp)
@@ -709,6 +797,397 @@ func open_pvp() -> void:
 
 func close_pvp() -> void:
 	pvp_overlay.hide()
+
+func build_powers_menu() -> void:
+	# Shop and kit: buy with the bricks you have destroyed, then fill the two slots.
+	powers_overlay = ColorRect.new()
+	powers_overlay.color = Color(0.015, 0.035, 0.045, 0.94)
+	powers_overlay.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	add_child(powers_overlay)
+	powers_panel = PanelContainer.new()
+	powers_panel.add_theme_stylebox_override("panel", style(Color("122b32"), Color("496563"), 24))
+	powers_overlay.add_child(powers_panel)
+	var list = VBoxContainer.new()
+	list.add_theme_constant_override("separation", 12)
+	powers_panel.add_child(list)
+	var header = HBoxContainer.new()
+	list.add_child(header)
+	var titles = VBoxContainer.new()
+	titles.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	header.add_child(titles)
+	titles.add_child(label("PODERES", 25, WHITE, true))
+	titles.add_child(label("Compra com os tijolos que destruíres e leva dois para a partida.", 14, MUTED))
+	powers_wallet = label("", 13, CYAN, true)
+	powers_wallet.size_flags_vertical = Control.SIZE_SHRINK_END
+	header.add_child(powers_wallet)
+	# Fourteen cards do not fit a phone screen, so the grid scrolls inside the panel.
+	var scroll = ScrollContainer.new()
+	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	scroll.custom_minimum_size.y = 300
+	list.add_child(scroll)
+	var grid = GridContainer.new()
+	grid.columns = 3
+	grid.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	grid.add_theme_constant_override("h_separation", 10)
+	grid.add_theme_constant_override("v_separation", 10)
+	scroll.add_child(grid)
+	for index in range(shop_entries().size()):
+		var card = Button.new()
+		card.custom_minimum_size = Vector2(190, 92)
+		card.focus_mode = Control.FOCUS_NONE
+		card.add_theme_stylebox_override("hover", style(Color("1f444c"), Color("496563"), 16))
+		card.add_theme_stylebox_override("pressed", style(Color("1f444c"), LIME, 16))
+		grid.add_child(card)
+		var face = Control.new()
+		face.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+		face.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		face.draw.connect(func(): draw_power_card(face, index))
+		card.add_child(face)
+		card.pressed.connect(func(): preview_power(index))
+		power_cards.append(card)
+	power_demo = Control.new()
+	power_demo.clip_contents = true
+	power_demo.custom_minimum_size = Vector2(600, 196)
+	power_demo.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	power_demo.draw.connect(draw_power_demo)
+	list.add_child(power_demo)
+	powers_detail = label("", 13, MUTED)
+	powers_detail.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	powers_detail.custom_minimum_size = Vector2(600, 40)
+	list.add_child(powers_detail)
+	var actions = HBoxContainer.new()
+	actions.add_theme_constant_override("separation", 8)
+	list.add_child(actions)
+	power_buy = make_button("COMPRAR", true)
+	power_buy.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	power_buy.add_theme_stylebox_override("disabled", style(Color("203b41"), Color("425a59")))
+	power_buy.add_theme_color_override("font_disabled_color", MUTED)
+	power_buy.pressed.connect(func(): power_bought.emit(String(shop_entries()[shop_index].id)))
+	actions.add_child(power_buy)
+	for slot in range(Powers.KIT_SIZE):
+		var equip = make_button("SLOT %d" % (slot + 1), false)
+		equip.custom_minimum_size.x = 150
+		equip.add_theme_stylebox_override("disabled", style(Color("203b41"), Color("425a59")))
+		equip.add_theme_color_override("font_disabled_color", MUTED)
+		equip.pressed.connect(func(): power_equipped.emit(slot, String(shop_entries()[shop_index].id)))
+		actions.add_child(equip)
+		power_slot_buttons.append(equip)
+	var leave = make_button("VOLTAR", false)
+	leave.custom_minimum_size.x = 130
+	leave.pressed.connect(close_powers)
+	actions.add_child(leave)
+	powers_overlay.hide()
+
+func shop_entries() -> Array:
+	# Everything the panel shows: the nine for sale, then the skin ultimates.
+	return Powers.CATALOG + Powers.ULTIMATES
+
+func sync_powers(shop) -> void:
+	power_shop = shop
+	if powers_button != null:
+		powers_button.text = "PODERES  %d/%d" % [shop.owned.size(), Powers.CATALOG.size()]
+	refresh_powers()
+
+func preview_power(index: int) -> void:
+	shop_index = clampi(index, 0, shop_entries().size() - 1)
+	# Each power starts its demonstration from the top.
+	demo_clock = 0.0
+	refresh_powers()
+
+func refresh_powers() -> void:
+	if power_shop == null or powers_wallet == null:
+		return
+	var entry: Dictionary = shop_entries()[shop_index]
+	var ultimate: bool = Powers.is_ultimate(String(entry.id))
+	var owned: bool = ultimate or power_shop.is_owned(entry.id)
+	powers_wallet.text = "TIJOLOS: %d" % power_shop.bricks
+	powers_detail.text = "%s  ·  %s  ·  carga %d tijolos\n%s" % [entry.name, String(entry.kind).to_upper(), entry.charge, entry.about]
+	power_buy.text = "VEM COM A SKIN" if ultimate else ("COMPRADO" if owned else "COMPRAR · %d TIJOLOS" % entry.price)
+	power_buy.disabled = ultimate or owned or not power_shop.can_buy(entry.id)
+	for slot in range(power_slot_buttons.size()):
+		var button: Button = power_slot_buttons[slot]
+		var here: bool = power_shop.kit[slot] == entry.id
+		button.text = "EQUIPADO" if here else "SLOT %d" % (slot + 1)
+		button.disabled = ultimate or here or not owned
+	for index in range(power_cards.size()):
+		var card: Button = power_cards[index]
+		card.add_theme_stylebox_override("normal", style(Color("1f444c") if index == shop_index else Color("183840"), LIME if index == shop_index else Color("334f51"), 16))
+		card.get_child(0).queue_redraw()
+
+func draw_power_card(canvas: Control, index: int) -> void:
+	# A ceramic tile: brass medallion with the sigil, the name, a type pill and the state.
+	var entry: Dictionary = shop_entries()[index]
+	var color = Color(entry.color)
+	var ultimate: bool = Powers.is_ultimate(String(entry.id))
+	var owned: bool = ultimate or (power_shop != null and power_shop.is_owned(entry.id))
+	var slot: int = power_shop.kit.find(entry.id) if power_shop != null else -1
+	var medallion = Vector2(40, canvas.size.y * 0.5)
+	canvas.draw_circle(medallion + Vector2(0, 2), 25, Color(INK, 0.5), true, -1, true)
+	canvas.draw_circle(medallion, 25, Color(color, 0.14 if owned else 0.07), true, -1, true)
+	canvas.draw_arc(medallion, 25, 0, TAU, 40, Color(BRASS, 0.9 if owned else 0.35), 1.4, true)
+	canvas.draw_arc(medallion, 21, -PI * 0.75, PI * 0.15, 24, Color(CERAMIC, 0.18), 1.0, true)
+	power_icon(String(entry.id), medallion, color if owned else Color(color, 0.42), canvas)
+	var left = 76.0
+	canvas.draw_string(font_bold, Vector2(left, medallion.y - 14), String(entry.short), HORIZONTAL_ALIGNMENT_LEFT, -1, 15, WHITE if owned else Color(WHITE, 0.55))
+	# Type pill in the family colour: coral attacks, jade defends.
+	var attack: bool = entry.kind == "ataque"
+	var pill_color = BRASS if ultimate else (CORAL if attack else CYAN)
+	var pill_text = String(entry.kind).to_upper()
+	var pill_width = font_bold.get_string_size(pill_text, HORIZONTAL_ALIGNMENT_LEFT, -1, 9).x + 14
+	var pill = Rect2(Vector2(left, medallion.y + 1), Vector2(pill_width, 15))
+	canvas.draw_style_box(style(Color(pill_color, 0.16), Color(pill_color, 0.5), 7), pill)
+	canvas.draw_string(font_bold, pill.position + Vector2(7, 11), pill_text, HORIZONTAL_ALIGNMENT_LEFT, -1, 9, pill_color)
+	charge_glyph(canvas, Vector2(left + pill_width + 12, medallion.y + 8), entry.charge, Color(BRASS, 0.95 if owned else 0.5))
+	# Bottom line: where it sits in the kit, or what it costs.
+	var status = "NO SLOT %d" % (slot + 1) if slot >= 0 else ("NA MOCHILA" if owned else "%d TIJOLOS" % entry.price)
+	var status_color = LIME if slot >= 0 else (CYAN if owned else MUTED)
+	if ultimate:
+		status = "SLOT 3 · %s" % skin_with_ultimate(String(entry.id))
+		status_color = BRASS
+	canvas.draw_string(font_bold, Vector2(left, medallion.y + 32), status, HORIZONTAL_ALIGNMENT_LEFT, -1, 10, status_color)
+	if slot >= 0:
+		canvas.draw_line(Vector2(left, medallion.y + 37), Vector2(left + 54, medallion.y + 37), Color(LIME, 0.5), 1.2, true)
+
+func skin_with_ultimate(id: String) -> String:
+	for skin in Skins.CATALOG:
+		if skin.ultimate == id:
+			return String(skin.name)
+	return "SKIN"
+
+func charge_glyph(canvas: CanvasItem, at: Vector2, charge: int, color: Color) -> void:
+	# A small brass bolt and the number of bricks it takes to charge.
+	var bolt = PackedVector2Array([at + Vector2(2, -8), at + Vector2(-3, -1), at + Vector2(0.5, -1), at + Vector2(-2, 6), at + Vector2(3, -1), at + Vector2(-0.5, -1)])
+	canvas.draw_colored_polygon(bolt, color)
+	canvas.draw_string(font_bold, at + Vector2(7, 4), str(charge), HORIZONTAL_ALIGNMENT_LEFT, -1, 11, color)
+
+const DEMO_LOOP = 3.2
+
+func demo_ball(c: CanvasItem, at: Vector2, color: Color, size: float = 5.0) -> void:
+	c.draw_circle(at + Vector2(0, 2), size, Color(INK, 0.5), true, -1, true)
+	c.draw_circle(at, size, color, true, -1, true)
+	c.draw_circle(at, size * 0.45, Color(WHITE, 0.85), true, -1, true)
+
+func demo_bricks(c: CanvasItem, area: Rect2, team: Color, y: float, gone: Array = []) -> void:
+	for i in range(9):
+		if gone.has(i):
+			continue
+		var at = Vector2(area.position.x + 28 + i * (area.size.x - 56) / 8.0, y)
+		c.draw_rect(Rect2(at - Vector2(13, 7), Vector2(26, 14)), team, true)
+		c.draw_rect(Rect2(at - Vector2(13, 7), Vector2(26, 3)), Color(WHITE, 0.35), true)
+
+func demo_pilot(c: CanvasItem, at: Vector2, team: Color, dazed: bool = false) -> void:
+	c.draw_circle(at, 11, CERAMIC, true, -1, true)
+	c.draw_rect(Rect2(at - Vector2(7, 2), Vector2(14, 5)), INK, true)
+	c.draw_arc(at, 15, 0, TAU, 24, Color(team, 0.75), 2.0, true)
+	if dazed:
+		for i in range(3):
+			var angle = demo_clock * 3.0 + i * TAU / 3.0
+			var star = at + Vector2(cos(angle), sin(angle) * 0.4) * 19 - Vector2(0, 16)
+			c.draw_line(star - Vector2(3, 0), star + Vector2(3, 0), LIME, 2.0, true)
+			c.draw_line(star - Vector2(0, 3), star + Vector2(0, 3), LIME, 2.0, true)
+
+func demo_brick_row(area: Rect2, index: int, top: bool) -> Vector2:
+	var y = area.position.y + 50 if top else area.end.y - 56
+	return Vector2(area.position.x + 28 + index * (area.size.x - 56) / 8.0, y)
+
+func draw_power_demo() -> void:
+	draw_demo(power_demo, String(shop_entries()[shop_index].id))
+
+func draw_demo(panel: Control, id: String) -> void:
+	# A little top-down rehearsal of a power, looping every few seconds.
+	var entry: Dictionary = Powers.entry(id)
+	var color = Color(entry.color) if not entry.is_empty() else Color(MUTED, 0.6)
+	var frame = Rect2(Vector2.ZERO, panel.size)
+	panel.draw_style_box(style(Color(0.03, 0.08, 0.09, 0.96), Color("2f4f53"), 14), frame)
+	var area = frame.grow(-12)
+	panel.draw_arc(area.get_center(), 26, 0, TAU, 40, Color(CERAMIC, 0.07), 1.2, true)
+	var enemy_y = area.position.y + 50
+	var mine_y = area.end.y - 56
+	var my_pilot = Vector2(area.get_center().x, area.end.y - 16)
+	var their_pilot = Vector2(area.get_center().x, area.position.y + 16)
+	var u = fmod(demo_clock, DEMO_LOOP) / DEMO_LOOP
+	var c: CanvasItem = panel
+	if entry.is_empty():
+		centered_on(c, "SEM ULTIMATE", area.get_center(), 13, Color(MUTED, 0.8))
+		return
+	var gone_enemy: Array = []
+	var gone_mine: Array = []
+	var dazed = false
+	# Every demonstration is drawn back to front: bricks, then the action over them.
+	match id:
+		"blast":
+			if u > 0.62:
+				gone_enemy = [3, 4, 5]
+			demo_bricks(c, area, CORAL, enemy_y, gone_enemy)
+			demo_bricks(c, area, CYAN, mine_y)
+			if u <= 0.6:
+				demo_ball(c, my_pilot.lerp(demo_brick_row(area, 4, true), u / 0.6), color, 6.0)
+			else:
+				var blast = (u - 0.6) / 0.4
+				c.draw_arc(demo_brick_row(area, 4, true), 10 + blast * 52, 0, TAU, 40, Color(color, 1.0 - blast), 3.0, true)
+		"rapid":
+			if u > 0.75:
+				gone_enemy = [4]
+			demo_bricks(c, area, CORAL, enemy_y, gone_enemy)
+			demo_bricks(c, area, CYAN, mine_y)
+			for round_index in range(10):
+				var launched = u - round_index * 0.055
+				if launched <= 0 or launched > 0.62:
+					continue
+				demo_ball(c, my_pilot.lerp(demo_brick_row(area, 4, true), launched / 0.62), color, 4.5)
+		"air":
+			demo_bricks(c, area, CORAL, enemy_y, [1, 4, 7] if u > 0.72 else [])
+			demo_bricks(c, area, CYAN, mine_y)
+			for pellet in range(5):
+				var target = demo_brick_row(area, pellet * 2, true)
+				demo_ball(c, my_pilot.lerp(target, minf(u / 0.7, 1.0)), color, 5.0)
+		"ghost":
+			demo_bricks(c, area, CORAL, enemy_y, [6] if u > 0.8 else [])
+			demo_bricks(c, area, CYAN, mine_y)
+			var pillar = Vector2(area.get_center().x + 26, area.get_center().y)
+			c.draw_circle(pillar, 17, Color(CERAMIC, 0.5), true, -1, true)
+			c.draw_arc(pillar, 17, 0, TAU, 28, Color(BRASS, 0.8), 1.6, true)
+			demo_ball(c, my_pilot.lerp(demo_brick_row(area, 6, true), minf(u / 0.8, 1.0)), color, 5.5)
+		"laser":
+			var reach = minf(u / 0.25, 1.0)
+			var beam_end = my_pilot.lerp(Vector2(demo_brick_row(area, 4, true).x, area.position.y + 6), reach)
+			var bitten = int(clampf((u - 0.3) / 0.18, 0, 3))
+			demo_bricks(c, area, CORAL, enemy_y, [4] if bitten >= 2 else [])
+			demo_bricks(c, area, CYAN, mine_y)
+			c.draw_line(my_pilot, beam_end, Color(color, 0.35), 12.0, true)
+			c.draw_line(my_pilot, beam_end, color, 4.0, true)
+			if u > 0.3:
+				c.draw_circle(demo_brick_row(area, 4, true), 8 + sin(demo_clock * 22) * 3, Color(color, 0.5), true, -1, true)
+		"rebuild":
+			var back = int(clampf(u / 0.7 * 4, 0, 4))
+			var missing = [1, 3, 5, 7].slice(back)
+			demo_bricks(c, area, CORAL, enemy_y)
+			demo_bricks(c, area, CYAN, mine_y, missing)
+			for i in range(4):
+				var slot = [1, 3, 5, 7][i]
+				if i < back and u < 0.85:
+					var age = clampf(u - i * 0.175, 0, 0.3) / 0.3
+					c.draw_arc(demo_brick_row(area, slot, false), 8 + age * 16, 0, TAU, 28, Color(color, 1.0 - age), 2.4, true)
+		"mirror":
+			demo_bricks(c, area, CORAL, enemy_y, [2] if u > 0.9 else [])
+			demo_bricks(c, area, CYAN, mine_y)
+			# The cape over your own bricks, then the shot going home twice as fast.
+			for i in range(9):
+				var lid = demo_brick_row(area, i, false)
+				c.draw_rect(Rect2(lid - Vector2(14, 12), Vector2(28, 4)), Color(color, 0.85), true)
+				c.draw_rect(Rect2(lid - Vector2(14, 9), Vector2(28, 18)), Color(color, 0.16), true)
+			var contact = demo_brick_row(area, 4, false) - Vector2(0, 12)
+			if u <= 0.45:
+				demo_ball(c, their_pilot.lerp(contact, u / 0.45), CORAL, 5.0)
+			else:
+				var back_home = minf((u - 0.45) / 0.4, 1.0)
+				demo_ball(c, contact.lerp(demo_brick_row(area, 2, true), back_home), Color("d2ad73"), 6.0)
+		"walls":
+			demo_bricks(c, area, CORAL, enemy_y)
+			demo_bricks(c, area, CYAN, mine_y)
+			var rise = clampf(minf(u / 0.18, (1.0 - u) / 0.18), 0.0, 1.0)
+			for slot in range(3):
+				var base = Vector2(area.position.x + area.size.x * (0.22 + slot * 0.28), mine_y - 16)
+				var height = 26.0 * rise
+				c.draw_rect(Rect2(base - Vector2(46, height), Vector2(92, height)), CERAMIC, true)
+				if height > 3:
+					c.draw_rect(Rect2(base - Vector2(46, height), Vector2(92, 3)), color, true)
+			# One shot rebounds off a slab, another threads the gap between two.
+			var bounce_at = Vector2(area.position.x + area.size.x * 0.22, mine_y - 44)
+			if u <= 0.5:
+				demo_ball(c, their_pilot.lerp(bounce_at, u / 0.5), CORAL, 5.0)
+			else:
+				demo_ball(c, bounce_at.lerp(their_pilot + Vector2(40, 0), (u - 0.5) / 0.5), CORAL, 5.0)
+			var gap = Vector2(area.position.x + area.size.x * 0.365, mine_y - 4)
+			demo_ball(c, their_pilot.lerp(gap, minf(u / 0.8, 1.0)), Color(CORAL, 0.75), 4.5)
+		"sun_ray":
+			var lit = int(clampf((u - 0.25) / 0.2, 0, 3))
+			demo_bricks(c, area, CORAL, enemy_y, [3, 4, 5].slice(0, lit))
+			demo_bricks(c, area, CYAN, mine_y)
+			if u > 0.2:
+				# A column so wide it covers four bricks, running past the top edge.
+				var beam_x = demo_brick_row(area, 4, true).x
+				var fade = clampf((1.0 - u) / 0.3, 0, 1)
+				c.draw_rect(Rect2(Vector2(beam_x - 46, frame.position.y - 10), Vector2(92, my_pilot.y - frame.position.y + 10)), Color(color, 0.22 * fade), true)
+				c.draw_rect(Rect2(Vector2(beam_x - 26, frame.position.y - 10), Vector2(52, my_pilot.y - frame.position.y + 10)), Color(color, 0.75 * fade), true)
+		"meteors":
+			var fallen = int(clampf(u / 0.75 * 4, 0, 4))
+			demo_bricks(c, area, CORAL, enemy_y, [1, 3, 5, 7].slice(0, fallen))
+			demo_bricks(c, area, CYAN, mine_y)
+			for i in range(4):
+				var land = demo_brick_row(area, [1, 3, 5, 7][i], true)
+				var start = land - Vector2(26, 120)
+				var travel = clampf((u - i * 0.16) / 0.3, 0, 1)
+				if travel <= 0:
+					continue
+				var rock = Color("ffd76b") if i % 2 == 0 else color
+				if travel < 1:
+					demo_ball(c, start.lerp(land, travel), rock, 6.0)
+					c.draw_line(start.lerp(land, maxf(travel - 0.18, 0)), start.lerp(land, travel), Color(rock, 0.45), 3.0, true)
+				else:
+					c.draw_arc(land, 6 + (u - i * 0.16 - 0.3) * 40, 0, TAU, 24, Color(rock, maxf(0.0, 1.0 - (u - i * 0.16 - 0.3) * 3)), 2.0, true)
+		"thunder":
+			var struck = int(clampf(u / 0.8 * 3, 0, 3))
+			demo_bricks(c, area, CORAL, enemy_y, [2, 4, 6].slice(0, struck))
+			demo_bricks(c, area, CYAN, mine_y)
+			for i in range(3):
+				var at = demo_brick_row(area, [2, 4, 6][i], true)
+				var age = (u - i * 0.26) / 0.22
+				if age < 0 or age > 1:
+					continue
+				var bolt = PackedVector2Array([Vector2(at.x, frame.position.y + 2), Vector2(at.x - 9, at.y - 34), Vector2(at.x + 6, at.y - 30), Vector2(at.x - 4, at.y)])
+				c.draw_polyline(bolt, Color(color, 1.0 - age * 0.4), 3.0, true)
+				c.draw_arc(at, 10 + age * 18, 0, TAU, 24, Color(color, 1.0 - age), 2.0, true)
+		"bloom":
+			demo_bricks(c, area, CORAL, enemy_y)
+			demo_bricks(c, area, CYAN, mine_y)
+			for i in range(9):
+				var brick = demo_brick_row(area, i, false)
+				var age = (u - i * 0.05) / 0.5
+				if age < 0 or age > 1:
+					continue
+				# Grown bricks and a +2 floating away.
+				c.draw_rect(Rect2(brick - Vector2(15, 8.5), Vector2(30, 17)), Color(color, 0.5 * (1.0 - age)), true)
+				c.draw_arc(brick, 10 + age * 12, 0, TAU, 20, Color(color, 1.0 - age), 2.0, true)
+				if i % 2 == 0:
+					c.draw_string(font_bold, brick + Vector2(-8, -16 - age * 18), "+2", HORIZONTAL_ALIGNMENT_LEFT, -1, 12, Color(color, 1.0 - age))
+		"plunder":
+			# The two walls trade places: each side slides across to the other.
+			var slide = clampf((u - 0.15) / 0.55, 0, 1)
+			var mine_at = lerpf(mine_y, enemy_y, slide)
+			var theirs_at = lerpf(enemy_y, mine_y, slide)
+			demo_bricks(c, area, CORAL, theirs_at, [1, 4, 7])
+			demo_bricks(c, area, CYAN, mine_at)
+			if slide > 0 and slide < 1:
+				c.draw_line(Vector2(area.position.x, area.get_center().y), Vector2(area.end.x, area.get_center().y), Color(color, 0.8), 2.0, true)
+		"stun":
+			demo_bricks(c, area, CORAL, enemy_y)
+			demo_bricks(c, area, CYAN, mine_y)
+			dazed = u > 0.22
+			if u <= 0.22:
+				demo_ball(c, their_pilot.lerp(my_pilot, 0.35 + u), CORAL, 5.0)
+				demo_ball(c, my_pilot.lerp(their_pilot, 0.2 + u * 1.4), CYAN, 5.0)
+			var wave = clampf(u / 0.45, 0, 1)
+			if u < 0.5:
+				c.draw_arc(my_pilot, 8 + wave * 210, 0, TAU, 64, Color(color, 1.0 - wave), 3.4, true)
+		_:
+			demo_bricks(c, area, CORAL, enemy_y)
+			demo_bricks(c, area, CYAN, mine_y)
+	demo_pilot(c, their_pilot, CORAL, dazed)
+	demo_pilot(c, my_pilot, CYAN)
+	c.draw_string(font_bold, Vector2(area.position.x + 4, area.end.y - 2), "DEMONSTRAÇÃO", HORIZONTAL_ALIGNMENT_LEFT, -1, 9, Color(MUTED, 0.75))
+
+func centered_on(c: CanvasItem, text: String, at: Vector2, font_size: int, color: Color) -> void:
+	var width = font_bold.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size).x
+	c.draw_string(font_bold, at - Vector2(width * 0.5, -font_size * 0.35), text, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size, color)
+
+func open_powers() -> void:
+	reset_touch()
+	powers_overlay.show()
+	refresh_powers()
+
+func close_powers() -> void:
+	powers_overlay.hide()
 
 func build_levels_menu() -> void:
 	levels_overlay = ColorRect.new()
@@ -791,7 +1270,7 @@ func refresh_menu_level() -> void:
 	queue_redraw()
 
 func menu_overlay_open() -> bool:
-	return video_overlay.visible or skins_overlay.visible or pvp_overlay.visible or levels_overlay.visible
+	return video_overlay.visible or skins_overlay.visible or pvp_overlay.visible or levels_overlay.visible or powers_overlay.visible
 
 func swipe_area() -> Rect2:
 	# Portrait: the stadium band above the menu. Landscape: everything right of the panel.
@@ -834,11 +1313,22 @@ func draw_menu_level() -> void:
 	var area = swipe_area()
 	var center_x = area.get_center().x
 	var top = (safe_top + 92) if vertical else 34.0
-	centered("NÍVEL %02d / %02d  ·  BOSS %s" % [menu_level + 1, total, Skins.CATALOG[level.boss].name], Vector2(center_x, top + 14), 12, LIME if done else CYAN, true)
+	var beaten: bool = skins_progress != null and skins_progress.is_unlocked(level.boss)
+	centered("NÍVEL %02d / %02d" % [menu_level + 1, total], Vector2(center_x, top + 14), 12, LIME if done else CYAN, true)
 	centered(level.name.to_upper(), Vector2(center_x, top + 42), 26, WHITE, true)
 	var line = level.challenge if open else "BLOQUEADO · vence o nível anterior"
 	centered(("✓  " if done else "") + line, Vector2(center_x, top + 64), 12, LIME if done else MUTED)
 	var dots_y = (menu.position.y - 26) if vertical else size.y - 30.0
+	# The boss of the previewed level, in its fighting red until it has been beaten: in the
+	# empty band over the menu on a phone, in the gap above the panel on a wide screen.
+	var boss_at = Vector2(center_x, dots_y - 132) if vertical else Vector2(menu.position.x + menu.size.x * 0.5, maxf(menu.position.y - 128, 150.0))
+	if true:
+		draw_circle(boss_at + Vector2(0, 4), 52, Color(INK, 0.55), true, -1, true)
+		portrait(boss_at, CORAL, false, level.boss, null, not beaten)
+		draw_arc(boss_at, 53, 0, TAU, 56, Color(BRASS, 0.5), 1.4, true)
+		draw_arc(boss_at, 53, -PI * 0.78, -PI * 0.22, 20, Color(CERAMIC, 0.35), 1.6, true)
+		centered("BOSS", boss_at + Vector2(0, 74), 9, MUTED, true)
+		centered(Skins.CATALOG[level.boss].name, boss_at + Vector2(0, 93), 15, WHITE if beaten else CORAL, true)
 	for i in range(total):
 		var dot = Vector2(center_x + (i - (total - 1) * 0.5) * 18, dots_y)
 		if i == menu_level:
@@ -1016,6 +1506,8 @@ func layout() -> void:
 	video_button.size = Vector2(100, 46)
 	skins_body.vertical = size.y > size.x
 	viewer.custom_minimum_size = Vector2(0, 360) if skins_body.vertical else Vector2(420, 440)
+	# The scrolling column keeps the whole panel inside the screen, whatever its height.
+	skins_scroll.custom_minimum_size.y = clampf(size.y - (560 if skins_body.vertical else 210), 250, 520)
 	var skins_size = skins_panel.get_combined_minimum_size().max(Vector2(minf(size.x - 48, 640 if skins_body.vertical else 900), 0))
 	skins_panel.size = skins_size
 	skins_panel.position = (size - skins_size) * 0.5
@@ -1025,10 +1517,12 @@ func layout() -> void:
 	if is_instance_valid(pause_panel):
 		pause_panel.size = pause_panel.get_combined_minimum_size().max(Vector2(420, 0))
 		pause_panel.position = (size - pause_panel.size) * 0.5
-	move_home = Vector2(130, size.y - safe_bottom - 139)
+	# No stick any more: the pilot walks to whatever you point at. Under the right hand
+	# sit the two arrows that step from target to target; the power keys stay on the left.
+	move_home = Vector2(size.x * (0.70 if vertical else 0.88), size.y - safe_bottom - (132 if vertical else 139))
 	move_center = move_home
-	fire_home = Vector2(size.x - 130, size.y - safe_bottom - 139)
-	fire_center = fire_home
+	aim_left = move_home - Vector2(74, 0)
+	aim_right = move_home + Vector2(74, 0)
 	var menu_height = menu.get_combined_minimum_size().y
 	levels_grid.columns = 2 if vertical else 5
 	var levels_width = minf(size.x - 48, 660)
@@ -1038,6 +1532,15 @@ func layout() -> void:
 	levels_panel.position = thumb_panel_position(levels_panel.size)
 	pvp_panel.size = pvp_panel.get_combined_minimum_size().max(Vector2(minf(size.x - 48, 520), 0))
 	pvp_panel.position = thumb_panel_position(pvp_panel.size)
+	var shop_scroll: ScrollContainer = powers_panel.get_child(0).get_child(1)
+	var shop_grid: GridContainer = shop_scroll.get_child(0)
+	shop_grid.columns = 2 if vertical else 3
+	# Leave room for the header, the demonstration, the description and the buttons.
+	shop_scroll.custom_minimum_size.y = clampf(size.y - (620 if vertical else 500), 190, 430)
+	powers_detail.custom_minimum_size.x = minf(size.x - 96, 600)
+	power_demo.custom_minimum_size = Vector2(minf(size.x - 96, 600), 178 if vertical else 196)
+	powers_panel.size = powers_panel.get_combined_minimum_size().max(Vector2(minf(size.x - 48, 640) if vertical else 0.0, 0))
+	powers_panel.position = thumb_panel_position(powers_panel.size)
 	if vertical:
 		layout_vertical(menu_height)
 	else:
@@ -1052,13 +1555,13 @@ func layout() -> void:
 		arena_rect = Rect2(Vector2.ZERO, size)
 		touch_top = size.y * 0.42
 	# Powers: a row between the thumb controls on a phone, where the band under the arena is
-	# free; on a wide screen the middle of that band is the stadium and your own pilot, so
-	# they take the empty strip between your card and the arena instead.
+	# free; on a wide screen that band is the stadium itself, so they take the pocket under
+	# your own card, clear of the arena on the right and of the movement stick below.
 	for index in range(power_centers.size()):
 		if vertical:
-			power_centers[index] = Vector2(size.x * 0.5 + (index - 1) * POWER_GAP, size.y - safe_bottom - POWER_RISE)
+			power_centers[index] = Vector2(size.x * (0.14 + index * 0.15), move_home.y)
 		else:
-			power_centers[index] = Vector2(card_rects[0].end.x + 52, card_rects[0].position.y + 66 + index * 85)
+			power_centers[index] = Vector2(card_rects[0].position.x + 58 + index * 80, card_rects[0].end.y + 54)
 	for result_button in [next_button, replay, levels_button]:
 		result_button.size = Vector2(260, 50)
 	place_result_buttons()
@@ -1069,9 +1572,10 @@ func layout_vertical(menu_height: float) -> void:
 	var mid = size.x * 0.5
 	var bottom = size.y - safe_bottom
 	score_rect = Rect2(mid - 152, safe_top + 86, 304, 59)
-	fps_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	fps_label.size = Vector2(240, 20)
-	fps_label.position = Vector2(mid - 120, bottom - (46 if mode == "menu" else 124))
+	fps_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER if mode == "menu" else HORIZONTAL_ALIGNMENT_RIGHT
+	fps_label.size = Vector2(240 if mode == "menu" else 128, 20)
+	# In a match the keys own the left of the band, so the counter keeps the right corner.
+	fps_label.position = Vector2(mid - 120, bottom - 46) if mode == "menu" else Vector2(size.x - 138, bottom - 24)
 	menu.size = Vector2(minf(size.x - 48, 520), menu_height)
 	menu.position = Vector2((size.x - menu.size.x) * 0.5, maxf(safe_top + 150, bottom - menu.size.y - 56))
 	if mode == "menu":
@@ -1083,7 +1587,7 @@ func layout_vertical(menu_height: float) -> void:
 		# the thumb controls, with the spare height split evenly above and below.
 		var card_h = 104.0
 		var free_top = safe_top + 84
-		var free_h = (bottom - FIRE_RADIUS - 151) - free_top
+		var free_h = (bottom - STICK_RADIUS - 165) - free_top
 		var fixed = 59 + 12 + 2 * (card_h + 10)
 		var arena_h = maxf(minf((size.x - 32) / arena_aspect, free_h - fixed), 80)
 		score_rect.position.y = free_top + maxf(0, free_h - arena_h - fixed) * 0.5
@@ -1094,6 +1598,10 @@ func layout_vertical(menu_height: float) -> void:
 		card_rects = [lower, upper] if team == 0 else [upper, lower]
 	message_center = arena_rect.get_center()
 	touch_top = arena_rect.get_center().y
+	if is_instance_valid(host_ai_button):
+		host_ai_button.custom_minimum_size = Vector2(250, 52)
+		host_ai_button.size = Vector2(250, 52)
+		host_ai_button.position = message_center + Vector2(-125, 68)
 
 func safe_insets() -> Vector2:
 	# Camera cutouts on phones, converted to HUD units: x = top, y = bottom.
@@ -1131,6 +1639,7 @@ func show_menu(message: String = "") -> void:
 	replay.hide()
 	next_button.hide()
 	levels_button.hide()
+	host_ai_button.hide()
 	mode = "menu"
 	reset_touch()
 	if message != "":
@@ -1149,18 +1658,41 @@ func show_game(new_mode: String, local_team: int) -> void:
 	menu.hide()
 	back.show()
 	video_button.show()
+	host_ai_button.visible = (new_mode == "host")
 	reset_touch()
 	layout()
 
 func reset_touch() -> void:
 	touches.clear()
 	move_id = -1
-	fire_id = -1
 	move_vector = Vector2.ZERO
-	touch_fire = false
+	target_pick = Vector2.INF
+	aim_step = 0
+	move_vector = Vector2.ZERO
 	move_center = move_home
-	fire_center = fire_home
 	power_request = -1
+
+func arrow_at(point: Vector2) -> int:
+	if point.distance_to(aim_left) <= AIM_RADIUS + 8:
+		return -1
+	if point.distance_to(aim_right) <= AIM_RADIUS + 8:
+		return 1
+	return 0
+
+func request_aim_step(direction: int) -> void:
+	aim_step = direction
+	aim_flash[0 if direction < 0 else 1] = 0.22
+	queue_redraw()
+
+func take_aim_step() -> int:
+	var step = aim_step
+	aim_step = 0
+	return step
+
+func take_target() -> Vector2:
+	var point = target_pick
+	target_pick = Vector2.INF
+	return point
 
 func power_at(point: Vector2) -> int:
 	for index in range(power_centers.size()):
@@ -1194,31 +1726,23 @@ func _input(event: InputEvent) -> void:
 			if slot >= 0:
 				request_power(slot)
 				return
-			if event.position.y < touch_top:
+			var arrow = arrow_at(event.position)
+			if arrow != 0:
+				request_aim_step(arrow)
 				return
-			if event.position.x < size.x * 0.5:
-				if move_id < 0:
-					move_id = event.index
-					move_center = event.position
-			elif fire_id < 0:
-				# Any press on the lower right fires at once; the button jumps under the thumb.
-				fire_id = event.index
-				fire_center = event.position
-				touch_fire = true
-		else:
-			if event.index == move_id:
-				move_id = -1
-				move_vector = Vector2.ZERO
-				move_center = move_home
-			if event.index == fire_id:
-				fire_id = -1
-				touch_fire = false
-				fire_center = fire_home
+			# Anywhere on the stadium: that is the target the pilot will line up on.
+			if event.position.y < touch_top or arena_rect.has_point(event.position):
+				target_pick = event.position
+				return
 	if event is InputEventScreenDrag:
-		if event.index == move_id:
-			move_vector = ((event.position - move_center) / 58).limit_length()
-		if event.index == fire_id:
-			fire_center = event.position
+		# A finger dragged over the stadium keeps choosing, so aiming can be swept.
+		# Throttle: ignore sub-pixel noise and cap at ~20 Hz to avoid CPU spikes
+		# on 120/240 Hz touch screens.
+		if arena_rect.has_point(event.position) or event.position.y < touch_top:
+			var moved = event.position.distance_to(last_drag_pos)
+			if moved >= 18.0:
+				target_pick = event.position
+				last_drag_pos = event.position
 	queue_redraw()
 
 func write(text: String, pos: Vector2, font_size: int, color: Color, bold: bool = false) -> void:
@@ -1234,8 +1758,10 @@ func panel(rect: Rect2, color: Color = Color(0.05, 0.10, 0.12, 0.88)) -> void:
 
 func update_match(rules, status: String) -> void:
 	# The HUD only reads display fields; no full network snapshot allocation per frame.
-	match_data = {"players": rules.players, "bricks": rules.bricks, "scores": rules.scores, "phase": rules.phase, "timer": rules.timer, "winner": rules.winner, "powers": rules.powers}
+	match_data = {"players": rules.players, "bricks": rules.bricks, "scores": rules.scores, "phase": rules.phase, "timer": rules.timer, "winner": rules.winner, "powers": rules.powers, "loadouts": rules.loadouts}
 	network_status = status
+	if is_instance_valid(host_ai_button):
+		host_ai_button.visible = (mode == "host" and network_status != "")
 	var finished = mode != "menu" and rules.phase == "finished" and mode != "client"
 	var in_campaign = not level_info.is_empty()
 	replay.visible = finished
@@ -1538,7 +2064,7 @@ func player_card(rect: Rect2, side: int, t: int) -> void:
 	var status = "BALIZA ABERTA" if count == 0 else str(count) + " TIJOLOS  ·  " + str(health) + "/120"
 	var status_color = LIME if count == 0 else MUTED
 	var stunned: bool = match_data.players[t].stun > 0
-	var tips = [["Move-te para apontar", WHITE, false], ["Disparo sempre em frente", MUTED, false]]
+	var tips = [["Move-te para apontar", WHITE, false], ["Dispara sozinho, sempre em frente", MUTED, false]]
 	if side == 1:
 		tips = [["BOOST: 2 NOS TIJOLOS", LIME, true], ["5 acertos · pausa 0,5 s", MUTED, false]]
 	if vertical:
@@ -1571,9 +2097,11 @@ func power_pips(at: Vector2, t: int) -> void:
 		return
 	var state: Dictionary = match_data.powers[t]
 	write("PODERES", at, 9, MUTED, true)
-	for index in range(Rules.POWER_COSTS.size()):
-		var ready: bool = state.charge[index] >= Rules.POWER_COSTS[index]
-		draw_circle(at + Vector2(56 + index * 15, -3), 5, Rules.POWER_COLORS[index] if ready else Color("284349"), true, -1, true)
+	for index in range(Rules.POWER_SLOTS):
+		var id = match_loadout(t, index)
+		var cost: int = int(Powers.entry(id).get("charge", 0))
+		var ready: bool = cost > 0 and state.charge[index] >= cost
+		draw_circle(at + Vector2(56 + index * 15, -3), 5, Rules.power_color(id) if ready else Color("284349"), true, -1, true)
 
 func player_life_bar(at: Vector2, hp: int, color: Color) -> void:
 	# Five separate cells stay legible on small displays and make every hit clear.
@@ -1620,8 +2148,9 @@ func _draw() -> void:
 		player_card(card_rects[side], side, team if side == 0 else 1 - team)
 	var p: Dictionary = match_data.players[team]
 	if p.stun > 0:
-		panel(Rect2(mid - 130, bottom - 77, 260, 36))
-		centered("PARALISADO   %.1f s" % p.stun, Vector2(mid, bottom - 53), 15, LIME, true)
+		var banner = stun_banner_rect()
+		panel(banner)
+		centered("PARALISADO   %.1f s" % p.stun, Vector2(banner.get_center().x, banner.get_center().y + 5), 15, LIME, true)
 	var message = ""
 	var sub = ""
 	var detail = ""
@@ -1663,25 +2192,31 @@ func _draw() -> void:
 		panel(Rect2(at.x - 190, at.y - 34, 380, 68), Color(0.065, 0.125, 0.14, 0.96))
 		centered("✦  NOVA SKIN DESBLOQUEADA  ✦", at + Vector2(0, -8), 11, LIME, true)
 		centered(unlock_text, at + Vector2(0, 21), 22, WHITE, true)
-	for which in range(2):
-		var center = move_center if which == 0 else fire_center
-		var color = CYAN if which == 0 else LIME
-		var radius = STICK_RADIUS if which == 0 else FIRE_RADIUS
-		draw_circle(center, radius, Color(0.08, 0.15, 0.16, 0.85), true, -1, true)
-		draw_arc(center, radius, 0, TAU, 80, Color(color, 0.2), 1.2, true)
-		draw_arc(center, radius - 10, 0.2, PI - 0.2, 40, Color(color, 0.07), 5, true)
-		draw_arc(center, radius - 10, PI + 0.2, TAU - 0.2, 40, Color(color, 0.07), 5, true)
-		var offset = move_vector * 39 if which == 0 else Vector2.ZERO
-		draw_circle(center + offset + Vector2(0, 3), 24, Color(0.02, 0.05, 0.06, 0.45), true, -1, true)
-		draw_circle(center + offset, 24 if which == 0 else 46, color.darkened(0.15 if which == 1 and touch_fire else 0.55), true, -1, true)
-		draw_arc(center + offset, 24, 0, TAU, 48, Color(color, 0.65), 1.2, true)
-		if which == 0:
-			draw_circle(center + offset, 3, color, true, -1, true)
-		else:
-			var shot_icon = PackedVector2Array([center + Vector2(7, -22), center + Vector2(-11, 2), center + Vector2(7, 2), center + Vector2(-7, 22)])
-			draw_polyline(shot_icon, WHITE, 3.5, true)
-		centered("MOVER NO ARCO" if which == 0 else "DISPARAR", center + Vector2(0, 99), 10, color, true)
+	# Two keys that step from target to target; the stadium itself is the third control.
+	for side in range(2):
+		var at = aim_left if side == 0 else aim_right
+		var pressed = aim_flash[side] > 0
+		draw_circle(at + Vector2(0, 3), AIM_RADIUS, Color(0.01, 0.04, 0.05, 0.5), true, -1, true)
+		draw_circle(at, AIM_RADIUS, Color(0.08, 0.15, 0.16, 0.92), true, -1, true)
+		draw_arc(at, AIM_RADIUS - 1.5, 0, TAU, 64, Color(BRASS, 0.55), 1.3, true)
+		draw_circle(at, AIM_RADIUS - 10, CYAN.darkened(0.15 if pressed else 0.6), true, -1, true)
+		draw_arc(at, AIM_RADIUS - 10, PI * 1.15, PI * 1.85, 20, Color(CERAMIC, 0.2), 1.2, true)
+		var way = -1 if side == 0 else 1
+		var tip = at + Vector2(way * 13, 0)
+		draw_polyline(PackedVector2Array([tip - Vector2(way * 16, 13), tip, tip - Vector2(way * 16, -13)]), INK if pressed else WHITE, 4.0, true)
+	centered("ALVO ANTERIOR", aim_left + Vector2(0, AIM_RADIUS + 20), 9, Color(WHITE, 0.6), true)
+	centered("ALVO SEGUINTE", aim_right + Vector2(0, AIM_RADIUS + 20), 9, Color(WHITE, 0.6), true)
+	centered("TOCA NO ESTÁDIO PARA ESCOLHER O ALVO", (aim_left + aim_right) * 0.5 + Vector2(0, AIM_RADIUS + 38), 10, CYAN, true)
+	if target_name != "":
+		centered(target_name, (aim_left + aim_right) * 0.5 - Vector2(0, AIM_RADIUS + 14), 11, LIME, true)
 	draw_powers()
+
+func stun_banner_rect() -> Rect2:
+	# Over the thumb band on a phone, under the score on a wide screen.
+	var mid = size.x * 0.5
+	if vertical:
+		return Rect2(mid - 130, move_home.y - STICK_RADIUS - 52, 260, 36)
+	return Rect2(mid - 130, size.y - 77, 260, 36)
 
 func draw_powers() -> void:
 	# One button per power: the ring is the charge, the disc lights up when it is ready.
@@ -1690,44 +2225,151 @@ func draw_powers() -> void:
 	var state: Dictionary = match_data.powers[team]
 	for index in range(power_centers.size()):
 		var center: Vector2 = power_centers[index]
-		var cost: int = Rules.POWER_COSTS[index]
-		var charge: int = clampi(state.charge[index], 0, cost)
-		var ready: bool = charge >= cost
-		var color: Color = Rules.POWER_COLORS[index]
-		var running: bool = index == 1 and state.rapid_time > 0
-		draw_circle(center, POWER_RADIUS, Color(0.08, 0.15, 0.16, 0.85), true, -1, true)
+		var id = match_loadout(team, index)
+		var cost: int = int(Powers.entry(id).get("charge", 0))
+		var charge: int = clampi(state.charge[index], 0, maxi(cost, 1))
+		var ready: bool = cost > 0 and charge >= cost
+		var color: Color = Rules.power_color(id)
+		var running: bool = (id == "rapid" and state.rapid_time > 0) or (id == "laser" and state.laser_time > 0)
+		var charging: bool = Powers.is_ultimate(id) and state.get("ultimate_windup", 0.0) > 0
+		draw_circle(center + Vector2(0, 3), POWER_RADIUS, Color(0.01, 0.04, 0.05, 0.5), true, -1, true)
+		draw_circle(center, POWER_RADIUS, Color(0.08, 0.15, 0.16, 0.92), true, -1, true)
+		draw_arc(center, POWER_RADIUS - 1.5, 0, TAU, 56, Color(BRASS, 0.55 if cost > 0 else 0.25), 1.3, true)
 		draw_arc(center, POWER_RADIUS - 4, 0, TAU, 56, Color(color, 0.18), 1.2, true)
-		if charge > 0:
+		if charge > 0 and cost > 0:
 			# Fills clockwise from the top, so a glance is enough to read the progress.
 			draw_arc(center, POWER_RADIUS - 4, -PI * 0.5, -PI * 0.5 + TAU * (float(charge) / cost), 56, Color(color, 0.95 if ready else 0.5), 3.6, true)
 		var pressed: bool = power_flash[index] > 0
 		var disc = color.darkened(0.0 if pressed else (0.2 if ready else 0.62))
+		if ready or pressed:
+			# A ready power glows, so it is caught out of the corner of the eye.
+			draw_circle(center, POWER_RADIUS - 6, Color(color, 0.18), true, -1, true)
+		if charging:
+			# Winding up: a ring closes on the key while the pilot glows on the field.
+			var wind = 1.0 - state.ultimate_windup / Rules.ULTIMATE_WINDUP
+			draw_circle(center, POWER_RADIUS - 6, Color(color, 0.12 + 0.3 * wind), true, -1, true)
+			draw_arc(center, POWER_RADIUS + 4 - wind * 10, 0, TAU, 48, Color(color, 0.85), 2.6, true)
 		draw_circle(center, POWER_RADIUS - 11, disc, true, -1, true)
-		power_icon(index, center + Vector2(0, -8), WHITE if ready or pressed else Color(WHITE, 0.5))
+		draw_arc(center, POWER_RADIUS - 11, PI * 1.15, PI * 1.85, 20, Color(CERAMIC, 0.22 if ready else 0.1), 1.2, true)
+		power_icon(id, center + Vector2(0, -11), WHITE if ready or pressed else Color(WHITE, 0.5))
 		var caption = "PRONTO" if ready else "%d/%d" % [charge, cost]
-		if running:
-			caption = "%.1f s" % state.rapid_time
-		centered(caption, center + Vector2(0, 17), 9, INK if ready or pressed else WHITE, true)
-		centered(POWER_LABELS[index], center + Vector2(0, 30), 8, INK if ready or pressed else Color(WHITE, 0.6), true)
+		if cost <= 0:
+			caption = "EM BREVE"
+		elif charging:
+			caption = "%.1f s" % state.ultimate_windup
+		elif running:
+			caption = "%.1f s" % (state.laser_time if id == "laser" else state.rapid_time)
+		centered(caption, center + Vector2(0, 13), 9, INK if ready or pressed else WHITE, true)
+		centered(Rules.power_label(id), center + Vector2(0, 27), 8, INK if ready or pressed else Color(WHITE, 0.6), true)
 
-func power_icon(index: int, center: Vector2, color: Color) -> void:
-	match index:
-		0:
-			# Blast: a core with radiating spikes.
-			var star = PackedVector2Array()
-			for step in range(13):
-				var angle = step * TAU / 12.0
-				star.append(center + Vector2(cos(angle), sin(angle)) * (13.0 if step % 2 == 0 else 6.0))
-			draw_polyline(star, color, 1.8, true)
-			draw_circle(center, 3.4, color, true, -1, true)
-		1:
-			# Machine gun: three rounds leaving the barrel.
+func match_loadout(t: int, index: int) -> String:
+	# The power on that button: empty while the skin ultimates are still to come.
+	var kits: Array = match_data.get("loadouts", [])
+	if t < kits.size() and index < kits[t].size():
+		return String(kits[t][index])
+	return ""
+
+func power_icon(id: String, center: Vector2, color: Color, canvas: CanvasItem = null) -> void:
+	# One sigil per power, all drawn at the same weight inside a 26 px circle.
+	var c: CanvasItem = canvas if canvas != null else self
+	var brass = Color(BRASS, 0.85)
+	match id:
+		"blast":
+			# Blast: a charge core throwing off shards.
+			for step in range(6):
+				var angle = step * TAU / 6.0 + 0.26
+				var direction = Vector2(cos(angle), sin(angle))
+				c.draw_line(center + direction * 6.5, center + direction * 12.5, color, 2.0, true)
+			c.draw_circle(center, 5.0, color, true, -1, true)
+			c.draw_arc(center, 5.0, 0, TAU, 20, brass, 1.0, true)
+		"rapid":
+			# Machine gun: three rounds leaving a brass barrel.
+			c.draw_line(center + Vector2(-13, 9), center + Vector2(-1, 9), brass, 3.0, true)
 			for row in range(3):
-				var y = center.y - 7.0 + row * 7.0
-				draw_line(Vector2(center.x - 12, y), Vector2(center.x + 3, y), color, 2.2, true)
-				draw_circle(Vector2(center.x + 8, y), 2.2, color, true, -1, true)
+				var y = center.y - 8.0 + row * 8.0
+				c.draw_line(Vector2(center.x - 6, y), Vector2(center.x + 5, y), color, 2.0, true)
+				c.draw_circle(Vector2(center.x + 9, y), 2.2, color, true, -1, true)
+		"air":
+			# Air burst: a fan of pellets out of one muzzle.
+			var muzzle = center + Vector2(0, 11)
+			c.draw_circle(muzzle, 2.6, brass, true, -1, true)
+			for spread in [-0.62, -0.21, 0.21, 0.62]:
+				var direction = Vector2(sin(spread), -cos(spread))
+				c.draw_line(muzzle + direction * 4.0, muzzle + direction * 19.0, color, 2.0, true)
+		"ghost":
+			# Ghost rounds: a shot crossing a pillar it should have hit.
+			c.draw_arc(center + Vector2(1, 0), 8.5, 0, TAU, 28, brass, 1.6, true)
+			c.draw_line(center + Vector2(-13, 0), center + Vector2(9, 0), color, 2.0, true)
+			c.draw_circle(center + Vector2(12, 0), 3.2, color, true, -1, true)
+		"laser":
+			# Laser: a lance with a widening muzzle.
+			c.draw_line(center + Vector2(-12, 9), center + Vector2(11, -8), color, 3.0, true)
+			c.draw_line(center + Vector2(-13, 11), center + Vector2(-8, 4), brass, 2.4, true)
+			c.draw_line(center + Vector2(5, -12), center + Vector2(12, -5), Color(color, 0.65), 1.8, true)
+		"rebuild":
+			# Rebuild: a wall stacking itself back up, the top course still landing.
+			for row in range(2):
+				for column in range(3 - row):
+					var at = center + Vector2((column - (2 - row) * 0.5) * 9.0 + 4.5, 9.0 - row * 8.0)
+					c.draw_rect(Rect2(at - Vector2(3.8, 3.0), Vector2(7.6, 6.0)), color if row == 0 else Color(color, 0.8), true)
+			c.draw_line(center + Vector2(-8, -8), center + Vector2(-1, -12), brass, 1.8, true)
+			c.draw_line(center + Vector2(8, -8), center + Vector2(1, -12), brass, 1.8, true)
+		"mirror":
+			# Mirror cape: a shot bouncing off a curved shield.
+			c.draw_arc(center + Vector2(5, 0), 11.0, PI * 0.58, PI * 1.42, 26, color, 2.4, true)
+			c.draw_arc(center + Vector2(5, 0), 7.5, PI * 0.58, PI * 1.42, 20, Color(color, 0.4), 1.4, true)
+			c.draw_line(center + Vector2(-13, -8), center + Vector2(-5, -1), brass, 2.0, true)
+			c.draw_line(center + Vector2(-5, -1), center + Vector2(-13, 7), brass, 2.0, true)
+		"walls":
+			# Walls: four slabs rising out of the ground, with the gaps between them.
+			c.draw_line(center + Vector2(-13, 10), center + Vector2(13, 10), brass, 1.6, true)
+			for slot in range(4):
+				var x = center.x - 10.5 + slot * 7.0
+				c.draw_rect(Rect2(Vector2(x - 2.1, center.y - 9.0 + slot % 2 * 2.0), Vector2(4.2, 19.0 - slot % 2 * 2.0)), color, true)
+			c.draw_line(center + Vector2(-8, -12), center + Vector2(-8, -16), Color(color, 0.6), 1.6, true)
+			c.draw_line(center + Vector2(5, -12), center + Vector2(5, -16), Color(color, 0.6), 1.6, true)
+		"stun":
+			# Shock pulse: a ring sweeping outwards with stunned stars above it.
+			c.draw_arc(center + Vector2(0, 3), 12.0, PI, TAU, 26, color, 2.2, true)
+			c.draw_arc(center + Vector2(0, 3), 6.5, PI, TAU, 18, Color(color, 0.55), 1.6, true)
+			c.draw_circle(center + Vector2(0, 3), 2.6, color, true, -1, true)
+			for star in [Vector2(-9, -9), Vector2(0, -13), Vector2(9, -9)]:
+				var at = center + star
+				c.draw_line(at + Vector2(-3, 0), at + Vector2(3, 0), brass, 1.6, true)
+				c.draw_line(at + Vector2(0, -3), at + Vector2(0, 3), brass, 1.6, true)
+		"sun_ray":
+			# Sun ray: a broad column out of a sun.
+			c.draw_circle(center + Vector2(0, 9), 5.0, color, true, -1, true)
+			for spread in [-6.0, 0.0, 6.0]:
+				c.draw_line(center + Vector2(spread * 0.7, 6), center + Vector2(spread, -13), color, 2.6, true)
+			c.draw_arc(center + Vector2(0, 9), 9.0, PI, TAU, 18, brass, 1.6, true)
+		"meteors":
+			# Meteors: two rocks with trails.
+			for rock in [[Vector2(-7, 2), 4.0], [Vector2(6, 7), 3.0]]:
+				var at = center + rock[0]
+				c.draw_circle(at, rock[1], color, true, -1, true)
+				c.draw_line(at + Vector2(6, -11), at, Color(color, 0.5), 2.2, true)
+			c.draw_line(center + Vector2(13, -13), center + Vector2(3, -3), brass, 2.0, true)
+		"thunder":
+			# Thunder: a bolt with a flash at its foot.
+			c.draw_polyline(PackedVector2Array([center + Vector2(2, -13), center + Vector2(-6, 0), center + Vector2(1, 0), center + Vector2(-3, 13)]), color, 2.8, true)
+			c.draw_arc(center + Vector2(-2, 12), 8.0, PI, TAU, 16, brass, 1.6, true)
+		"bloom":
+			# Bloom: a sprout over a brick, with the +2.
+			c.draw_rect(Rect2(center + Vector2(-11, 3), Vector2(22, 9)), color, true)
+			c.draw_line(center + Vector2(0, 3), center + Vector2(0, -6), color, 2.2, true)
+			c.draw_circle(center + Vector2(-5, -8), 4.0, color, true, -1, true)
+			c.draw_circle(center + Vector2(5, -10), 4.0, brass, true, -1, true)
+		"plunder":
+			# Plunder: two stacks swapping places.
+			c.draw_rect(Rect2(center + Vector2(-13, -12), Vector2(11, 7)), color, true)
+			c.draw_rect(Rect2(center + Vector2(2, 5), Vector2(11, 7)), color, true)
+			c.draw_polyline(PackedVector2Array([center + Vector2(-2, -6), center + Vector2(6, -6), center + Vector2(3, -9)]), brass, 2.0, true)
+			c.draw_polyline(PackedVector2Array([center + Vector2(2, 2), center + Vector2(-6, 2), center + Vector2(-3, 5)]), brass, 2.0, true)
 		_:
-			# Air burst: a fan of pellets from a single muzzle.
-			var muzzle = center + Vector2(0, 10)
-			for spread in [-0.55, -0.19, 0.19, 0.55]:
-				draw_line(muzzle, muzzle + Vector2(sin(spread), -cos(spread)) * 19.0, color, 1.9, true)
+			# An empty slot: the skin ultimate, still to come.
+			var star = PackedVector2Array()
+			for step in range(9):
+				var angle = -PI * 0.5 + step * TAU / 8.0
+				star.append(center + Vector2(cos(angle), sin(angle)) * (11.0 if step % 2 == 0 else 4.5))
+			c.draw_polyline(star, Color(color, 0.6), 1.6, true)

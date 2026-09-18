@@ -92,10 +92,10 @@ func run() -> void:
 	var motion = InputEventMouseMotion.new()
 	motion.position = Vector2(1100, 500)
 	game._unhandled_input(motion)
-	check(first == game.local_command() and first.fire and not first.has("aim"), "Mouse motion cannot steer and left click only requests firing")
+	check(first == game.local_command() and first.fire and not first.has("aim"), "Mouse motion cannot steer: aiming is only the arc")
 	click.pressed = false
 	game._input(click)
-	check(not game.local_command().fire, "Mouse release clears held fire even over UI")
+	check(game.local_command().fire and game.local_command().move == Vector2.ZERO, "The pilot keeps firing by itself with no button held")
 	game.arena.update_state(game.rules, 0, 0.016)
 	check(game.arena.obstacle_nodes.size() == 2, "Both colliders have visible 3D obstacle models")
 	print("FORWARD_OBSTACLES_RESULT ", count - failures, "/", count, " passed")

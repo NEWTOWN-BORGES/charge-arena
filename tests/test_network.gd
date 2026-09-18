@@ -36,9 +36,7 @@ func run() -> void:
 				game.rules.balls.append(extra)
 				game.rules.advance_ball(extra, 0.05)
 			if role == "client":
-				game.hud.fire_id = 99
 				game.hud.move_vector = Vector2.RIGHT if ticks % 150 < 75 else Vector2.LEFT
-				game.hud.touch_fire = true
 			for b in game.rules.balls:
 				if b.owner == 1:
 					observed_remote_fire = true

@@ -3,6 +3,8 @@ extends SceneTree
 # Charges, activation, effects, round resets, network state and the HUD buttons.
 const Rules = preload("res://scripts/arena_rules.gd")
 const Campaign = preload("res://scripts/campaign.gd")
+const Powers = preload("res://scripts/powers.gd")
+const TMP = "res://tests/powers.tmp"
 var failures = 0
 var idle = {"move": Vector2.ZERO, "fire": false}
 
@@ -54,10 +56,18 @@ func angle_hitting_brick(r) -> float:
 			return angle
 	return INF
 
-func playing():
+func playing(kit: Array = ["blast", "rapid", "air"]):
 	var r = Rules.new()
 	r.phase = "play"
+	# Both sides carry the same three powers unless a check says otherwise.
+	r.loadouts = [kit.duplicate(), kit.duplicate()]
 	return r
+
+func cost(r, index: int) -> int:
+	return r.power_charge_cost(0, index)
+
+func fire_power(r, index: int) -> void:
+	r.step(1.0 / 60, [{"move": Vector2.ZERO, "fire": false, "power": index}, idle])
 
 func count_boss_powers(level: int, seconds: float) -> Array:
 	# Charges are topped up every tick, so this measures the pace, not the income.
@@ -65,7 +75,7 @@ func count_boss_powers(level: int, seconds: float) -> Array:
 	r.ai_level = level
 	var used: Array = []
 	for tick in range(roundi(seconds * 60)):
-		r.powers[1].charge = [5, 10, 15]
+		r.powers[1].charge = [99, 99, 99]
 		r.step(1.0 / 60, [idle, r.ai_command()])
 		for event in r.events:
 			if event.kind == "power" and event.team == 1:
@@ -78,7 +88,7 @@ func run() -> void:
 	# Charges: one per destroyed enemy brick, capped at each power's own cost.
 	var r = playing()
 	check(r.powers.size() == 2 and r.powers[0].charge == [0, 0, 0] and r.powers[0].destroyed == 0, "A match starts with every power empty")
-	check(Rules.POWER_COSTS == [5, 10, 15] and Rules.POWER_NAMES.size() == 3 and Rules.POWER_COLORS.size() == 3, "Blast, machine gun and air burst cost 5, 10 and 15 bricks")
+	check([cost(r, 0), cost(r, 1), cost(r, 2)] == [5, 10, 12] and Powers.CATALOG.size() == 9, "The nine powers charge at their own cost: blast 5, machine gun 10, air burst 12")
 	for i in range(3):
 		var index = first_brick(r, 1)
 		r.damage_brick(index, Rules.BRICK_LIVES, 0, r.bricks[index].p)
@@ -89,13 +99,13 @@ func run() -> void:
 	for i in range(20):
 		var index = first_brick(r, 1)
 		r.damage_brick(index, Rules.BRICK_LIVES, 0, r.bricks[index].p)
-	check(r.powers[0].charge == [5, 10, 15] and r.powers[0].destroyed == 23, "Charges stop at the cost of each power")
+	check(r.powers[0].charge == [5, 10, 12] and r.powers[0].destroyed == 23, "Charges stop at the cost of each power")
 	check(r.events.any(func(e): return e.kind == "power_ready" and e.power == 2 and e.team == 0), "Filling a power announces it")
 
 	# Gating: enough charge, alive, playing, and one power at a time.
 	r = playing()
 	check(not r.can_activate_power(0, 0) and not r.activate_power(0, 0), "An empty power cannot be used")
-	r.powers[0].charge = [5, 10, 15]
+	r.powers[0].charge = [5, 10, 12]
 	check(r.can_activate_power(0, 0) and r.can_activate_power(0, 1) and r.can_activate_power(0, 2), "A full charge unlocks the power")
 	check(not r.can_activate_power(0, 3) and not r.can_activate_power(0, -1) and not r.can_activate_power(5, 0), "Unknown powers and teams are refused")
 	r.players[0].stun = 0.4
@@ -105,7 +115,7 @@ func run() -> void:
 	check(not r.can_activate_power(0, 0), "Powers stay locked outside play")
 	r.phase = "play"
 	check(r.activate_power(0, 1) and not r.can_activate_power(0, 0), "A running burst blocks the other powers")
-	check(r.powers[0].charge == [5, 0, 15], "Using a power spends only its own charge")
+	check(r.powers[0].charge == [5, 0, 12], "Using a power spends only its own charge")
 
 	# Area blast: the direct hit plus every enemy brick inside the radius.
 	r = playing()
@@ -135,7 +145,7 @@ func run() -> void:
 	check(angle < INF, "Some arc position lines up an enemy brick")
 	r.players[0].angle = angle
 	r.players[0].p = Rules.track_position(0, angle)
-	r.powers[0].charge[0] = Rules.POWER_COSTS[0]
+	r.powers[0].charge[0] = cost(r, 0)
 	before_enemy = team_health(r, 1)
 	r.step(1.0 / 60, [{"move": Vector2.ZERO, "fire": false, "power": 0}, idle])
 	check(r.balls.size() == 1 and r.balls[0].power == 1, "Power 1 fires a single explosive round")
@@ -148,27 +158,33 @@ func run() -> void:
 	check(blasted, "The explosive round detonates when it lands")
 	check(before_enemy - team_health(r, 1) >= 3, "One explosive round takes more health than a plain shot (%d lives)" % (before_enemy - team_health(r, 1)))
 
-	# Machine gun: fires on its own for three seconds, then stops.
+	# Machine gun: one long stream of rounds, fired on its own.
 	r = playing()
-	r.powers[0].charge[1] = Rules.POWER_COSTS[1]
+	r.powers[0].charge[1] = cost(r, 1)
 	var shots = 0
+	var volley_balls = 0
 	var burst_end = 0.0
-	for tick in range(roundi(3.6 * 60)):
+	for tick in range(roundi((Rules.RAPID_SECONDS + 0.6) * 60)):
 		r.step(1.0 / 60, [{"move": Vector2.ZERO, "fire": false, "power": 1 if tick == 0 else -1}, idle])
-		shots += r.events.filter(func(e): return e.kind == "shot" and e.team == 0).size()
+		var fired = r.events.filter(func(e): return e.kind == "shot" and e.team == 0).size()
+		if fired > 0 and shots == 0:
+			volley_balls = r.balls.size()
+		shots += fired
 		if r.powers[0].rapid_time > 0:
 			burst_end = (tick + 1) / 60.0
 	# The cadence is whole physics frames: one round every ceil(interval * 60) frames.
-	var expected = roundi(Rules.RAPID_SECONDS * 60.0 / ceilf(Rules.RAPID_INTERVAL * 60.0))
-	check(shots == expected, "The burst fires %d rounds without holding the trigger (%d)" % [expected, shots])
+	var expected = roundi(Rules.RAPID_SECONDS / (ceilf(Rules.RAPID_INTERVAL * 60.0) / 60.0))
+	check(shots == expected and expected == Rules.RAPID_ROUNDS, "The burst fires %d rounds without holding the trigger (%d)" % [expected, shots])
+	check(volley_balls == 1, "They leave one behind the other, never side by side (%d at once)" % volley_balls)
 	check(absf(burst_end - Rules.RAPID_SECONDS) < 0.05 and r.powers[0].rapid_time == 0, "The burst lasts %.1f s and then stops" % Rules.RAPID_SECONDS)
 	check(r.events.filter(func(e): return e.kind == "shot" and e.team == 0).is_empty(), "No round is fired after the burst ends")
 
 	# Air burst: a fan of pellets in slightly random directions.
 	r = playing()
-	r.powers[0].charge[2] = Rules.POWER_COSTS[2]
+	r.powers[0].charge[2] = cost(r, 2)
 	r.step(1.0 / 60, [{"move": Vector2.ZERO, "fire": false, "power": 2}, idle])
-	check(r.balls.size() == Rules.AIR_PELLETS, "The air burst throws %d pellets at once" % Rules.AIR_PELLETS)
+	check(r.balls.size() == Rules.AIR_PELLETS and Rules.AIR_PELLETS == 5, "The air burst throws %d pellets at once" % Rules.AIR_PELLETS)
+	check(r.balls.all(func(b): return b.damage == Rules.AIR_DAMAGE and Rules.AIR_DAMAGE == 2, ), "Each pellet carries 2 of damage")
 	var heading = Rules.forward_direction(0, r.players[0].angle).angle()
 	var offsets: Array = []
 	for ball in r.balls:
@@ -181,7 +197,7 @@ func run() -> void:
 	check(offsets.min() < -0.2 and offsets.max() > 0.2, "The fan opens to both sides")
 	check(offsets.all(func(a): return offsets.count(a) == 1), "No two pellets take exactly the same direction")
 	var again = playing()
-	again.powers[0].charge[2] = Rules.POWER_COSTS[2]
+	again.powers[0].charge[2] = cost(again, 2)
 	again.step(1.0 / 60, [{"move": Vector2.ZERO, "fire": false, "power": 2}, idle])
 	var repeat: Array = again.balls.map(func(b): return b.v.angle())
 	check(repeat != r.balls.map(func(b): return b.v.angle()), "Two air bursts never spread exactly alike")
@@ -196,7 +212,7 @@ func run() -> void:
 				boss_used.append(event.power)
 		if r.phase == "finished":
 			break
-	check(r.powers[1].destroyed >= Rules.POWER_COSTS[0], "The boss earns charge by destroying your bricks (%d bricks)" % r.powers[1].destroyed)
+	check(r.powers[1].destroyed >= cost(r, 0), "The boss earns charge by destroying your bricks (%d bricks)" % r.powers[1].destroyed)
 	check(boss_used.size() > 0, "The boss spends the powers it earned in a real match (%d uses)" % boss_used.size())
 	var quiet = count_boss_powers(0, 30).size()
 	var relentless = count_boss_powers(2, 30).size()
@@ -213,29 +229,29 @@ func run() -> void:
 		var held: Array = r.powers[1].charge.duplicate()
 		var command: Dictionary = r.ai_command()
 		var wanted: int = command.get("power", -1)
-		if wanted >= 0 and held[wanted] < Rules.POWER_COSTS[wanted]:
+		if wanted >= 0 and held[wanted] < r.power_charge_cost(1, wanted):
 			unaffordable += 1
 		r.step(1.0 / 60, [idle, command])
 	check(unaffordable == 0, "The boss never asks for a power it has not earned")
 
 	# Goals and new matches.
 	r = playing()
-	r.powers[0].charge = [4, 9, 14]
+	r.powers[0].charge = [4, 9, 11]
 	r.powers[0].rapid_time = 2.0
 	r.reset_round()
-	check(r.powers[0].charge == [4, 9, 14] and r.powers[0].rapid_time == 0, "Charges survive a goal, a running burst does not")
+	check(r.powers[0].charge == [4, 9, 11] and r.powers[0].rapid_time == 0, "Charges survive a goal, a running burst does not")
 	r.reset_match()
 	check(r.powers[0].charge == [0, 0, 0] and r.powers[0].destroyed == 0, "A new match starts from zero again")
 
 	# Network: the client sees the same charges, bursts and explosive rounds.
 	var host = playing()
-	host.powers[0].charge = [3, 7, 15]
+	host.powers[0].charge = [3, 7, 12]
 	host.powers[0].destroyed = 25
-	host.powers[1].rapid_time = 1.25
+	host.powers[1].rapid_time = 0.75
 	host.balls = [{"id": 5, "owner": 0, "p": Vector2(0.4, 0.2), "v": Vector2(0, 12), "bounces": 0, "boosted": false, "damage": 1, "ttl": 3.0, "power": 1}]
 	var client = playing()
 	check(client.apply_network_snapshot(host.network_snapshot()), "The power state travels in the match packet")
-	check(client.powers[0].charge == [3, 7, 15] and client.powers[0].destroyed == 25 and is_equal_approx(client.powers[1].rapid_time, 1.25), "Charges, totals and the burst timer arrive intact")
+	check(client.powers[0].charge == [3, 7, 12] and client.powers[0].destroyed == 25 and is_equal_approx(client.powers[1].rapid_time, 0.75), "Charges, totals and the burst timer arrive intact")
 	check(client.balls.size() == 1 and client.balls[0].power == 1, "The client knows which round is explosive")
 	var packet: Dictionary = host.network_snapshot()
 	var tampered: PackedFloat32Array = packet.b
@@ -245,7 +261,7 @@ func run() -> void:
 	var state: Dictionary = host.snapshot().duplicate(true)
 	var mirror = playing()
 	mirror.apply_snapshot(host.snapshot().duplicate(true))
-	check(mirror.powers[0].charge == [3, 7, 15] and host.snapshot().powers == state.powers, "The local snapshot carries the powers without sharing them")
+	check(mirror.powers[0].charge == [3, 7, 12] and host.snapshot().powers == state.powers, "The local snapshot carries the powers without sharing them")
 
 	# HUD buttons and the match loop that reads them.
 	root.size = Vector2i(720, 1600)
@@ -259,7 +275,7 @@ func run() -> void:
 	var hud = game.hud
 	game.start_pve()
 	await settle()
-	check(hud.power_centers.size() == 3 and hud.POWER_LABELS.size() == 3, "The match shows one button per power")
+	check(hud.power_centers.size() == Rules.POWER_SLOTS and game.rules.loadouts[0] == game.power_shop.kit + [String(game.Skins.CATALOG[game.skins.selected].ultimate)], "The match carries the saved kit plus the ultimate of the equipped skin")
 	var screen = Rect2(Vector2.ZERO, hud.size)
 	for orientation in [Vector2i(720, 1600), Vector2i(1280, 720)]:
 		root.size = orientation
@@ -273,13 +289,12 @@ func run() -> void:
 			var spot: Vector2 = hud.power_centers[index]
 			var button = Rect2(spot - Vector2.ONE * hud.POWER_RADIUS, Vector2.ONE * hud.POWER_RADIUS * 2)
 			check(screen.encloses(button), tag + "Power %d stays on screen" % index)
-			check(spot.distance_to(hud.move_home) > hud.STICK_RADIUS + hud.POWER_RADIUS and spot.distance_to(hud.fire_home) > hud.FIRE_RADIUS + hud.POWER_RADIUS, tag + "Power %d never covers a thumb control" % index)
+			check(spot.distance_to(hud.move_home) > hud.STICK_RADIUS + hud.POWER_RADIUS, tag + "Power %d never covers the movement stick" % index)
 			check(not button.intersects(fps_rect) and not button.intersects(stun_rect), tag + "Power %d leaves the FPS and stun lines clear" % index)
 			check(not button.intersects(hud.card_rects[0]) and not button.intersects(hud.card_rects[1]), tag + "Power %d stays clear of the player cards" % index)
 			check(not button.intersects(stadium), tag + "Power %d never covers the stadium" % index)
-		# A row across the bottom on a phone, a column beside the card on a wide screen.
-		var axis = 0 if hud.vertical else 1
-		check(hud.power_centers[0][axis] < hud.power_centers[1][axis] and hud.power_centers[1][axis] < hud.power_centers[2][axis], tag + "The three buttons keep their order")
+		# A row across the bottom on a phone, a row under your own card on a wide screen.
+		check(hud.power_centers[0].x < hud.power_centers[1].x and hud.power_centers[1].x < hud.power_centers[2].x, tag + "The three buttons keep their order")
 
 	root.size = Vector2i(720, 1600)
 	await settle()
@@ -288,8 +303,8 @@ func run() -> void:
 	touch.pressed = true
 	touch.position = hud.power_centers[2]
 	hud._input(touch)
-	check(hud.power_request == 2 and not hud.touch_fire and hud.move_id == -1, "Tapping a power button asks for that power instead of moving or firing")
-	check(hud.power_at(hud.power_centers[0]) == 0 and hud.power_at(hud.move_home) == -1 and hud.power_at(hud.fire_home) == -1, "Only the buttons themselves answer to a tap")
+	check(hud.power_request == 2 and hud.move_id == -1, "Tapping a power button asks for that power instead of grabbing the stick")
+	check(hud.power_at(hud.power_centers[0]) == 0 and hud.power_at(hud.move_home) == -1, "Only the buttons themselves answer to a tap")
 	check(game.local_command().power == 2 and game.local_command().power == -1, "The match loop reads the request once")
 	hud.request_power(1)
 	hud.reset_touch()
@@ -302,17 +317,19 @@ func run() -> void:
 	hud.take_power()
 
 	game.rules.phase = "play"
-	game.rules.powers[0].charge[2] = Rules.POWER_COSTS[2]
-	hud.request_power(2)
+	# Slot 2 of the starter kit is the air burst; slot 3 waits for the skin ultimates.
+	game.rules.powers[0].charge[1] = game.rules.power_charge_cost(0, 1)
+	hud.request_power(1)
 	game._physics_process(1.0 / 60)
-	check(game.rules.powers[0].charge[2] == 0 and game.rules.balls.size() == Rules.AIR_PELLETS, "A button press fires the power in the match")
+	check(game.rules.powers[0].charge[1] == 0 and game.rules.balls.size() == Rules.AIR_PELLETS, "A button press fires the power in the match")
+	check(Rules.power_label("") == "ULTIMATE" and Rules.power_label("sun_ray") == "SOL", "An empty third slot reads ULTIMATE; a skin with one names it")
 	check(game.audio_voices.any(func(v): return v.playing and v.stream == game.tones.power), "Using a power has its own sound")
 	for voice in game.audio_voices:
 		voice.stop()
 	check(game.tones.has("blast") and game.tones.has("ready") and game.tones.blast != game.tones.power and game.tones.ready != game.tones.power, "The blast and the ready chime are separate sounds")
 
 	hud.update_match(game.rules, "")
-	check(hud.match_data.has("powers") and hud.match_data.powers[0].charge[2] == 0, "The HUD reads the charges from the match")
+	check(hud.match_data.has("powers") and hud.match_data.powers[0].charge[1] == 0 and hud.match_loadout(0, 1) == "air", "The HUD reads the charges and the kit from the match")
 	game.arena.explosion(Vector2(0.2, 0.4), Rules.EXPLOSION_RADIUS)
 	check(game.arena.effects.any(func(e): return e.get("grow", false)), "The blast draws an expanding ring")
 	game.arena.update_state(game.rules, 0, 1.0 / 60)

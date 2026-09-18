@@ -17,7 +17,7 @@ func run() -> void:
 	var game = load("res://scenes/main.tscn").instantiate()
 	root.add_child(game)
 	game.skins.config_path = TMP
-	game.skins.destroyed = 12
+	game.skins.defeated = [1, 2, 3]
 	game.skins.selected = 1
 	game.hud.sync_skins(game.skins)
 	game.dress_pilots(0)
@@ -32,9 +32,9 @@ func run() -> void:
 	game.start_pve()
 	game.pause_ai = true
 	await create_timer(3.4).timeout
-	var unlocked = game.skins.add_destroyed(8)
+	game.skins.defeat(4)
 	game.hud.sync_skins(game.skins)
-	game.hud.announce_unlock(unlocked.map(func(i): return game.Skins.CATALOG[i].name))
+	game.hud.announce_unlock([game.Skins.CATALOG[4].name])
 	await create_timer(0.3).timeout
 	await capture("preview-skins-unlock.png")
 	game.return_to_menu()

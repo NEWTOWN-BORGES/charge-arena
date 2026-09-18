@@ -32,10 +32,12 @@ func drawn_arena(game) -> Rect2:
 	return result
 
 func control_rects(hud) -> Array:
-	# Stick and fire discs plus the captions drawn under them.
-	var stick = hud.STICK_RADIUS
-	var fire = hud.FIRE_RADIUS
-	return [Rect2(hud.move_home - Vector2(stick, stick), Vector2(stick * 2, stick + 109)), Rect2(hud.fire_home - Vector2(fire, fire), Vector2(fire * 2, fire + 109))]
+	# The two aiming keys with their captions, and each power key beside them.
+	var aim = hud.AIM_RADIUS
+	var rects = [Rect2(hud.aim_left - Vector2(aim, aim), Vector2(aim * 2, aim + 96)), Rect2(hud.aim_right - Vector2(aim, aim), Vector2(aim * 2, aim + 96))]
+	for spot in hud.power_centers:
+		rects.append(Rect2(spot - Vector2.ONE * hud.POWER_RADIUS, Vector2.ONE * hud.POWER_RADIUS * 2))
+	return rects
 
 func touch(hud, id: int, position: Vector2, down: bool) -> void:
 	var event = InputEventScreenTouch.new()
@@ -79,9 +81,9 @@ func run() -> void:
 		check(arena.size.x >= hud.size.x * 0.85, tag + "Stadium uses the full width (%d px)" % arena.size.x)
 		check(arena.has_point(hud.message_center) and screen.encloses(hud.replay.get_rect()), tag + "Countdown, goal and replay messages centre on the stadium")
 		var fps = hud.fps_label.get_rect()
-		check(screen.encloses(fps) and not fps.intersects(controls[0]) and not fps.intersects(controls[1]) and fps.position.y >= lower.end.y, tag + "FPS counter fits between the controls")
-		var stun = Rect2(hud.size.x * 0.5 - 130, hud.size.y - 77, 260, 36)
-		check(not stun.intersects(controls[0]) and not stun.intersects(controls[1]) and stun.position.y >= fps.end.y, tag + "Stun banner fits between the controls")
+		check(screen.encloses(fps) and controls.all(func(c): return not fps.intersects(c)) and fps.position.y >= lower.end.y, tag + "FPS counter keeps clear of the thumb controls")
+		var stun: Rect2 = hud.stun_banner_rect()
+		check(screen.encloses(stun) and controls.all(func(c): return not stun.intersects(c)) and stun.position.y >= lower.end.y, tag + "Stun banner sits over the controls, clear of them")
 
 	check(hud.card_rects[0].position.y > hud.card_rects[1].position.y, "Host/PvE player card is beside the bottom goal")
 	hud.show_game("client", 1)
@@ -90,15 +92,13 @@ func run() -> void:
 	hud.show_game("pve", 0)
 	await settle()
 
-	touch(hud, 0, Vector2(120, hud.touch_top - 20), true)
-	check(hud.move_id == -1, "Touches over the upper half of the stadium do not grab the stick")
-	touch(hud, 0, Vector2(120, hud.touch_top + 20), true)
-	check(hud.move_id == 0, "Lower-left thumb grabs the movement stick")
-	touch(hud, 1, hud.fire_center, true)
-	check(hud.touch_fire, "Fire button fires in the vertical layout")
-	touch(hud, 0, Vector2(120, hud.touch_top + 20), false)
-	touch(hud, 1, hud.fire_center, false)
-	check(hud.move_center == hud.move_home and hud.fire_center == hud.fire_home and not hud.touch_fire, "Releasing returns both controls to their resting places")
+	touch(hud, 0, hud.arena_rect.get_center(), true)
+	check(hud.take_target() != Vector2.INF, "A tap on the stadium chooses the target in the vertical layout")
+	check(game.local_command().fire, "The pilot fires by itself in the vertical layout")
+	touch(hud, 0, hud.arena_rect.get_center(), false)
+	touch(hud, 1, hud.aim_right, true)
+	check(hud.take_aim_step() == 1, "The aiming keys sit under the right thumb")
+	touch(hud, 1, hud.aim_right, false)
 
 	hud.open_video()
 	await settle()

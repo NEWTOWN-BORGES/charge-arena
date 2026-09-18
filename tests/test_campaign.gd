@@ -1,5 +1,5 @@
 extends SceneTree
-# Campaign: ten playable arenas with their own boss, progression that unlocks level by
+# Campaign: eleven playable arenas with their own boss, progression that unlocks level by
 # level, the end-of-level flow, and a menu whose main actions sit under the thumb.
 const Rules = preload("res://scripts/arena_rules.gd")
 const Campaign = preload("res://scripts/campaign.gd")
@@ -56,9 +56,12 @@ func layout_problems(r) -> Array:
 func run() -> void:
 	var levels: Array = Campaign.LEVELS
 	var ids = levels.map(func(l): return l.map.id)
-	check(levels.size() == 10 and ids.all(func(id): return ids.count(id) == 1), "Ten levels, each on its own arena")
+	check(levels.size() == 11 and ids.all(func(id): return ids.count(id) == 1), "Eleven levels, each on its own arena")
+	check(levels[0].boss == 0 and levels[1].boss == 6 and levels[10].boss == 10, "Level 1 trains against a copy of the standard pilot, level 2 meets the Relojoeiro and the Arconte closes the campaign")
+	var bosses = levels.slice(1).map(func(l): return l.boss)
+	check(bosses.size() == 10 and bosses.all(func(b): return bosses.count(b) == 1), "Every boss skin has a level of its own")
 	check(levels.all(func(l): return l.boss >= 0 and l.boss <= 10 and l.challenge != "" and l.tag != ""), "Every level names its challenge and a valid boss skin")
-	check(range(1, 10).all(func(i): return levels[i].tier > levels[i - 1].tier), "Bosses get stronger level by level")
+	check(range(1, 11).all(func(i): return levels[i].tier > levels[i - 1].tier), "Bosses get stronger level by level")
 	var outlines = levels.map(func(l): return l.map.outline)
 	var layouts = levels.map(func(l): return l.map.bricks)
 	check(["hex", "octagon", "pinch", "wide"].all(func(o): return outlines.has(o)) and ["banks", "wall", "arc", "islands", "chevron"].all(func(b): return layouts.has(b)), "Maps mix four outlines and five brick layouts")
@@ -96,7 +99,7 @@ func run() -> void:
 	check(Campaign.ai_profile(5, 0).fire_gap > Campaign.ai_profile(5, 1).fire_gap and Campaign.ai_profile(5, 1).fire_gap > Campaign.ai_profile(5, 2).fire_gap, "FÁCIL and DIFÍCIL shift every boss")
 
 	var testing = Campaign.new()
-	check(not Campaign.UNLOCK_ALL_FOR_TESTS and testing.is_unlocked(0) and not testing.is_unlocked(1) and testing.suggested_level() == 0, "A new campaign starts on level 1 with later levels locked")
+	check(Campaign.UNLOCK_ALL_FOR_TESTS and range(Campaign.LEVELS.size()).all(func(i): return testing.is_unlocked(i)) and testing.suggested_level() == 0, "Testing build: every level is open and the menu starts on the first unplayed one")
 
 	# Level-by-level unlocking, as it works once the testing switch is turned off.
 	var progress = Campaign.new()
@@ -117,7 +120,7 @@ func run() -> void:
 	edited.set_value("campaign", "completed", [0, 3, 50, "x"])
 	edited.save(TMP)
 	restored.load_preferences()
-	check(restored.unlocked == 10 and restored.completed == [0, 3], "An edited save is clamped")
+	check(restored.unlocked == Campaign.LEVELS.size() and restored.completed == [0, 3], "An edited save is clamped")
 
 	root.size = Vector2i(720, 1600)
 	var game = load("res://scenes/main.tscn").instantiate()
@@ -152,12 +155,11 @@ func run() -> void:
 			hud._input(touch)
 	var middle = area.get_center()
 	swipe.call(middle + Vector2(120, 0), middle - Vector2(120, 0))
-	check(game.menu_level == 1 and hud.menu_level == 1 and game.arena.map.id == "aurora", "Swiping left selects the next level at once, before rebuilding")
+	check(game.menu_level == 1 and hud.menu_level == 1 and game.arena.map.id == "treino", "Swiping left selects the next level at once, before rebuilding")
 	game._process(0.1)
 	game._process(0.1)
 	await process_frame
-	check(game.arena.map.id == "farol" and game.arena.unit_skins[1] == 1 and game.arena.brick_nodes[40].get_meta("skin") == 1, "The stadium then shows level 2's arena, boss and bricks")
-	check(hud.campaign_button.text == "NÍVEL 2 BLOQUEADO" and hud.campaign_button.disabled, "A locked level can be previewed but not played")
+	check(game.arena.map.id == "aurora" and game.arena.unit_skins[1] == 6 and game.arena.brick_nodes[40].get_meta("skin") == 6, "The stadium then shows level 2's arena, boss and bricks")
 	swipe.call(middle, middle + Vector2(30, 4))
 	check(game.menu_level == 1, "A tap or short drag does not change level")
 	swipe.call(middle + Vector2(0, -100), middle + Vector2(90, 120))
@@ -167,24 +169,24 @@ func run() -> void:
 	swipe.call(middle - Vector2(120, 0), middle + Vector2(120, 0))
 	swipe.call(middle - Vector2(120, 0), middle + Vector2(120, 0))
 	check(game.menu_level == 0, "Swiping right goes back and stops at level 1")
-	for i in range(12):
+	for i in range(13):
 		game.step_menu_level(1)
-	check(game.menu_level == 9, "Browsing stops at level 10")
-	game.step_menu_level(-9)
+	check(game.menu_level == Campaign.LEVELS.size() - 1, "Browsing stops at the last level")
+	game.step_menu_level(-(Campaign.LEVELS.size() - 1))
 	game._process(0.3)
 	await process_frame
-	check(game.arena.map.id == "aurora" and hud.campaign_button.text == "JOGAR NÍVEL 1  →" and not hud.campaign_button.disabled, "Rapid browsing rebuilds only the level it settles on")
+	check(game.arena.map.id == "treino" and hud.campaign_button.text == "JOGAR NÍVEL 1  →" and not hud.campaign_button.disabled, "Rapid browsing rebuilds only the level it settles on")
 	hud.open_pvp()
 	check(hud.pvp_overlay.visible and hud.ip.is_visible_in_tree(), "PvP moved to its own panel with the IP field")
 	hud.close_pvp()
 
 	hud.open_levels()
-	check(hud.levels_overlay.visible and hud.level_cards.size() == 10, "The level screen lists all ten arenas")
+	check(hud.levels_overlay.visible and hud.level_cards.size() == Campaign.LEVELS.size(), "The level screen lists every arena")
 	check(hud.levels_panel.get_rect().end.y > hud.size.y - 60, "In portrait the level list hangs from the bottom of the screen")
 	hud.level_cards[3].pressed.emit()
 	check(game.mode == "menu" and hud.levels_overlay.visible, "Locked levels cannot be started")
 	hud.level_cards[0].pressed.emit()
-	check(game.mode == "pve" and game.level_index == 0 and not hud.levels_overlay.visible and game.arena.map.id == "aurora", "Level 1 starts from its card")
+	check(game.mode == "pve" and game.level_index == 0 and not hud.levels_overlay.visible and game.arena.map.id == "treino", "Level 1 starts from its card")
 
 	game._process(0.02)
 	game.rules.phase = "finished"
@@ -198,9 +200,9 @@ func run() -> void:
 
 	hud.next_button.pressed.emit()
 	await process_frame
-	check(game.level_index == 1 and game.arena.map.id == "farol" and game.rules.walls.size() == 8, "Next level rebuilds the arena with the octagon map")
-	check(game.arena.unit_skins == [game.skins.selected, 1] and game.arena.brick_nodes[40].get_meta("skin") == 1, "The Faroleiro boss arrives with its own bricks")
-	check(game.rules.obstacles.size() == 2 and game.arena.obstacle_nodes.size() == 2 and hud.level_info.name == "Baía do Farol" and hud.level_info.boss_name == "FAROLEIRO", "Its two friendly pillars, name and boss name come with it")
+	check(game.level_index == 1 and game.arena.map.id == "aurora" and game.rules.obstacles.size() == 2, "Next level rebuilds the arena with the clockwork sliders")
+	check(game.arena.unit_skins == [game.skins.selected, 6] and game.arena.brick_nodes[40].get_meta("skin") == 6, "The Relojoeiro boss arrives with its own bricks")
+	check(game.rules.obstacles.size() == 2 and game.arena.obstacle_nodes.size() == 2 and hud.level_info.name == "Oficina do Relógio" and hud.level_info.boss_name == "RELOJOEIRO", "Its two friendly pillars, name and boss name come with it")
 	check(game.rules.ai_profile == Campaign.ai_profile(1, game.game_settings.difficulty), "The boss uses its level's pace")
 
 	game._process(0.02)
@@ -214,7 +216,7 @@ func run() -> void:
 
 	hud.levels_button.pressed.emit()
 	await process_frame
-	check(game.mode == "menu" and hud.levels_overlay.visible and game.level_index == -1 and game.menu_level == 1 and game.arena.map.id == "farol", "NÍVEIS returns to the menu previewing the level just played")
+	check(game.mode == "menu" and hud.levels_overlay.visible and game.level_index == -1 and game.menu_level == 1 and game.arena.map.id == "aurora", "NÍVEIS returns to the menu previewing the level just played")
 	hud.close_levels()
 	hud.campaign_button.pressed.emit()
 	check(game.mode == "pve" and game.level_index == 1, "JOGAR NÍVEL starts the previewed level")

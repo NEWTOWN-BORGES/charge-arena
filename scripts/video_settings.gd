@@ -2,16 +2,23 @@ extends RefCounted
 ## Local display preferences; never change the authoritative 60 Hz simulation.
 const FPS_OPTIONS = [60, 90, 120]
 const QUALITY_NAMES = ["Leve", "Equilibrado", "Refinado"]
-const AA_LEVELS = [Viewport.MSAA_DISABLED, Viewport.MSAA_2X, Viewport.MSAA_4X]
+# Leve uses only FXAA (zero extra geometry cost for Mali GPUs); Equilibrado and
+# Refinado add 2X MSAA which is nearly free on tiled mobile GPUs.  FXAA cleans
+# what MSAA misses and costs < 0.3 ms even on a Galaxy A15.
+const AA_LEVELS = [Viewport.MSAA_DISABLED, Viewport.MSAA_2X, Viewport.MSAA_2X]
+const SCREEN_AA = [Viewport.SCREEN_SPACE_AA_FXAA, Viewport.SCREEN_SPACE_AA_FXAA, Viewport.SCREEN_SPACE_AA_FXAA]
 const EFFECT_LIMITS = [20, 48, 96]
-const RENDER_SCALES = [0.68, 0.84, 1.0]
-const MIN_RENDER_SCALES = [0.52, 0.60, 0.72]
+# Leve targets budget phones (Galaxy A15): 0.72x keeps text readable while
+# halving pixel throughput vs native.  Refinado stays at 1.0 for flagship feel.
+const RENDER_SCALES = [0.72, 0.88, 1.0]
+const MIN_RENDER_SCALES = [0.50, 0.62, 0.72]
 const CONFIG_PATH = "user://video_settings.cfg"
 var fps = 60
-var quality = 0
+# A phone starts on the performance profile; a PC has no reason to.
+var quality = 0 if OS.has_feature("mobile") else 2
 var vsync = true
 var show_fps = false
-var runtime_scale = 0.68
+var runtime_scale = 0.72
 var runtime_fps = 60
 var low_windows = 0
 var stable_windows = 0
@@ -51,6 +58,8 @@ func apply(viewport: Viewport, arena) -> void:
 	runtime_scale = RENDER_SCALES[quality]
 	Engine.max_fps = runtime_fps
 	viewport.msaa_3d = AA_LEVELS[quality]
+	viewport.screen_space_aa = SCREEN_AA[quality]
+	viewport.use_debanding = quality > 0
 	viewport.scaling_3d_mode = Viewport.SCALING_3D_MODE_BILINEAR
 	viewport.scaling_3d_scale = runtime_scale
 	if DisplayServer.get_name() != "headless":

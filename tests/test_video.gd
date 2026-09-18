@@ -60,7 +60,7 @@ func run() -> void:
 	game._physics_process(0.1)
 	check(game.rules.snapshot() == before, "PvE simulation pauses while changing graphics settings")
 	game.hud.close_video()
-	check(not game.hud.video_overlay.visible and not game.local_command().fire, "Closing settings cannot leave a held shot active")
+	check(not game.hud.video_overlay.visible and game.local_command().fire and game.hud.move_vector == Vector2.ZERO, "Closing settings hands the pilot back, firing on its own and standing still")
 	game.rules.phase = "play"
 	game.arena.capture_motion(game.rules)
 	game.rules.step(0.1, [{"move": Vector2.RIGHT}, {"move": Vector2.ZERO}])

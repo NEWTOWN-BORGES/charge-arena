@@ -24,7 +24,8 @@ func floor_glow(projectile: Node3D) -> Color:
 func run() -> void:
 	check(Skins.CATALOG.size() == 11, "Catalog has eleven skins")
 	check(Skins.CATALOG[0].level == 0 and Skins.CATALOG[0].name == "PILOTO AURORA", "First skin is the default Aurora pilot")
-	check(range(1, 11).all(func(lvl): return Skins.boss_skin(lvl) > 0), "Every campaign level 1 to 10 has a corresponding boss skin")
+	check(Skins.boss_skin(1) == -1, "Level 1 trains against the standard pilot, so it carries no skin")
+	check(range(2, 12).all(func(lvl): return Skins.boss_skin(lvl) > 0), "Every campaign level from 2 to 11 has a boss skin of its own")
 	check(Skins.CATALOG.all(func(e): return e.bricks != "" and e.weapon != "" and e.about != ""), "Every skin names its weapon, brick theme and description")
 
 	var cyan = Color("72ddc6")
@@ -34,7 +35,11 @@ func run() -> void:
 	check(Skins.colors(2, cyan).body == Color("444f8f") and Skins.colors(2, cyan).shot == Color("b99cff"), "Astrónomo has its own indigo body and violet shots")
 	check(Skins.colors(1, coral, true).body == coral.darkened(0.3), "Boss tint forces red team colours before being defeated")
 
+	# These checks use the real progression, not the testing build's open collection.
+	var testing = Skins.new()
+	check(Skins.UNLOCK_ALL_FOR_TESTS and testing.unlocked_count() == Skins.CATALOG.size(), "Testing build: every skin can be worn")
 	var progress = Skins.new()
+	progress.unlock_all = false
 	progress.config_path = TMP
 	check(progress.is_unlocked(0) and not progress.is_unlocked(1) and progress.unlocked_count() == 1, "Only the default skin starts unlocked")
 	check(not progress.select(1) and progress.selected == 0, "A locked skin cannot be equipped")
@@ -45,6 +50,7 @@ func run() -> void:
 	check(progress.select(6) and progress.save_preferences() == OK, "Equipping and saving preferences works")
 
 	var restored = Skins.new()
+	restored.unlock_all = false
 	restored.config_path = TMP
 	restored.load_preferences()
 	check(restored.defeated.has(1) and restored.defeated.has(6) and restored.defeated.has(10) and restored.selected == 6, "Defeated bosses and equipped skin survive reload")
@@ -66,6 +72,7 @@ func run() -> void:
 	var arena = game.arena
 	var hud = game.hud
 	game.skins.config_path = TMP
+	game.skins.unlock_all = false
 	game.skins.defeated = []
 	game.skins.selected = 0
 	hud.sync_skins(game.skins)
@@ -130,10 +137,12 @@ func run() -> void:
 	check(is_equal_approx(hud.viewer_yaw, yaw_before + 0.6), "Dragging rotates the preview turntable")
 	hud.close_skins()
 
-	# Campaign unlock flow: beating level 1 unlocks Relojoeiro (boss 6)
+	# Campaign unlock flow: beating level 2 unlocks Relojoeiro (boss 6); level 1 only trains.
 	game.campaign.unlock_all = true
-	game.start_level(0) # Level 1 (index 0) has boss 6 (Relojoeiro)
-	check(game.arena.unit_skins[1] == 6 and game.arena.unit_tints[1] == true, "Level 1 boss fights in team red before defeat")
+	game.start_level(0)
+	check(game.arena.unit_skins[1] == 0, "Level 1 is a bout against a copy of the standard pilot")
+	game.start_level(1) # Level 2 (index 1) has boss 6 (Relojoeiro)
+	check(game.arena.unit_skins[1] == 6 and game.arena.unit_tints[1] == true, "Level 2 boss fights in team red before defeat")
 	game.rules.phase = "finished"
 	game.rules.winner = 0 # Player wins
 	game.finish_level()

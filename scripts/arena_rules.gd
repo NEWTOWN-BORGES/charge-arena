@@ -6,6 +6,10 @@ const HALF_LENGTH = 6.93 * MAP_SCALE
 const GOAL_RADIUS = 1.65
 const TRACK_RADIUS = 2.6
 const TRACK_LIMIT = 0.60
+# Aim assist: how far the shot may be nudged to line up with a brick, and how finely the
+# nearby angles are sampled looking for one.
+const ASSIST_ANGLE = 0.10
+const ASSIST_STEPS = 12
 const SPEED = 5.0
 const BALL_SPEED = 15.5
 const FIRE_INTERVAL = 0.42
@@ -27,23 +31,70 @@ const BOOST_DAMAGE = 2
 const BOOST_RADIUS = 1.10
 const BOOST_CENTERS = [Vector2(-HALF_WIDTH - 0.75, 0), Vector2(HALF_WIDTH + 0.75, 0)]
 const BALL_RADIUS = 0.14
-const POWER_COSTS = [5, 10, 15]
-const POWER_NAMES = ["EXPLOSÃO", "METRALHADORA", "RAJADA DE AR"]
-const POWER_COLORS = [Color("ffb36b"), Color("ffe978"), Color("90e6ff")]
+const Powers = preload("res://scripts/powers.gd")
+# Each pilot carries three powers (see Powers.CATALOG): two from the kit and, later, the
+# skin's ultimate. The empty third slot is simply never ready.
+const POWER_SLOTS = 3
+const GHOST_SECONDS = 8.0
+const LASER_SECONDS = 3.0
+# The beam bites twice a second, so a full brick falls after two touches.
+const LASER_TICK = 0.5
+const LASER_DAMAGE = 2
+const LASER_WIDTH = 0.22
+const REBUILD_BRICKS = 7
+const MIRROR_SECONDS = 4.5
+# Walls rise in front of the bricks they defend: one per bank of the current layout,
+# a step towards the middle of the arena, split in two when a bank is wide enough that a
+# single slab would seal it off completely.
+const WALLS_SECONDS = 6.5
+const WALL_CLEARANCE = 0.85
+const WALL_OVERHANG = 0.12
+const WALL_GROUP_GAP = 1.15
+const WALL_MAX_SPAN = 3.2
+const WALL_SPLIT_GAP = 0.9
+# The shock pulse: every ball is swept off the field, the rival is left stunned and the
+# moving bumpers seize up for as long as the pilot does.
+const STUN_POWER_SECONDS = 4.5
+# Ultimates. Every one of them glows for two seconds before it goes off, so both sides
+# can see it coming.
+const ULTIMATE_WINDUP = 2.0
+# Sun ray: a thick beam, wide enough for four bricks of a row, that carries on past the
+# arena. It bites three times.
+const SUN_RAY_SECONDS = 1.5
+const SUN_RAY_TICK = 0.5
+const SUN_RAY_DAMAGE = 2
+const SUN_RAY_HALF_WIDTH = 1.35
+# Meteors and lightning fall on the far half, never on the caster's own bricks.
+const METEOR_SECONDS = 1.0
+const METEOR_COUNT = 14
+const METEOR_DAMAGE = 1
+const METEOR_RADIUS = 0.62
+const THUNDER_SECONDS = 2.0
+const THUNDER_COUNT = 8
+const THUNDER_DAMAGE = 2
+const THUNDER_RADIUS = 0.8
+# Bloom heals two lives, and a brick already whole grows past the usual three.
+const BLOOM_HEAL = 2
+const BRICK_MAX_LIVES = 5
 const EXPLOSION_RADIUS = 1.65
 const EXPLOSION_DAMAGE = 2
-const RAPID_SECONDS = 3.0
-# Just under a sixth of a second: at 60 physics steps the burst lands exactly one round
-# every 6 frames (0.1 s). A round 0.10 here would slip to a 7th frame and lose 4 rounds.
+# A single stream: ten rounds, one behind the other, at one round every six physics
+# frames (0.1 s). RAPID_SECONDS is exactly ten of those.
 const RAPID_INTERVAL = 0.09
-const AIR_PELLETS = 9
+const RAPID_ROUNDS = 10
+const RAPID_SECONDS = 1.0
+const AIR_PELLETS = 5
+const AIR_DAMAGE = 2
 const AIR_SPREAD = 0.72
 const MAX_BALLS = 128
-const BALL_FIELDS = 11
-# A shot ends on a target, not on a surface: walls, shields, boosters, barriers and bumpers
-# all reflect it. This lifetime is only a safety net for a shot caught in a repeating path
+const BALL_FIELDS = 12
+# A shot ends on a target or after MAX_BOUNCES ricochets: walls, shields, boosters,
+# barriers and bumpers all reflect it. This lifetime is only a safety net for a shot caught in a repeating path
 # that would otherwise bounce for the rest of the match.
 const BALL_LIFE = 12.0
+# A shot survives three ricochets; the fourth surface swallows it, so the arena never
+# fills up with balls looping forever.
+const MAX_BOUNCES = 3
 # AI difficulty: extra pause after each shot, movement speed, whether it dodges and how
 # long it waits between powers. The default (index 2, DIFÍCIL) is the full-strength
 # planner used by the AI tests.
@@ -62,6 +113,8 @@ var bricks: Array = []
 var balls: Array = []
 var obstacles: Array = []
 var obstacle_time = 0.0
+# While this runs, the moving bumpers are frozen where they stand (shock pulse).
+var obstacle_stun = 0.0
 var scores: Array = [0, 0]
 var phase = "countdown"
 var timer = 2.5
@@ -78,14 +131,21 @@ var ai_next_power = 0.0
 var ai_level = 2
 # Campaign levels pass their own AI pace; empty uses AI_LEVELS[ai_level].
 var ai_profile: Dictionary = {}
+# Aim assist for the human pilot: team 0 in PvE, both sides never in PvP.
+var assist_team = -1
 # Arena layout. Goals and pilot arcs never move, so rules, AI and network code stay
 # shared; maps change the outline, boosters, obstacles, barriers and brick layout.
 var map: Dictionary = {}
 var walls: Array = WALLS.duplicate()
 var boost_centers: Array = BOOST_CENTERS.duplicate()
 var barriers: Array = []
+# Where each team's defensive walls stand on this map (see team_walls).
+var wall_slabs: Array = [[], []]
 var powers: Array = []
+# The three power ids each team took into the match, in button order.
+var loadouts: Array = [Powers.STARTER_KIT.duplicate(), Powers.STARTER_KIT.duplicate()]
 var power_rng = RandomNumberGenerator.new()
+var cached_firing_angles: Dictionary = {}
 
 func _init() -> void:
 	set_map(default_map())
@@ -99,11 +159,23 @@ static func default_map() -> Dictionary:
 		],
 	}
 
+static func pvp_map() -> Dictionary:
+	return {
+		"id": "colosseum", "name": "Coliseu Retangular", "outline": "colosseum", "boosters": true, "bricks": "colosseum", "barriers": [],
+		"obstacles": [
+			{"kind": "slide", "center": Vector2(-2.2, -1.1), "axis": Vector2.RIGHT, "travel": 1.8, "frequency": 0.55, "phase": 0.0},
+			{"kind": "slide", "center": Vector2(2.2, 1.1), "axis": Vector2.RIGHT, "travel": 1.8, "frequency": 0.55, "phase": PI},
+			{"kind": "orbit", "center": Vector2(0, 0), "travel": 1.2, "frequency": 0.45, "phase": 0.0, "radius": 0.42},
+		],
+	}
+
 func set_map(new_map: Dictionary) -> void:
 	map = new_map
 	walls = outline_points(map.get("outline", "hex"))
 	boost_centers = booster_centers(map)
 	barriers = map.get("barriers", [])
+	wall_slabs = [team_walls(0, map.get("bricks", "banks")), team_walls(1, map.get("bricks", "banks"))]
+	cached_firing_angles.clear()
 	reset_match()
 
 static func outline_points(kind: String) -> Array:
@@ -118,6 +190,16 @@ static func outline_points(kind: String) -> Array:
 			return [Vector2(0, -l), Vector2(w, -l / 2), Vector2(w + 1.3, -1.5), Vector2(w + 1.3, 1.5), Vector2(w, l / 2), Vector2(0, l), Vector2(-w, l / 2), Vector2(-w - 1.3, 1.5), Vector2(-w - 1.3, -1.5), Vector2(-w, -l / 2)]
 		"octagon":
 			return [Vector2(-2.3, -l), Vector2(2.3, -l), Vector2(w, -l / 2), Vector2(w, l / 2), Vector2(2.3, l), Vector2(-2.3, l), Vector2(-w, l / 2), Vector2(-w, -l / 2)]
+		"colosseum":
+			# Wide rectangular stadium with 45-degree chamfered corners, matching the drawn sketch.
+			var cx = 4.4
+			var cy = 2.4
+			return [
+				Vector2(-cx, -l), Vector2(cx, -l),
+				Vector2(w, -l + cy), Vector2(w, l - cy),
+				Vector2(cx, l), Vector2(-cx, l),
+				Vector2(-w, l - cy), Vector2(-w, -l + cy)
+			]
 	return WALLS.duplicate()
 
 static func side_x(kind: String) -> float:
@@ -156,12 +238,47 @@ func reset_match() -> void:
 	reset_round()
 
 static func new_power_state() -> Dictionary:
-	return {"charge": [0, 0, 0], "destroyed": 0, "rapid_time": 0.0}
+	return {"charge": [0, 0, 0], "destroyed": 0, "rapid_time": 0.0, "ghost_time": 0.0,
+		"laser_time": 0.0, "laser_tick": 0.0, "mirror_time": 0.0, "walls_time": 0.0,
+		"ultimate_windup": 0.0, "ultimate_time": 0.0, "ultimate_tick": 0.0, "ultimate_shots": 0, "ultimate_id": ""}
+
+static func power_color(id: String) -> Color:
+	var entry: Dictionary = Powers.entry(id)
+	return Color(entry.color) if not entry.is_empty() else Color("3d5a61")
+
+static func power_label(id: String) -> String:
+	var entry: Dictionary = Powers.entry(id)
+	return String(entry.short) if not entry.is_empty() else "ULTIMATE"
+
+func power_id(team: int, index: int) -> String:
+	# The power on that button, or "" for a slot the pilot has not filled.
+	var kit: Array = loadouts[team] if team >= 0 and team < loadouts.size() else []
+	return String(kit[index]) if index >= 0 and index < kit.size() else ""
+
+func power_charge_cost(team: int, index: int) -> int:
+	var entry: Dictionary = Powers.entry(power_id(team, index))
+	return int(entry.charge) if not entry.is_empty() else 0
+
+func running_power(team: int) -> bool:
+	var state: Dictionary = powers[team]
+	return state.rapid_time > 0 or state.laser_time > 0 or state.ultimate_windup > 0 or state.ultimate_time > 0
 
 func reset_round() -> void:
-	# Keep earned charges between goals, but cancel a running burst at the round end.
+	# Keep earned charges between goals, but no effect survives the round end.
+	cached_firing_angles.clear()
+	obstacle_stun = 0.0
 	for state in powers:
 		state.rapid_time = 0.0
+		state.ghost_time = 0.0
+		state.laser_time = 0.0
+		state.laser_tick = 0.0
+		state.mirror_time = 0.0
+		state.walls_time = 0.0
+		state.ultimate_windup = 0.0
+		state.ultimate_time = 0.0
+		state.ultimate_tick = 0.0
+		state.ultimate_shots = 0
+		state.ultimate_id = ""
 	ai_target_angle = 0.0
 	ai_next_scan = 0.0
 	ai_scan_index = 0
@@ -213,7 +330,8 @@ static func spec_position(spec: Dictionary, time: float) -> Vector2:
 	return center
 
 static func brick_scale(hp: int) -> float:
-	return [0.0, 0.52, 0.76, 1.0][clampi(hp, 0, BRICK_LIVES)]
+	# Past the usual three lives a brick stands taller and wider, from the bloom ultimate.
+	return [0.0, 0.52, 0.76, 1.0, 1.1, 1.18][clampi(hp, 0, BRICK_MAX_LIVES)]
 
 static func make_bricks(layout: String = "banks") -> Array:
 	# Forty bricks per team in every layout; team 0 first, mirrored for team 1.
@@ -248,6 +366,16 @@ static func make_bricks(layout: String = "banks") -> Array:
 						for column in range(10):
 							var pos = Vector2(side * (0.55 + column * 0.545), goal.y - sign_y * (3.6 + column * 0.197 + row * 0.36))
 							add_brick(result, team, side, pos, direction.angle())
+			"colosseum":
+				# Dense 4-row fortress of 48 bricks per team (96 total) for massive destruction with powers.
+				for row in range(4):
+					var count = 14 if row == 0 else (12 if row < 3 else 10)
+					var span = 3.9 if row == 0 else (3.3 if row < 3 else 2.7)
+					var y_dist = 5.2 - row * 0.70
+					for column in range(count):
+						var x = lerpf(-span, span, float(column) / float(count - 1)) if count > 1 else 0.0
+						var pos = Vector2(x, goal.y - sign_y * y_dist)
+						add_brick(result, team, -1 if x < 0 else 1, pos, 0.0)
 			_:
 				for side in [-1, 1]:
 					var along = Vector2(side * 0.8660254, -sign_y * 0.5)
@@ -274,7 +402,9 @@ func step(dt: float, commands: Array) -> void:
 			else:
 				phase = "play"
 		return
-	obstacle_time += dt
+	obstacle_stun = maxf(0.0, obstacle_stun - dt)
+	if obstacle_stun <= 0:
+		obstacle_time += dt
 	for obstacle in obstacles:
 		obstacle.previous = obstacle.p
 		obstacle.p = obstacle_at(obstacle.id, obstacle_time)
@@ -285,6 +415,10 @@ func step(dt: float, commands: Array) -> void:
 		# accumulated float residue would otherwise buy it one extra round.
 		var burst_left: float = powers[team].rapid_time - dt
 		powers[team].rapid_time = 0.0 if burst_left < dt * 0.5 else burst_left
+		for timer_name in ["ghost_time", "mirror_time", "walls_time"]:
+			powers[team][timer_name] = maxf(0.0, powers[team][timer_name] - dt)
+		step_laser(team, dt)
+		step_ultimate(team, dt)
 		p.cooldown = maxf(0, p.cooldown - dt)
 		var was_stunned: bool = p.stun > 0
 		p.stun = maxf(0, p.stun - dt)
@@ -316,40 +450,285 @@ func step(dt: float, commands: Array) -> void:
 				advance_ball(ball, dt, true)
 
 func can_activate_power(team: int, index: int) -> bool:
-	if team < 0 or team >= powers.size() or index < 0 or index >= POWER_COSTS.size():
+	if team < 0 or team >= powers.size() or index < 0 or index >= POWER_SLOTS:
 		return false
-	if phase != "play" or players[team].stun > 0 or powers[team].rapid_time > 0:
+	if power_id(team, index) == "":
 		return false
-	return powers[team].charge[index] >= POWER_COSTS[index]
+	if phase != "play" or players[team].stun > 0 or running_power(team):
+		return false
+	return powers[team].charge[index] >= power_charge_cost(team, index)
 
 func activate_power(team: int, index: int) -> bool:
 	if not can_activate_power(team, index):
 		return false
+	var id = power_id(team, index)
 	powers[team].charge[index] = 0
 	var p: Dictionary = players[team]
 	var heading = forward_direction(team, p.angle)
-	events.append({"kind": "power", "power": index, "team": team, "p": p.p})
-	match index:
-		0:
+	events.append({"kind": "power", "power": index, "id": id, "team": team, "p": p.p})
+	match id:
+		"blast":
 			shoot(team, 1)
-		1:
+		"rapid":
 			powers[team].rapid_time = RAPID_SECONDS
 			p.cooldown = 0.0
-		2:
+		"air":
 			# Stratified random spread leaves a useful fan, even on unlucky rolls.
 			for pellet in range(AIR_PELLETS):
 				var angle = lerpf(-AIR_SPREAD, AIR_SPREAD, pellet / float(AIR_PELLETS - 1))
 				angle += power_rng.randf_range(-0.055, 0.055)
-				spawn_ball(team, heading.rotated(angle), 3)
+				spawn_ball(team, heading.rotated(angle), 3, AIR_DAMAGE)
 			p.cooldown = FIRE_INTERVAL
+		"ghost":
+			powers[team].ghost_time = GHOST_SECONDS
+		"laser":
+			powers[team].laser_time = LASER_SECONDS
+			powers[team].laser_tick = LASER_TICK
+			# The first bite lands at once; the rest follow on the beam's own clock.
+			fire_laser(team)
+		"rebuild":
+			rebuild_bricks(team)
+		"mirror":
+			powers[team].mirror_time = MIRROR_SECONDS
+		"walls":
+			powers[team].walls_time = WALLS_SECONDS
+			events.append({"kind": "walls", "team": team, "p": p.p})
+		"stun":
+			shock_pulse(team)
+		_:
+			if Powers.is_ultimate(id):
+				# Ultimates take two seconds of glow before they land.
+				powers[team].ultimate_id = id
+				powers[team].ultimate_windup = ULTIMATE_WINDUP
+				events.append({"kind": "ultimate_charge", "id": id, "team": team, "p": p.p})
 	return true
+
+func step_ultimate(team: int, dt: float) -> void:
+	var state: Dictionary = powers[team]
+	if state.ultimate_windup > 0:
+		state.ultimate_windup = maxf(0.0, state.ultimate_windup - dt)
+		if state.ultimate_windup > 0:
+			return
+		fire_ultimate(team)
+		return
+	if state.ultimate_time <= 0 and state.ultimate_shots <= 0:
+		return
+	# The count of strikes rules, not the clock: the last one always lands.
+	state.ultimate_time = maxf(0.0, state.ultimate_time - dt)
+	state.ultimate_tick -= dt
+	if state.ultimate_tick > 0 or state.ultimate_shots <= 0:
+		return
+	state.ultimate_shots -= 1
+	match String(state.ultimate_id):
+		"sun_ray":
+			state.ultimate_tick = SUN_RAY_TICK
+			sun_ray_bite(team)
+		"meteors":
+			state.ultimate_tick = METEOR_SECONDS / METEOR_COUNT
+			sky_strike(team, "meteor", METEOR_DAMAGE, METEOR_RADIUS)
+		"thunder":
+			state.ultimate_tick = THUNDER_SECONDS / THUNDER_COUNT
+			sky_strike(team, "thunder", THUNDER_DAMAGE, THUNDER_RADIUS)
+
+func fire_ultimate(team: int) -> void:
+	var state: Dictionary = powers[team]
+	var id = String(state.ultimate_id)
+	events.append({"kind": "ultimate", "id": id, "team": team, "p": players[team].p})
+	match id:
+		"sun_ray":
+			# The first bite lands with the flash; the rest are counted out after it.
+			state.ultimate_time = SUN_RAY_SECONDS
+			state.ultimate_tick = SUN_RAY_TICK
+			state.ultimate_shots = roundi(SUN_RAY_SECONDS / SUN_RAY_TICK) - 1
+			sun_ray_bite(team)
+		"meteors":
+			state.ultimate_time = METEOR_SECONDS
+			state.ultimate_tick = METEOR_SECONDS / METEOR_COUNT
+			state.ultimate_shots = METEOR_COUNT - 1
+			sky_strike(team, "meteor", METEOR_DAMAGE, METEOR_RADIUS)
+		"thunder":
+			state.ultimate_time = THUNDER_SECONDS
+			state.ultimate_tick = THUNDER_SECONDS / THUNDER_COUNT
+			state.ultimate_shots = THUNDER_COUNT - 1
+			sky_strike(team, "thunder", THUNDER_DAMAGE, THUNDER_RADIUS)
+		"bloom":
+			bloom_bricks(team)
+		"plunder":
+			plunder_bricks(team)
+
+func sun_ray_bite(team: int) -> void:
+	# A band as wide as four bricks, straight out of the pilot and past the wall.
+	var origin: Vector2 = players[team].p
+	var heading: Vector2 = forward_direction(team, players[team].angle)
+	var reach = 3.0 * (HALF_LENGTH + HALF_WIDTH)
+	var side = Vector2(-heading.y, heading.x)
+	for index in range(bricks.size()):
+		var brick: Dictionary = bricks[index]
+		if not brick.alive or brick.team == team:
+			continue
+		var offset: Vector2 = brick.p - origin
+		var along = offset.dot(heading)
+		if along < 0 or along > reach:
+			continue
+		if absf(offset.dot(side)) > SUN_RAY_HALF_WIDTH + BRICK_EXTENT.x:
+			continue
+		damage_brick(index, SUN_RAY_DAMAGE, team, brick.p)
+	var enemy = 1 - team
+	var to_enemy: Vector2 = players[enemy].p - origin
+	if to_enemy.dot(heading) > 0 and absf(to_enemy.dot(side)) <= SUN_RAY_HALF_WIDTH:
+		damage_player(enemy, SUN_RAY_DAMAGE, players[enemy].p)
+	events.append({"kind": "sun_ray", "team": team, "p": origin, "heading": heading, "width": SUN_RAY_HALF_WIDTH})
+
+func sky_strike(team: int, kind: String, damage: int, radius: float) -> void:
+	# One strike somewhere over the rival's half, inside the arena outline.
+	var enemy = 1 - team
+	var sign_y = 1.0 if enemy == 0 else -1.0
+	var at = Vector2.ZERO
+	for attempt in range(12):
+		at = Vector2(power_rng.randf_range(-HALF_WIDTH, HALF_WIDTH), sign_y * power_rng.randf_range(0.4, HALF_LENGTH - 0.9))
+		if point_inside(walls, at):
+			break
+	for index in range(bricks.size()):
+		var brick: Dictionary = bricks[index]
+		if brick.alive and brick.team != team and brick.p.distance_to(at) <= radius + BRICK_EXTENT.x:
+			damage_brick(index, damage, team, brick.p)
+	if players[enemy].p.distance_to(at) <= radius:
+		damage_player(enemy, damage, players[enemy].p)
+	events.append({"kind": kind, "team": team, "p": at, "radius": radius})
+
+func bloom_bricks(team: int) -> void:
+	# Two lives back on every brick; the ones already whole grow instead.
+	var healed: Array = []
+	for index in range(bricks.size()):
+		var brick: Dictionary = bricks[index]
+		if brick.team != team or not brick.alive:
+			continue
+		brick.hp = mini(brick.hp + BLOOM_HEAL, BRICK_MAX_LIVES)
+		healed.append(index)
+	events.append({"kind": "bloom", "team": team, "bricks": healed, "heal": BLOOM_HEAL, "p": players[team].p})
+
+func plunder_bricks(team: int) -> void:
+	# Swap the two walls, brick for brick: the layout is already mirrored, so the same
+	# index on the other side is the same place on the other half.
+	var per_team: int = bricks.size() / 2
+	for index in range(per_team):
+		var mine: Dictionary = bricks[index if team == 0 else index + per_team]
+		var theirs: Dictionary = bricks[index + per_team if team == 0 else index]
+		var keep: int = mine.hp
+		mine.hp = theirs.hp
+		theirs.hp = keep
+		mine.alive = mine.hp > 0
+		theirs.alive = theirs.hp > 0
+	events.append({"kind": "plunder", "team": team, "p": players[team].p})
+
+func shock_pulse(team: int) -> void:
+	# Sweeps the field clean and leaves the rival on the floor for a few seconds.
+	var enemy = 1 - team
+	balls.clear()
+	players[enemy].stun = maxf(players[enemy].stun, STUN_POWER_SECONDS)
+	obstacle_stun = maxf(obstacle_stun, STUN_POWER_SECONDS)
+	events.append({"kind": "shock", "team": team, "p": players[team].p})
+	events.append({"kind": "stun", "team": enemy, "p": players[enemy].p})
+
+static func team_walls(team: int, layout: String = "banks") -> Array:
+	# One slab per bank of bricks, as wide as the bank and a step in front of it.
+	var own: Array = []
+	for data in make_bricks(layout):
+		if data.team == team:
+			own.append(data)
+	own.sort_custom(func(a, b): return a.p.x < b.p.x)
+	var banks: Array = []
+	for data in own:
+		if banks.is_empty() or data.p.x - banks.back().back().p.x > WALL_GROUP_GAP:
+			banks.append([data])
+		else:
+			banks.back().append(data)
+	var sign_y = 1.0 if team == 0 else -1.0
+	var slabs: Array = []
+	for bank in banks:
+		var min_x: float = bank.front().p.x
+		var max_x: float = bank.back().p.x
+		# The front of the bank is the row closest to the middle of the arena.
+		var front: float = INF
+		for data in bank:
+			front = minf(front, absf(data.p.y))
+		var y = sign_y * (front - WALL_CLEARANCE)
+		var left = min_x - BRICK_EXTENT.x - WALL_OVERHANG
+		var right = max_x + BRICK_EXTENT.x + WALL_OVERHANG
+		if right - left <= WALL_MAX_SPAN:
+			slabs.append({"a": Vector2(left, y), "b": Vector2(right, y)})
+			continue
+		# A wide bank keeps a hole in the middle: the rival still has a line, with work.
+		var middle = (left + right) * 0.5
+		slabs.append({"a": Vector2(left, y), "b": Vector2(middle - WALL_SPLIT_GAP * 0.5, y)})
+		slabs.append({"a": Vector2(middle + WALL_SPLIT_GAP * 0.5, y), "b": Vector2(right, y)})
+	return slabs
+
+func rebuild_bricks(team: int) -> void:
+	# Bring fallen bricks back whole, starting with the ones closest to the goal.
+	var fallen: Array = []
+	for index in range(bricks.size()):
+		if bricks[index].team == team and not bricks[index].alive:
+			fallen.append(index)
+	fallen.sort_custom(func(a, b): return absf(bricks[a].p.y) > absf(bricks[b].p.y))
+	var restored: Array = []
+	for index in fallen.slice(0, REBUILD_BRICKS):
+		bricks[index].hp = BRICK_LIVES
+		bricks[index].alive = true
+		restored.append(index)
+	events.append({"kind": "rebuild", "team": team, "bricks": restored, "p": players[team].p})
+
+func step_laser(team: int, dt: float) -> void:
+	var state: Dictionary = powers[team]
+	if state.laser_time <= 0:
+		return
+	state.laser_time = maxf(0.0, state.laser_time - dt)
+	state.laser_tick -= dt
+	if state.laser_tick > 0 or state.laser_time <= 0:
+		return
+	state.laser_tick = LASER_TICK
+	fire_laser(team)
+
+func laser_length(origin: Vector2, heading: Vector2) -> float:
+	# The beam crosses bumpers and barriers and stops where it leaves the arena.
+	var limit = 2.0 * (HALF_LENGTH + HALF_WIDTH)
+	var step = 0.25
+	var travelled = step
+	while travelled < limit:
+		if not point_inside(walls, origin + heading * travelled):
+			return travelled
+		travelled += step
+	return limit
+
+func fire_laser(team: int) -> void:
+	var origin: Vector2 = players[team].p
+	var heading: Vector2 = forward_direction(team, players[team].angle)
+	var reach = laser_length(origin, heading)
+	var hit: Array = []
+	for index in range(bricks.size()):
+		var brick: Dictionary = bricks[index]
+		if not brick.alive or brick.team == team:
+			continue
+		var extent = BRICK_EXTENT * brick_scale(brick.hp) + Vector2.ONE * LASER_WIDTH
+		var t = segment_box((origin - brick.p).rotated(-brick.rotation), (heading * reach).rotated(-brick.rotation), Vector2.ZERO, extent)
+		if t >= 0:
+			hit.append(index)
+	for index in hit:
+		damage_brick(index, LASER_DAMAGE, team, bricks[index].p)
+	var enemy = 1 - team
+	if segment_circle(origin, heading * reach, players[enemy].p, 0.43 + LASER_WIDTH) >= 0:
+		damage_player(enemy, 1, players[enemy].p)
+	events.append({"kind": "laser", "team": team, "p": origin, "heading": heading, "length": reach})
 
 func credit_destroyed_brick(team: int) -> void:
 	powers[team].destroyed += 1
-	for index in range(POWER_COSTS.size()):
+	for index in range(POWER_SLOTS):
+		var cost = power_charge_cost(team, index)
+		if cost <= 0:
+			continue
 		var previous: int = powers[team].charge[index]
-		powers[team].charge[index] = mini(previous + 1, POWER_COSTS[index])
-		if previous < POWER_COSTS[index] and powers[team].charge[index] == POWER_COSTS[index]:
+		powers[team].charge[index] = mini(previous + 1, cost)
+		if previous < cost and powers[team].charge[index] == cost:
 			events.append({"kind": "power_ready", "power": index, "team": team, "p": players[team].p})
 
 func damage_brick(index: int, damage: int, owner: int, at: Vector2) -> void:
@@ -360,6 +739,7 @@ func damage_brick(index: int, damage: int, owner: int, at: Vector2) -> void:
 	brick.alive = brick.hp > 0
 	events.append({"kind": "brick" if not brick.alive else "brick_hit", "p": at, "team": brick.team})
 	if not brick.alive:
+		cached_firing_angles.clear()
 		credit_destroyed_brick(owner)
 
 func damage_player(team: int, damage: int, at: Vector2) -> void:
@@ -381,19 +761,98 @@ func explode(ball: Dictionary) -> void:
 		damage_player(enemy, EXPLOSION_DAMAGE, ball.p)
 	events.append({"kind": "explosion", "p": ball.p, "team": ball.owner, "radius": EXPLOSION_RADIUS})
 
+func firing_angles(team: int, samples: int = 31) -> Array:
+	if cached_firing_angles.has(team):
+		return cached_firing_angles[team]
+	# Finds reachable enemy bricks and computes the central aiming angle for each.
+	var brick_angles: Dictionary = {}
+	for step in range(samples):
+		var angle = lerpf(-TRACK_LIMIT, TRACK_LIMIT, float(step) / (samples - 1))
+		var outcome = predict_shot(team, angle)
+		if outcome.get("kind", "") != "brick":
+			continue
+		var target_id = outcome.target
+		var brick: Dictionary = bricks[target_id]
+		if brick.team == team:
+			continue
+		if not brick_angles.has(target_id):
+			brick_angles[target_id] = {"min": angle, "max": angle, "p": brick.p}
+		else:
+			brick_angles[target_id]["max"] = angle
+	var found: Array = []
+	for target_id in brick_angles:
+		var info = brick_angles[target_id]
+		var center_angle = (info["min"] + info["max"]) * 0.5
+		found.append({"angle": center_angle, "brick": target_id, "p": info["p"]})
+	found.sort_custom(func(a, b): return a.angle < b.angle)
+	cached_firing_angles[team] = found
+	return found
+
+func angle_for_target(team: int, at: Vector2) -> float:
+	# Check cached firing angles first: O(N) where N is only reachable targets
+	var options = firing_angles(team)
+	var best = INF
+	var best_distance = INF
+	for option in options:
+		var distance: float = option.p.distance_to(at)
+		if distance < best_distance:
+			best_distance = distance
+			best = option.angle
+	if best_distance < 4.5:
+		return best
+	# If touch didn't hit a cached shot trajectory, find nearest alive enemy brick directly
+	var nearest_dist = INF
+	var nearest_brick_p = Vector2.ZERO
+	for brick in bricks:
+		if brick.alive and brick.team != team:
+			var d = brick.p.distance_to(at)
+			if d < nearest_dist:
+				nearest_dist = d
+				nearest_brick_p = brick.p
+	if nearest_dist < 3.2:
+		var goal_y = goal_center(team).y
+		var dy = (goal_y - nearest_brick_p.y) if team == 0 else (nearest_brick_p.y - goal_y)
+		return clampf(atan2(nearest_brick_p.x, dy) / FACING_FACTOR, -TRACK_LIMIT, TRACK_LIMIT)
+	return INF
+
+func assist_heading(team: int) -> Vector2:
+	# Magnetism: if the shot as aimed misses an enemy brick, but a neighbouring angle lands on an
+	# enemy brick, the round leaves on that angle instead.
+	var player: Dictionary = players[team]
+	if team != assist_team:
+		return player.aim
+	var direct = predict_shot(team, player.angle)
+	if direct.get("kind", "") == "brick" and bricks[direct.target].team != team:
+		return player.aim
+	for step in range(1, ASSIST_STEPS + 1):
+		var offset = ASSIST_ANGLE * step / float(ASSIST_STEPS)
+		for side in [-1.0, 1.0]:
+			var angle = clampf(player.angle + offset * side, -TRACK_LIMIT, TRACK_LIMIT)
+			var outcome = predict_shot(team, angle)
+			if outcome.get("kind", "") == "brick" and bricks[outcome.target].team != team:
+				return forward_direction(team, angle)
+	return player.aim
+
 func shoot(team: int, power: int = 0) -> void:
+	# The machine gun keeps the cadence of its own stream; every other shot is single.
+	if power == 2:
+		var pilot: Dictionary = players[team]
+		pilot.cooldown = RAPID_INTERVAL
+		spawn_ball(team, assist_heading(team), power)
+		events.append({"kind": "shot", "p": pilot.p, "team": team, "power": power})
+		return
 	var p: Dictionary = players[team]
 	p.aim = forward_direction(team, p.angle)
-	p.cooldown = RAPID_INTERVAL if power == 2 else FIRE_INTERVAL
-	spawn_ball(team, p.aim, power)
+	p.cooldown = FIRE_INTERVAL
+	spawn_ball(team, assist_heading(team), power)
 	events.append({"kind": "shot", "p": p.p, "team": team, "power": power})
 
-func spawn_ball(team: int, heading: Vector2, power: int) -> void:
+func spawn_ball(team: int, heading: Vector2, power: int, damage: int = 1) -> void:
 	# Shots no longer expire against a wall, so a full arena drops the oldest one instead
 	# of silently refusing to fire.
 	while balls.size() >= MAX_BALLS:
 		balls.remove_at(0)
-	balls.append({"id": next_id, "owner": team, "p": players[team].p + heading * 0.64, "v": heading * BALL_SPEED, "bounces": 0, "boosted": false, "damage": 1, "ttl": BALL_LIFE, "power": power})
+	balls.append({"id": next_id, "owner": team, "p": players[team].p + heading * 0.64, "v": heading * BALL_SPEED, "bounces": 0, "boosted": false, "damage": damage, "ttl": BALL_LIFE, "power": power, "ghost": powers[team].ghost_time > 0})
 	next_id += 1
 
 func advance_ball(ball: Dictionary, dt: float, sweep_obstacles: bool = false, preview: bool = false, future_time: float = 0.0, shooter_position: Vector2 = Vector2.ZERO) -> Dictionary:
@@ -432,7 +891,7 @@ func advance_ball(ball: Dictionary, dt: float, sweep_obstacles: bool = false, pr
 				kind = "player"
 				target = team
 		# Sweep against moving bumpers in their relative frame, including post-bounce time.
-		for obstacle in obstacles:
+		for obstacle in (obstacles if not ball.get("ghost", false) else []):
 			var obstacle_start: Vector2 = obstacle.previous + obstacle.v * (dt - remaining) if sweep_obstacles else obstacle.p
 			var movement: Vector2 = obstacle.v * remaining if sweep_obstacles else Vector2.ZERO
 			if preview:
@@ -459,7 +918,13 @@ func advance_ball(ball: Dictionary, dt: float, sweep_obstacles: bool = false, pr
 				kind = "goal" if brick_count(team) == 0 else "wall"
 				target = 1 - team
 				normal = (start + travel * t - goal_center(team)).normalized()
-		for barrier in barriers:
+		var solid_barriers: Array = barriers if not ball.get("ghost", false) else []
+		if not ball.get("ghost", false):
+			# Raised walls only stop the other side's shots, like the bricks they cover.
+			for defender in range(2):
+				if defender != ball.owner and powers[defender].walls_time > 0:
+					solid_barriers = solid_barriers + wall_slabs[defender]
+		for barrier in solid_barriers:
 			var contact = sweep_capsule(start, travel, barrier.a, barrier.b, BARRIER_RADIUS + BALL_RADIUS)
 			if contact.t < best:
 				best = contact.t
@@ -485,6 +950,19 @@ func advance_ball(ball: Dictionary, dt: float, sweep_obstacles: bool = false, pr
 			return {"kind": kind, "target": target, "damage": ball.get("damage", 1)}
 		match kind:
 			"brick":
+				if powers[bricks[target].team].mirror_time > 0:
+					# The cape hands the shot back as a boosted round: faster, harder and
+					# out of ricochets, so it has to find a target on the way home.
+					ball.owner = bricks[target].team
+					ball.v = -ball.v.normalized() * BALL_SPEED * BOOST_SPEED
+					ball.boosted = true
+					ball.damage = BOOST_DAMAGE
+					ball.p += ball.v.normalized() * 0.02
+					ball.bounces = MAX_BOUNCES
+					if not preview:
+						events.append({"kind": "mirror", "p": ball.p, "team": bricks[target].team})
+					remaining *= 1.0 - best
+					continue
 				damage_brick(target, int(ball.get("damage", 1)), ball.owner, ball.p)
 				if ball.get("power", 0) == 1:
 					explode(ball)
@@ -508,9 +986,17 @@ func advance_ball(ball: Dictionary, dt: float, sweep_obstacles: bool = false, pr
 				balls.clear()
 				return {"kind": kind, "target": target}
 			"wall", "boost", "obstacle":
-				# Every surface reflects, without limit: the shot keeps going until it
-				# reaches a brick, a pilot or an open goal.
+				# Every surface reflects, up to MAX_BOUNCES: after that the shot fades.
 				ball.bounces += 1
+				if ball.bounces > MAX_BOUNCES:
+					# Out of ricochets: the shot fades against this surface.
+					if preview:
+						return {"kind": "spent"}
+					if ball.get("power", 0) == 1:
+						explode(ball)
+					balls.erase(ball)
+					events.append({"kind": "spent", "p": ball.p, "team": ball.owner})
+					return {"kind": "spent"}
 				if kind == "obstacle":
 					# Reflect relative to the moving surface, preserving the arcade shot speed.
 					var shot_speed: float = ball.v.length()
@@ -581,10 +1067,11 @@ func ai_command() -> Dictionary:
 			move = Vector2.ZERO
 			ai_next_fire_check = elapsed + 0.10 + level.fire_gap
 			power = ai_power(outcome, level)
-		elif elapsed >= ai_next_power and can_activate_power(1, 2):
+		else:
 			# A wide fan needs no lined-up shot, so it covers the banks the boss cannot reach.
-			power = 2
-			ai_next_power = elapsed + float(level.get("power_gap", AI_POWER_GAP))
+			power = ai_slot(["air"], level)
+		if power < 0:
+			power = ai_defensive_power(level)
 	return {"move": move, "fire": fire, "power": power}
 
 func ai_power(outcome: Dictionary, level: Dictionary) -> int:
@@ -592,11 +1079,33 @@ func ai_power(outcome: Dictionary, level: Dictionary) -> int:
 	# burst goes first so it does not sit unused behind the cheaper blast.
 	if elapsed < ai_next_power or outcome.get("kind", "") != "brick":
 		return -1
-	for index in [1, 0]:
-		if can_activate_power(1, index):
-			ai_next_power = elapsed + float(level.get("power_gap", AI_POWER_GAP))
-			return index
+	# Heavier powers first, so a cheap one does not keep the expensive kit idle.
+	return ai_slot(["laser", "rapid", "stun", "blast", "ghost"], level)
+
+func ai_slot(wanted: Array, level: Dictionary) -> int:
+	# One power at a time, never before its own pause has run out.
+	if elapsed < ai_next_power:
+		return -1
+	for id in wanted:
+		for index in range(POWER_SLOTS):
+			if power_id(1, index) == id and can_activate_power(1, index):
+				ai_next_power = elapsed + float(level.get("power_gap", AI_POWER_GAP))
+				return index
 	return -1
+
+func ai_defensive_power(level: Dictionary) -> int:
+	# With its wall coming down, the boss reaches for whatever keeps the goal shut.
+	if elapsed < ai_next_power:
+		return -1
+	var standing = brick_count(1)
+	var wanted: Array = []
+	if standing <= 6:
+		wanted.append("rebuild")
+	if standing <= 10:
+		wanted.append("walls")
+	if standing <= 14:
+		wanted.append_array(["mirror", "stun"])
+	return ai_slot(wanted, level)
 
 func ai_angle_score(angle: float) -> float:
 	var distance = absf(angle - players[1].angle)
@@ -646,7 +1155,7 @@ func snapshot() -> Dictionary:
 	var hp = PackedByteArray()
 	for brick in bricks:
 		hp.append(brick.hp)
-	return {"players": players.duplicate(true), "powers": powers.duplicate(true), "brick_hp": hp, "balls": balls.duplicate(true), "obstacles": obstacles.duplicate(true), "obstacle_time": obstacle_time, "scores": scores.duplicate(), "phase": phase, "timer": timer, "winner": winner, "elapsed": elapsed}
+	return {"players": players.duplicate(true), "powers": powers.duplicate(true), "loadouts": loadouts.duplicate(true), "obstacle_stun": obstacle_stun, "brick_hp": hp, "balls": balls.duplicate(true), "obstacles": obstacles.duplicate(true), "obstacle_time": obstacle_time, "scores": scores.duplicate(), "phase": phase, "timer": timer, "winner": winner, "elapsed": elapsed}
 
 func apply_snapshot(data: Dictionary) -> void:
 	players = data.players
@@ -657,6 +1166,7 @@ func apply_snapshot(data: Dictionary) -> void:
 	balls = data.balls
 	obstacles = data.obstacles
 	obstacle_time = data.obstacle_time
+	obstacle_stun = data.get("obstacle_stun", 0.0)
 	scores = data.scores
 	phase = data.phase
 	timer = data.timer
@@ -674,12 +1184,13 @@ func network_snapshot() -> Dictionary:
 		hp.append(brick.hp)
 	var ball_data = PackedFloat32Array()
 	for ball in balls:
-		ball_data.append_array([ball.id, ball.owner, ball.p.x, ball.p.y, ball.v.x, ball.v.y, ball.bounces, 1.0 if ball.get("boosted", false) else 0.0, ball.get("damage", 1), ball.ttl, ball.get("power", 0)])
+		ball_data.append_array([ball.id, ball.owner, ball.p.x, ball.p.y, ball.v.x, ball.v.y, ball.bounces, 1.0 if ball.get("boosted", false) else 0.0, ball.get("damage", 1), ball.ttl, ball.get("power", 0), 1.0 if ball.get("ghost", false) else 0.0])
 	var power_data = PackedFloat32Array()
 	for state in powers:
-		power_data.append_array([state.charge[0], state.charge[1], state.charge[2], state.destroyed, state.rapid_time])
+		power_data.append_array([state.charge[0], state.charge[1], state.charge[2], state.destroyed, state.rapid_time,
+			state.ghost_time, state.laser_time, state.mirror_time, state.walls_time, state.ultimate_windup, state.ultimate_time])
 	var phase_id = ["countdown", "play", "goal", "finished"].find(phase)
-	var match_data = PackedFloat32Array([obstacle_time, scores[0], scores[1], phase_id, timer, winner, elapsed])
+	var match_data = PackedFloat32Array([obstacle_time, scores[0], scores[1], phase_id, timer, winner, elapsed, obstacle_stun])
 	return {"p": player_data, "h": hp, "b": ball_data, "m": match_data, "w": power_data}
 
 func apply_network_snapshot(data: Dictionary) -> bool:
@@ -690,20 +1201,28 @@ func apply_network_snapshot(data: Dictionary) -> bool:
 	var ball_data: PackedFloat32Array = data.b
 	var match_data: PackedFloat32Array = data.m
 	var power_data: PackedFloat32Array = data.w
-	if player_data.size() != 8 or hp.size() != bricks.size() or match_data.size() != 7 or power_data.size() != 10 or ball_data.size() % BALL_FIELDS != 0 or ball_data.size() > MAX_BALLS * BALL_FIELDS:
+	if player_data.size() != 8 or hp.size() != bricks.size() or match_data.size() != 8 or power_data.size() != 22 or ball_data.size() % BALL_FIELDS != 0 or ball_data.size() > MAX_BALLS * BALL_FIELDS:
 		return false
 	for packed in [player_data, ball_data, match_data, power_data]:
 		for value in packed:
 			if not is_finite(value):
 				return false
 	for offset in range(0, ball_data.size(), BALL_FIELDS):
-		if ball_data[offset + 1] not in [0.0, 1.0] or ball_data[offset + 10] not in [0.0, 1.0, 2.0, 3.0]:
+		if ball_data[offset + 1] not in [0.0, 1.0] or ball_data[offset + 10] not in [0.0, 1.0, 2.0, 3.0] or ball_data[offset + 11] not in [0.0, 1.0]:
 			return false
 	for team in range(2):
-		for index in range(3):
-			powers[team].charge[index] = clampi(int(power_data[team * 5 + index]), 0, POWER_COSTS[index])
-		powers[team].destroyed = maxi(0, int(power_data[team * 5 + 3]))
-		powers[team].rapid_time = clampf(power_data[team * 5 + 4], 0, RAPID_SECONDS)
+		var base = team * 11
+		for index in range(POWER_SLOTS):
+			powers[team].charge[index] = clampi(int(power_data[base + index]), 0, maxi(power_charge_cost(team, index), 0))
+		powers[team].destroyed = maxi(0, int(power_data[base + 3]))
+		powers[team].rapid_time = clampf(power_data[base + 4], 0, RAPID_SECONDS)
+		powers[team].ghost_time = clampf(power_data[base + 5], 0, GHOST_SECONDS)
+		powers[team].laser_time = clampf(power_data[base + 6], 0, LASER_SECONDS)
+		powers[team].mirror_time = clampf(power_data[base + 7], 0, MIRROR_SECONDS)
+		powers[team].walls_time = clampf(power_data[base + 8], 0, WALLS_SECONDS)
+		powers[team].ultimate_windup = clampf(power_data[base + 9], 0, ULTIMATE_WINDUP)
+		powers[team].ultimate_time = clampf(power_data[base + 10], 0, THUNDER_SECONDS)
+		powers[team].ultimate_id = power_id(team, 2)
 		var angle = clampf(player_data[team * 4], -TRACK_LIMIT, TRACK_LIMIT)
 		players[team].angle = angle
 		players[team].p = track_position(team, angle)
@@ -712,11 +1231,11 @@ func apply_network_snapshot(data: Dictionary) -> bool:
 		players[team].stun = maxf(0.0, player_data[team * 4 + 2])
 		players[team].cooldown = maxf(0.0, player_data[team * 4 + 3])
 	for i in range(bricks.size()):
-		bricks[i].hp = mini(int(hp[i]), BRICK_LIVES)
+		bricks[i].hp = mini(int(hp[i]), BRICK_MAX_LIVES)
 		bricks[i].alive = bricks[i].hp > 0
 	balls.clear()
 	for offset in range(0, ball_data.size(), BALL_FIELDS):
-		balls.append({"id": int(ball_data[offset]), "owner": int(ball_data[offset + 1]), "p": Vector2(ball_data[offset + 2], ball_data[offset + 3]), "v": Vector2(ball_data[offset + 4], ball_data[offset + 5]), "bounces": int(ball_data[offset + 6]), "boosted": ball_data[offset + 7] > 0.5, "damage": int(ball_data[offset + 8]), "ttl": ball_data[offset + 9], "power": int(ball_data[offset + 10])})
+		balls.append({"id": int(ball_data[offset]), "owner": int(ball_data[offset + 1]), "p": Vector2(ball_data[offset + 2], ball_data[offset + 3]), "v": Vector2(ball_data[offset + 4], ball_data[offset + 5]), "bounces": int(ball_data[offset + 6]), "boosted": ball_data[offset + 7] > 0.5, "damage": int(ball_data[offset + 8]), "ttl": ball_data[offset + 9], "power": int(ball_data[offset + 10]), "ghost": ball_data[offset + 11] > 0.5})
 	obstacle_time = maxf(0.0, match_data[0])
 	for i in range(obstacles.size()):
 		obstacles[i].previous = obstacles[i].p
@@ -728,6 +1247,7 @@ func apply_network_snapshot(data: Dictionary) -> bool:
 	timer = match_data[4]
 	winner = int(match_data[5])
 	elapsed = match_data[6]
+	obstacle_stun = clampf(match_data[7], 0, STUN_POWER_SECONDS)
 	return true
 
 static func segment_circle(start: Vector2, delta: Vector2, center: Vector2, radius: float) -> float:
