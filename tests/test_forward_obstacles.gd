@@ -21,7 +21,7 @@ func active():
 	return r
 
 func shot(r, pos: Vector2, direction: Vector2, bounced: int = 0) -> Dictionary:
-	var b = {"id": r.next_id, "owner": 0, "p": pos, "v": direction * Rules.BALL_SPEED, "bounces": bounced, "damage": 1, "boosted": false, "ttl": 4.0}
+	var b = {"id": r.next_id, "owner": 0, "p": pos, "v": direction * Rules.BALL_SPEED, "bounces": bounced, "damage": 1, "boosted": false, "ttl": Rules.BALL_LIFE}
 	r.next_id += 1
 	r.balls.append(b)
 	return b
@@ -63,7 +63,7 @@ func run() -> void:
 	r = active()
 	b = shot(r, Vector2(0, 2.4), Vector2.UP, 1)
 	r.advance_ball(b, 0.05)
-	check(r.balls.size() == 1 and b.bounces == 2 and b.ricochets_left == 1, "Obstacle revives a spent ricochet budget and grants one future wall bounce")
+	check(r.balls.size() == 1 and b.bounces == 2, "An already bounced shot keeps going after the obstacle")
 	r = active()
 	r.shoot(0)
 	r.advance_ball(r.balls[0], 0.01)

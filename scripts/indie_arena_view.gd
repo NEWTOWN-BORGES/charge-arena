@@ -15,6 +15,8 @@ const Skins = preload("res://scripts/skins.gd")
 const SOFT_DISC = preload("res://shaders/soft_disc.gdshader")
 const GLASS = preload("res://shaders/glass.gdshader")
 const GUIDE_DOTS = 30
+# Projectile size per power: normal, explosive, machine-gun round, air pellet.
+const POWER_BALL_SCALE = [1.0, 1.4, 0.95, 0.7]
 # A closer gameplay framing makes the bevels, pilots and particles easier to
 # read while the enlarged walls still remain fully visible.
 const LANDSCAPE_SIZE = 17.0 * Rules.MAP_SCALE
@@ -1447,11 +1449,18 @@ func update_state(rules, local_team: int, dt: float, motion_alpha: float = 1.0) 
 	for ball in rules.balls:
 		active.append(ball.id)
 		# Aura and trail take the shooter's skin colour; the floor glow keeps the team colour.
+		var kind: int = int(ball.get("power", 0))
 		var color = GOLD if ball.get("boosted", false) else shot_colors[ball.owner]
+		# Explosive rounds and air pellets keep their own colour, boosted or not.
+		if kind == 1:
+			color = Rules.POWER_COLORS[0]
+		elif kind == 3:
+			color = Rules.POWER_COLORS[2]
 		if not projectiles.has(ball.id):
 			var root = Node3D.new()
 			add_child(root)
-			sphere(root, Vector3.ZERO, Vector3.ONE * 0.26, Color("fff3d5"), true)
+			var core = sphere(root, Vector3.ZERO, Vector3.ONE * 0.26, Color("fff3d5"), true)
+			core.name = "Core"
 			var aura = sphere(root, Vector3.ZERO, Vector3.ONE * 0.39, Color(color, 0.28), true)
 			aura.name = "Aura"
 			soft_disc(root, Vector3(0, -0.53, 0), Vector2(1.55, 1.55), Color(CYAN if ball.owner == 0 else CORAL, 0.42))
@@ -1465,7 +1474,10 @@ func update_state(rules, local_team: int, dt: float, motion_alpha: float = 1.0) 
 				var pos: Vector2 = old.p.lerp(ball.p, motion_alpha)
 				node.position = Vector3(pos.x, 0.58, pos.y)
 		node.get_node("Aura").material_override = material(Color(color, 0.45 if ball.get("boosted", false) else 0.28), true)
-		node.get_node("Aura").scale = Vector3.ONE * (0.52 if ball.get("boosted", false) else 0.39)
+		# A heavy explosive round, a lean burst round: size alone says which is which.
+		var swell: float = POWER_BALL_SCALE[clampi(kind, 0, POWER_BALL_SCALE.size() - 1)]
+		node.get_node("Aura").scale = Vector3.ONE * (0.52 if ball.get("boosted", false) else 0.39) * swell
+		node.get_node("Core").scale = Vector3.ONE * 0.26 * swell
 		if ball_previous.has(ball.id) and ball_previous[ball.id].bounces != ball.bounces:
 			burst(ball.p, color, false)
 		ball_previous[ball.id] = {"p": ball.p, "bounces": ball.bounces}
@@ -1493,7 +1505,13 @@ func update_state(rules, local_team: int, dt: float, motion_alpha: float = 1.0) 
 		if effect.gravity:
 			effect.v.y -= dt * 6
 		effect.node.position += effect.v * dt
-		effect.node.scale = effect.base * clampf(effect.ttl / effect.life, 0.001, 1)
+		var remaining = clampf(effect.ttl / effect.life, 0.001, 1)
+		if effect.get("grow", false):
+			# Blast ring: opens outwards and fades instead of shrinking away.
+			effect.node.scale = effect.base * lerpf(0.25, 1.0, 1.0 - remaining)
+			effect.node.material_override = material(Color(effect.tint, snappedf(remaining, 0.1) * 0.9), true)
+		else:
+			effect.node.scale = effect.base * remaining
 		if effect.gravity:
 			effect.node.rotate_x(dt * 4)
 			effect.node.rotate_z(dt * 2)
@@ -1563,6 +1581,18 @@ func burst(pos: Vector2, color: Color, debris: bool = true) -> void:
 		var angle = float(i) * 2.399
 		var life = 0.55 if debris else 0.26
 		effects.append({"node": node, "v": Vector3(cos(angle) * 2, 1.5 + i * 0.08, sin(angle) * 2), "ttl": life, "life": life, "gravity": debris, "base": Vector3.ONE})
+
+func explosion(pos: Vector2, radius: float) -> void:
+	# The blast radius has to be readable at a glance: a ring that opens to its real size.
+	var tint: Color = Rules.POWER_COLORS[0]
+	if effects.size() < effect_limit:
+		var ring = torus(self, Vector3(pos.x, 0.34, pos.y), radius, 0.09, Color(tint, 0.9), true)
+		ring.scale = Vector3.ONE * 0.25
+		effects.append({"node": ring, "v": Vector3.ZERO, "ttl": 0.42, "life": 0.42, "gravity": false, "base": Vector3.ONE, "grow": true, "tint": tint})
+	burst(pos, tint, true)
+
+func power_flash(pos: Vector2, index: int) -> void:
+	burst(pos, Rules.POWER_COLORS[clampi(index, 0, Rules.POWER_COLORS.size() - 1)], false)
 
 func world_at(screen: Vector2) -> Vector2:
 	var point = Plane(Vector3.UP, 0.58).intersects_ray(camera.project_ray_origin(screen), camera.project_ray_normal(screen))

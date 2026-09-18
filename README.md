@@ -12,13 +12,33 @@ O menu foi pensado para o polegar: fica encostado ao fundo do ecrã, com a leitu
 
 **Carrossel de níveis.** Por trás do menu aparece a arena do nível escolhido, com o boss e os seus tijolos, o nome e o desafio por cima e pontos de página por baixo. Deslizar o dedo para a esquerda ou direita sobre a arena muda de nível (no PC: arrastar com o rato ou setas ← / →). Um toque, um arrasto curto ou vertical e deslizes sobre os botões não mudam o nível. O nome muda de imediato e a arena é reconstruída quando o dedo pára (cerca de 0,1 s num PC). O menu abre no primeiro nível ainda não vencido e volta ao último nível jogado. O PvP (criar sala ou entrar por IP) abre num painel próprio. Na vertical, os painéis de níveis e PvP também ficam junto ao fundo.
 
-No PC: **A / D ou setas esquerda / direita** para deslocar o personagem ao longo do arco e mudar a direção do disparo. **O rato não aponta:** manter o botão esquerdo pressionado apenas dispara. Escape regressa ao menu. No telemóvel, em orientação vertical: arrastar o polegar esquerdo lateralmente para mover e manter o botão **Disparar** do lado direito pressionado. Não é necessário arrastar esse botão. Largar ou arrastar para fora dele interrompe o disparo. Os dois controlos aceitam toque simultâneo. W/S e deslocamento vertical do controlo esquerdo não permitem sair do arco. Em **OPÇÕES**, a sensibilidade do movimento tem cinco níveis, de Muito lenta a Muito rápida.
+No PC: **A / D ou setas esquerda / direita** para deslocar o personagem ao longo do arco e mudar a direção do disparo. **O rato não aponta:** manter o botão esquerdo pressionado apenas dispara. As teclas **1, 2 e 3** lançam os poderes. Escape regressa ao menu. No telemóvel, em orientação vertical: arrastar o polegar esquerdo lateralmente para mover e manter o botão **Disparar** do lado direito pressionado. Não é necessário arrastar esse botão. Largar ou arrastar para fora dele interrompe o disparo. Os dois controlos aceitam toque simultâneo. W/S e deslocamento vertical do controlo esquerdo não permitem sair do arco. Em **OPÇÕES**, a sensibilidade do movimento tem cinco níveis, de Muito lenta a Muito rápida.
 
 ## Orientação vertical
 
-No telemóvel o jogo fica bloqueado na vertical. A interface mantém todos os elementos da versão horizontal, reorganizados em coluna: cabeçalho com **OPÇÕES** e **MENU**; placar e modo de jogo; cartão do adversário junto à baliza de cima; arena a toda a largura; cartão do jogador junto à baliza de baixo (no cliente PvP os cartões trocam, porque joga na baliza de cima); controlos para os polegares no fundo, com o contador de FPS e o aviso de paralisia entre eles. As dicas que antes ficavam sob os cartões laterais passam para o lado direito de cada cartão. Contagem, golos e vitória aparecem centrados na arena. No menu, a arena surge por cima do painel.
+No telemóvel o jogo fica bloqueado na vertical. A interface mantém todos os elementos da versão horizontal, reorganizados em coluna: cabeçalho com **OPÇÕES** e **MENU**; placar e modo de jogo; cartão do adversário junto à baliza de cima; arena a toda a largura; cartão do jogador junto à baliza de baixo (no cliente PvP os cartões trocam, porque joga na baliza de cima); controlos para os polegares no fundo, com os três botões de poderes, o contador de FPS e o aviso de paralisia entre eles. As dicas que antes ficavam sob os cartões laterais passam para o lado direito de cada cartão. Contagem, golos e vitória aparecem centrados na arena. No menu, a arena surge por cima do painel.
 
 A escala do conteúdo acompanha a forma do ecrã: 720 unidades no lado curto, `content_scale_size` 720×1280 na vertical e 1280×720 na horizontal. No PC a janela continua horizontal e o layout é o mesmo de antes; redimensionar a janela para vertical mostra a versão de telemóvel. A câmara mede a extensão real do estádio (faróis laterais incluídos) e enquadra-o na faixa entre os cartões. Em telemóveis com recorte de câmara, cabeçalho e rodapé descem/sobem pela área segura do ecrã.
+
+## Poderes
+
+Três poderes ganhos dentro de cada partida, destruindo tijolos do adversário. Cada tijolo destruído carrega **um ponto em cada um dos três**, e cada poder tem a sua própria carga: ao usar um, só esse volta a zero e recomeça a encher; os outros mantêm o que tinham.
+
+| Botão | Poder | Custo | Efeito |
+| --- | --- | --- | --- |
+| 1 | **Explosão** | 5 tijolos | Uma bala que rebenta ao acertar (ou ao fim dos 4 s): **2 de dano a tudo o que for inimigo num raio de 1,65**, tijolos e piloto. O impacto direto tira a vida normal antes da explosão. |
+| 2 | **Metralhadora** | 10 tijolos | **3 segundos a disparar sozinho**: uma bala a cada 6 passos da simulação, ou seja 0,1 s — exatamente **30 balas**. Não é preciso manter o dedo no botão; durante a rajada os outros poderes ficam bloqueados. |
+| 3 | **Rajada de ar** | 15 tijolos | **9 balas de uma vez** num leque de ±0,72 rad à frente do piloto, com um desvio aleatório em cada uma, por isso nunca sai duas vezes igual. |
+
+No telemóvel os botões ficam em fila entre o joystick e o botão de disparo, na faixa livre por baixo da arena. Na horizontal essa faixa é o próprio estádio — e o teu piloto —, por isso passam para uma coluna entre o teu cartão e a arena, onde não tapam nada. O anel à volta de cada um mostra a carga (por exemplo `3/5`), acende quando o poder está pronto e, na metralhadora, passa a contar os segundos que faltam. No PC são as teclas **1, 2 e 3**.
+
+As balas dos poderes seguem as mesmas regras das outras: ricocheteiam até acertar num alvo, apanham aceleradores e atravessam os tijolos da própria equipa. A bala explosiva é maior e cor de âmbar, as da rajada são mais pequenas e azul-claro. Um poder só pode ser lançado em jogo, com o piloto de pé e sem outra rajada a decorrer.
+
+**O boss também usa poderes.** Ganha carga pela mesma regra — destruindo os teus tijolos — e gasta-a com critério: só lança a explosão ou a metralhadora quando já tem um tiro certo num tijolo (a metralhadora primeiro, para não ficar parada atrás da explosão mais barata), e guarda a rajada de ar para quando não tem ângulo nenhum, porque o leque não precisa de pontaria. Entre dois poderes espera um intervalo próprio: **8 / 5 / 3 segundos** em Fácil / Normal / Difícil no jogo rápido, e na campanha de **9,5 s no primeiro boss a 3 s no último**, com a dificuldade escolhida a deslocar toda a curva. O cartão do adversário mostra três pontos, um por poder, que acendem quando ele o tem pronto — e qualquer poder lançado, teu ou dele, faz som.
+
+**PvP.** O cliente envia o pedido num canal fiável próprio, para não se perder com um pacote de movimento; as cargas, a rajada e o tipo de cada bala vão no estado sincronizado, e o cliente reproduz a explosão na posição onde a bala desapareceu.
+
+**Valores ajustáveis** em `scripts/arena_rules.gd`: `POWER_COSTS`, `EXPLOSION_RADIUS`, `EXPLOSION_DAMAGE`, `RAPID_SECONDS`, `RAPID_INTERVAL`, `AIR_PELLETS`, `AIR_SPREAD` e o `power_gap` de `AI_LEVELS`; na campanha, o `power_gap` de `Campaign.ai_profile`.
 
 ## Música
 
@@ -62,7 +82,7 @@ Dez níveis PvE. Cada um tem arena, desafio e boss próprios; vencer desbloqueia
 | 9 | Veio Profundo | hexágono | muralha | barreira, duas órbitas e vagonetas, sem aceleradores | Mineiro |
 | 10 | Coroa do Eclipse | octógono | chevron | monólito, três luas e defletores em V | Sentinela |
 
-Com seis skins e dez níveis, quatro bosses repetem-se na segunda metade, com IA mais forte. O boss usa a skin e os tijolos do seu tema. A força do boss sobe de nível para nível (menos pausa entre disparos, mais velocidade, esquiva a partir do nível 3) e a dificuldade escolhida no menu desloca toda a curva: FÁCIL abranda cada boss, DIFÍCIL acelera-o.
+Com seis skins e dez níveis, quatro bosses repetem-se na segunda metade, com IA mais forte. O boss usa a skin e os tijolos do seu tema. A força do boss sobe de nível para nível (menos pausa entre disparos, mais velocidade, esquiva a partir do nível 3, poderes cada vez mais seguidos) e a dificuldade escolhida no menu desloca toda a curva: FÁCIL abranda cada boss, DIFÍCIL acelera-o.
 
 **Mapas por dados.** `scripts/arena_rules.gd` guarda o mapa ativo (`map`): contorno, aceleradores, disposição dos tijolos, obstáculos (`fixed`, `slide` com eixo, `orbit`) e barreiras interiores (muros arredondados que gastam ricochete como uma parede). Balizas e arcos dos pilotos nunca mudam, por isso regras de golo, IA, guia de mira e rede são as mesmas. O mapa de omissão reproduz exatamente a arena original, usada no jogo rápido e no PvP. `scripts/campaign.gd` tem os dez níveis; a arena 3D é reconstruída só quando o mapa muda. Pilares fixos têm tampa dourada e obstáculos móveis tampa escura; deslizadores e órbitas mostram o percurso pintado no chão.
 
@@ -116,9 +136,10 @@ Referências técnicas: [antialiasing do Godot](https://docs.godotengine.org/en/
 - Mapa hexagonal baseado em `Drawing3-Layout1.pdf`, com uma baliza em cada ponta e quatro grupos de tijolos nas paredes inclinadas.
 - Cada personagem desloca-se exclusivamente no seu arco, à frente da respetiva baliza. A orientação é determinada pela posição no arco: dispara sempre em frente. Jogador, IA e cliente PvP obedecem à mesma regra.
 - Cada piloto tem uma barra de **5 vidas**. Cada bola inimiga retira uma vida; ao chegar a zero, o piloto fica paralisado durante **0,5 segundo** e recupera as cinco vidas ao voltar. Os próprios projéteis nunca atingem o atirador, mesmo depois de ricochetes.
-- Dois obstáculos circulares atravessam a região central na horizontal, em pistas separadas e sentidos opostos. Cada contacto reflete a bola e acrescenta **+1 ricochete disponível**, sem gastar os que já tinha. Mesmo uma bola sem ricochetes disponíveis pode receber outro ao atingir um obstáculo. A colisão considera o movimento do obstáculo durante o frame para evitar atravessamentos.
-- A bola começa com **1 ricochete disponível**. Paredes, escudos e aceleradores gastam um por contacto; sem nenhum disponível, a bola desaparece ao tocá-los. Os extras dos obstáculos acumulam, mas a bola continua limitada a 4 segundos de existência. Desaparece também ao acertar num tijolo ou personagem.
-- Os arcos dourados nas paredes laterais são aceleradores: refletem a bola, reproduzem um som de carga próprio, aumentam a velocidade para **1,65×** e o dano para **2**. Cada contacto gasta um ricochete disponível; velocidade e dano não se multiplicam com boosts sucessivos.
+- **A bola ricocheteia até acertar no alvo.** Paredes, escudos, barreiras, aceleradores e obstáculos refletem-na sempre, sem limite de ricochetes. O disparo só acaba ao atingir um tijolo inimigo, o piloto adversário ou a baliza aberta. Já não existe orçamento de ricochetes nem o bónus de +1 dos obstáculos: a bola simplesmente continua.
+- Como salvaguarda, uma bola que nunca chegue a um alvo desaparece ao fim de **12 segundos** (`BALL_LIFE`). Serve só para limpar um disparo preso num trajeto que se repete; na prática quase todos acertam muito antes. Se a arena chegar ao limite de 128 bolas, a mais antiga sai para dar lugar ao novo disparo, em vez de o tiro falhar.
+- Dois obstáculos circulares atravessam a região central na horizontal, em pistas separadas e sentidos opostos. Refletem a bola sobre a superfície em movimento, mantendo a velocidade do disparo. A colisão considera o movimento do obstáculo durante o frame para evitar atravessamentos.
+- Os arcos dourados nas paredes laterais são aceleradores: refletem a bola, reproduzem um som de carga próprio, aumentam a velocidade para **1,65×** e o dano para **2**. Velocidade e dano não se multiplicam com boosts sucessivos.
 - Os próprios tijolos são imunes e transparentes aos disparos da sua equipa: a bola atravessa-os e pode continuar até uma parede, obstáculo ou alvo inimigo. Esta regra aplica-se igualmente ao jogador, à IA e ao PvP.
 - Cada tijolo tem **3 vidas**. Um disparo normal tira 1 vida e um acelerado tira 2. O tamanho e a colisão diminuem de 100% para 76% e depois 52%; com zero vidas, o tijolo desaparece. As três marcas no topo mostram as vidas restantes.
 - Existem 20 tijolos em cada grupo (filas de 6, 5, 4, 3 e 2), totalizando 40 por jogador. Destruir os dois grupos adversários desbloqueia a baliza. Enquanto há tijolos, um escudo de energia protege a entrada.
@@ -127,7 +148,7 @@ Referências técnicas: [antialiasing do Godot](https://docs.godotengine.org/en/
 - O atirador fica protegido do próprio projétil durante toda a trajetória.
 - A IA procura posições no arco que permitam atingir os tijolos adversários, favorecendo destruir os mais frágeis e aproveitar o dano dos boosts. Prevê colisões e movimento dos obstáculos, verifica novamente a trajetória antes de disparar e procura marcar quando a baliza abre. Evita tiros sem objetivo e desvia-se de ameaças próximas; a previsão não conhece decisões futuras do adversário. A pesquisa é repartida por vários frames.
 
-**Valores ajustáveis:** 5 vidas por piloto, paralisia de 0,5 s, velocidade do boost 1,65×, 20 tijolos por grupo, todos os tijolos necessários para desbloquear a baliza e limite de 3 golos. O PDF não inclui cotas; as dimensões e o comprimento dos arcos foram adaptados para manter o mapa legível no ecrã. Constantes principais em `scripts/arena_rules.gd`: `PLAYER_LIVES`, `TRACK_RADIUS`, `TRACK_LIMIT`, `FACING_FACTOR`, `OBSTACLE_RADIUS`, `OBSTACLE_TRAVEL`, `OBSTACLE_FREQUENCY`, `BRICK_ROWS`, `BRICK_LIVES`, `BOOST_SPEED`, `BOOST_DAMAGE`, `STUN_SECONDS` e `WIN_SCORE`.
+**Valores ajustáveis:** 5 vidas por piloto, paralisia de 0,5 s, velocidade do boost 1,65×, 20 tijolos por grupo, todos os tijolos necessários para desbloquear a baliza e limite de 3 golos. O PDF não inclui cotas; as dimensões e o comprimento dos arcos foram adaptados para manter o mapa legível no ecrã. Constantes principais em `scripts/arena_rules.gd`: `PLAYER_LIVES`, `TRACK_RADIUS`, `TRACK_LIMIT`, `FACING_FACTOR`, `OBSTACLE_RADIUS`, `OBSTACLE_TRAVEL`, `OBSTACLE_FREQUENCY`, `BRICK_ROWS`, `BRICK_LIVES`, `BOOST_SPEED`, `BOOST_DAMAGE`, `STUN_SECONDS`, `BALL_LIFE` e `WIN_SCORE`.
 
 ## PvP por ligação direta
 
@@ -178,6 +199,7 @@ godot --headless --path . --script res://tests/test_music.gd
 godot --headless --path . --script res://tests/test_skins.gd
 godot --headless --path . --script res://tests/test_gameplay_aids.gd
 godot --headless --path . --script res://tests/test_campaign.gd
+godot --headless --path . --script res://tests/test_powers.gd
 ```
 
 Validação gráfica das instâncias e captura com medição dos perfis (precisa de GPU; omitir `--headless`):
@@ -211,7 +233,7 @@ godot --headless --path . --script res://tests/test_network.gd -- --client
 - `tools/compose_music.py` e `tools/compose_skin_music.py`: composição e mistura da música (excluídos do APK).
 - `tests/`: testes de regras e comunicação entre anfitrião e cliente.
 
-Poderes especiais e personagens finais do vídeo ainda não fazem parte deste protótipo. O objetivo é validar o ciclo de movimentar-se para apontar, disparar, paralisar, abrir a baliza e marcar.
+Os personagens finais do vídeo ainda não fazem parte deste protótipo. O objetivo é validar o ciclo de movimentar-se para apontar, disparar, usar os poderes ganhos, paralisar, abrir a baliza e marcar.
 
 ## Visual indie — mapa hexagonal / revisão 06
 
@@ -241,3 +263,7 @@ O protocolo de rede desta revisão sincroniza as posições em arco, orientaçã
 - Menu, painel de vídeo e partida foram renderizados e revistos. Capturas atuais em `preview-menu-r06.png`, `preview-settings-r06.png`, `preview-gameplay-r06.png` (1280 × 720) e `preview-mobile-r06.png` (1200 × 554).
 - Ensaio local na NVIDIA GeForce 210, a 1200 × 554, VSync desligado, três segundos por perfil após aquecimento: Leve/limite 60 = **25,9 FPS**, Equilibrado/limite 90 = **19,7 FPS**, Refinado/limite 120 = **12,8 FPS**; cerca de 389–394 chamadas de desenho por frame para a cena completa e interface. É uma medição curta neste PC, não um benchmark de telemóvel. Não foram atingidos nem validados 60/90/120 FPS reais neste hardware. Log em `polish-visual.log`.
 - O dispositivo de áudio do ambiente de teste estava indisponível; a verificação visual utilizou o driver Dummy. Sons sintetizados incluídos, mas a reprodução audível ainda precisa de verificação.
+- **Poderes: 89 verificações passaram** em `tests/test_powers.gd` — cargas e limites, dano em área dentro e fora do raio, uma bala explosiva disparada pelo arco até detonar, as 30 balas da rajada, o leque de 9 balas sempre diferente, o boss a ganhar e gastar poderes com ritmos distintos por dificuldade e por nível, o estado que viaja na rede e os botões nas duas orientações (sem tapar cartões, contador de FPS, aviso de paralisia nem o estádio). Os outros 13 scripts de teste foram repetidos e passam todos.
+- Dois ajustes saíram destes testes: a rajada usava um intervalo de 0,10 s que na grelha de 60 Hz escorregava para 7 frames e dava só 26 balas (`RAPID_INTERVAL` passou a 0,09, que dá 6 frames certos), e o resíduo do float no cronómetro da rajada oferecia uma 31.ª bala.
+- **Ricochete sem limite:** os 14 scripts de teste voltaram a passar depois da mudança. As verificações que descreviam o orçamento de ricochetes foram reescritas para a regra nova — uma bola atravessa a arena doze vezes seguidas (24 contactos com parede) e continua viva, o acelerador volta a carregar uma bola já ressaltada sem acumular velocidade nem dano, e a salvaguarda dos 12 s continua a limpar um disparo que nunca chega a um alvo. Na simulação de 45 s com a IA havia **18 bolas em jogo** no fim, ou seja a mudança não enche a arena: os disparos passam a acertar mais cedo, não a durar mais.
+- APK gerado e assinado: `outputs/charge-arena-0.7.0-ricochete.apk` (94,5 MB, `org.chargearena.playtest`, versionCode 13, arm64-v8a + armeabi-v7a + x86_64, minSdk 24). **Ainda não foi instalado nem corrido num aparelho real** — a validação em telemóvel continua por fazer.

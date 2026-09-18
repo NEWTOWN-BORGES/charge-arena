@@ -2,8 +2,14 @@ extends Control
 const Skins = preload("res://scripts/skins.gd")
 const GameSettings = preload("res://scripts/game_settings.gd")
 const Campaign = preload("res://scripts/campaign.gd")
+const Rules = preload("res://scripts/arena_rules.gd")
 const STICK_RADIUS = 62.0
 const FIRE_RADIUS = 76.0
+# Power buttons sit in the free band between the two thumb controls, above the FPS line.
+const POWER_RADIUS = 40.0
+const POWER_GAP = 100.0
+const POWER_RISE = 176.0
+const POWER_LABELS = ["EXPLOSÃO", "METRALHA", "RAJADA"]
 signal play_requested
 signal host_requested
 signal join_requested(address: String)
@@ -46,6 +52,10 @@ var touch_fire = false
 var move_center = Vector2.ZERO
 var fire_center = Vector2.ZERO
 var fire_home = Vector2.ZERO
+var power_centers: Array = [Vector2.ZERO, Vector2.ZERO, Vector2.ZERO]
+# One-shot request, read once by the match loop; the flash is only the press animation.
+var power_request = -1
+var power_flash: Array = [0.0, 0.0, 0.0]
 var difficulty_buttons: Array = []
 var guide_choice: CheckButton
 var sensitivity_choice: OptionButton
@@ -542,6 +552,10 @@ func _process(dt: float) -> void:
 	if unlock_timer > 0:
 		unlock_timer = maxf(unlock_timer - dt, 0)
 		queue_redraw()
+	for index in range(power_flash.size()):
+		if power_flash[index] > 0:
+			power_flash[index] = maxf(power_flash[index] - dt, 0)
+			queue_redraw()
 	if skins_overlay.visible and is_instance_valid(viewer_pilot):
 		animate_viewer(dt)
 
@@ -587,7 +601,7 @@ func build_menu() -> void:
 	# the bottom of the screen, that is where a thumb already rests.
 	list.add_child(label("✦  CIRCUITO AURORA", 13, CYAN, true))
 	list.add_child(label("CHARGE ARENA", 34, WHITE, true))
-	list.add_child(label("Destrói as defesas do rival e marca 3 golos.", 15, MUTED))
+	list.add_child(label("Destrói as defesas do rival e marca 2 golos.", 15, MUTED))
 	menu_status = label("Toque: esquerda move, direita dispara · PC: A/D + clique", 13, MUTED)
 	menu_status.clip_text = true
 	menu_status.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
@@ -1037,6 +1051,14 @@ func layout() -> void:
 		message_center = size * 0.5
 		arena_rect = Rect2(Vector2.ZERO, size)
 		touch_top = size.y * 0.42
+	# Powers: a row between the thumb controls on a phone, where the band under the arena is
+	# free; on a wide screen the middle of that band is the stadium and your own pilot, so
+	# they take the empty strip between your card and the arena instead.
+	for index in range(power_centers.size()):
+		if vertical:
+			power_centers[index] = Vector2(size.x * 0.5 + (index - 1) * POWER_GAP, size.y - safe_bottom - POWER_RISE)
+		else:
+			power_centers[index] = Vector2(card_rects[0].end.x + 52, card_rects[0].position.y + 66 + index * 85)
 	for result_button in [next_button, replay, levels_button]:
 		result_button.size = Vector2(260, 50)
 	place_result_buttons()
@@ -1138,6 +1160,26 @@ func reset_touch() -> void:
 	touch_fire = false
 	move_center = move_home
 	fire_center = fire_home
+	power_request = -1
+
+func power_at(point: Vector2) -> int:
+	for index in range(power_centers.size()):
+		if point.distance_to(power_centers[index]) <= POWER_RADIUS + 8:
+			return index
+	return -1
+
+func request_power(index: int) -> void:
+	# Held until the next match tick reads it, so a tap is never lost between frames.
+	if index < 0 or index >= power_centers.size():
+		return
+	power_request = index
+	power_flash[index] = 0.22
+	queue_redraw()
+
+func take_power() -> int:
+	var index = power_request
+	power_request = -1
+	return index
 
 func _input(event: InputEvent) -> void:
 	if mode == "menu":
@@ -1147,6 +1189,11 @@ func _input(event: InputEvent) -> void:
 		return
 	if event is InputEventScreenTouch:
 		if event.pressed:
+			# Power buttons sit between the thumb controls, so they are tested first.
+			var slot = power_at(event.position)
+			if slot >= 0:
+				request_power(slot)
+				return
 			if event.position.y < touch_top:
 				return
 			if event.position.x < size.x * 0.5:
@@ -1187,7 +1234,7 @@ func panel(rect: Rect2, color: Color = Color(0.05, 0.10, 0.12, 0.88)) -> void:
 
 func update_match(rules, status: String) -> void:
 	# The HUD only reads display fields; no full network snapshot allocation per frame.
-	match_data = {"players": rules.players, "bricks": rules.bricks, "scores": rules.scores, "phase": rules.phase, "timer": rules.timer, "winner": rules.winner}
+	match_data = {"players": rules.players, "bricks": rules.bricks, "scores": rules.scores, "phase": rules.phase, "timer": rules.timer, "winner": rules.winner, "powers": rules.powers}
 	network_status = status
 	var finished = mode != "menu" and rules.phase == "finished" and mode != "client"
 	var in_campaign = not level_info.is_empty()
@@ -1503,6 +1550,8 @@ func player_card(rect: Rect2, side: int, t: int) -> void:
 		draw_line(at + Vector2(318, 18), at + Vector2(318, rect.size.y - 18), Color("334f51"), 1, true)
 		write(tips[0][0], at + Vector2(340, 46), 13, tips[0][1], tips[0][2])
 		write(tips[1][0], at + Vector2(340, 70), 12, tips[1][1], tips[1][2])
+		if side == 1:
+			power_pips(at + Vector2(340, 92), t)
 	else:
 		var center = at.x + 100
 		write(role, at + Vector2(17, 24), 10, MUTED, true)
@@ -1513,6 +1562,18 @@ func player_card(rect: Rect2, side: int, t: int) -> void:
 		var tip_x = 49.0 if side == 0 else size.x - 221
 		write(tips[0][0], Vector2(tip_x, 437), 13, tips[0][1], tips[0][2])
 		write(tips[1][0], Vector2(tip_x, 461), 12, tips[1][1], tips[1][2])
+		if side == 1:
+			power_pips(Vector2(tip_x, 485), t)
+
+func power_pips(at: Vector2, t: int) -> void:
+	# Which of the rival's powers are charged, in the same colours as your own buttons.
+	if not match_data.has("powers") or t >= match_data.powers.size():
+		return
+	var state: Dictionary = match_data.powers[t]
+	write("PODERES", at, 9, MUTED, true)
+	for index in range(Rules.POWER_COSTS.size()):
+		var ready: bool = state.charge[index] >= Rules.POWER_COSTS[index]
+		draw_circle(at + Vector2(56 + index * 15, -3), 5, Rules.POWER_COLORS[index] if ready else Color("284349"), true, -1, true)
 
 func player_life_bar(at: Vector2, hp: int, color: Color) -> void:
 	# Five separate cells stay legible on small displays and make every hit clear.
@@ -1620,3 +1681,53 @@ func _draw() -> void:
 			var shot_icon = PackedVector2Array([center + Vector2(7, -22), center + Vector2(-11, 2), center + Vector2(7, 2), center + Vector2(-7, 22)])
 			draw_polyline(shot_icon, WHITE, 3.5, true)
 		centered("MOVER NO ARCO" if which == 0 else "DISPARAR", center + Vector2(0, 99), 10, color, true)
+	draw_powers()
+
+func draw_powers() -> void:
+	# One button per power: the ring is the charge, the disc lights up when it is ready.
+	if not match_data.has("powers") or team >= match_data.powers.size():
+		return
+	var state: Dictionary = match_data.powers[team]
+	for index in range(power_centers.size()):
+		var center: Vector2 = power_centers[index]
+		var cost: int = Rules.POWER_COSTS[index]
+		var charge: int = clampi(state.charge[index], 0, cost)
+		var ready: bool = charge >= cost
+		var color: Color = Rules.POWER_COLORS[index]
+		var running: bool = index == 1 and state.rapid_time > 0
+		draw_circle(center, POWER_RADIUS, Color(0.08, 0.15, 0.16, 0.85), true, -1, true)
+		draw_arc(center, POWER_RADIUS - 4, 0, TAU, 56, Color(color, 0.18), 1.2, true)
+		if charge > 0:
+			# Fills clockwise from the top, so a glance is enough to read the progress.
+			draw_arc(center, POWER_RADIUS - 4, -PI * 0.5, -PI * 0.5 + TAU * (float(charge) / cost), 56, Color(color, 0.95 if ready else 0.5), 3.6, true)
+		var pressed: bool = power_flash[index] > 0
+		var disc = color.darkened(0.0 if pressed else (0.2 if ready else 0.62))
+		draw_circle(center, POWER_RADIUS - 11, disc, true, -1, true)
+		power_icon(index, center + Vector2(0, -8), WHITE if ready or pressed else Color(WHITE, 0.5))
+		var caption = "PRONTO" if ready else "%d/%d" % [charge, cost]
+		if running:
+			caption = "%.1f s" % state.rapid_time
+		centered(caption, center + Vector2(0, 17), 9, INK if ready or pressed else WHITE, true)
+		centered(POWER_LABELS[index], center + Vector2(0, 30), 8, INK if ready or pressed else Color(WHITE, 0.6), true)
+
+func power_icon(index: int, center: Vector2, color: Color) -> void:
+	match index:
+		0:
+			# Blast: a core with radiating spikes.
+			var star = PackedVector2Array()
+			for step in range(13):
+				var angle = step * TAU / 12.0
+				star.append(center + Vector2(cos(angle), sin(angle)) * (13.0 if step % 2 == 0 else 6.0))
+			draw_polyline(star, color, 1.8, true)
+			draw_circle(center, 3.4, color, true, -1, true)
+		1:
+			# Machine gun: three rounds leaving the barrel.
+			for row in range(3):
+				var y = center.y - 7.0 + row * 7.0
+				draw_line(Vector2(center.x - 12, y), Vector2(center.x + 3, y), color, 2.2, true)
+				draw_circle(Vector2(center.x + 8, y), 2.2, color, true, -1, true)
+		_:
+			# Air burst: a fan of pellets from a single muzzle.
+			var muzzle = center + Vector2(0, 10)
+			for spread in [-0.55, -0.19, 0.19, 0.55]:
+				draw_line(muzzle, muzzle + Vector2(sin(spread), -cos(spread)) * 19.0, color, 1.9, true)

@@ -18,7 +18,7 @@ func active():
 	return r
 
 func projectile(r, owner: int, position: Vector2, velocity: Vector2, damage: int = 1) -> Dictionary:
-	var b = {"id": r.next_id, "owner": owner, "p": position, "v": velocity, "bounces": 1, "ricochets_left": 0, "damage": damage, "boosted": damage == 2, "ttl": 4.0}
+	var b = {"id": r.next_id, "owner": owner, "p": position, "v": velocity, "bounces": 1, "damage": damage, "boosted": damage == 2, "ttl": Rules.BALL_LIFE}
 	r.next_id += 1
 	r.balls.append(b)
 	return b
@@ -42,29 +42,27 @@ func _init() -> void:
 	var r = active()
 	var b = projectile(r, 0, Vector2(0, 2.4), Vector2.UP * Rules.BALL_SPEED)
 	r.advance_ball(b, 0.05)
-	check(r.balls.has(b) and b.bounces == 2 and b.ricochets_left == 1, "Spent ball reflects on obstacle and receives +1 future ricochet")
-	b.p = Vector2(Rules.HALF_WIDTH - 0.2, 1.6)
-	b.v = Vector2.RIGHT * Rules.BALL_SPEED
-	r.advance_ball(b, 0.02)
-	check(r.balls.has(b) and b.bounces == 3 and b.ricochets_left == 0 and b.v.x < 0, "Granted ricochet works on a subsequent wall")
-	b.p = Vector2(-(Rules.HALF_WIDTH - 0.2), 1.6)
-	r.advance_ball(b, 0.02)
-	check(r.balls.is_empty(), "Ball expires on wall once the extra ricochet is used")
+	check(r.balls.has(b) and b.bounces == 2, "A long-travelled ball still reflects on an obstacle")
+	# Walls no longer consume anything: the same ball crosses the arena over and over.
+	for crossing in range(12):
+		b.p = Vector2(Rules.HALF_WIDTH - 0.2, 1.6)
+		b.v = Vector2.RIGHT * Rules.BALL_SPEED
+		r.advance_ball(b, 0.02)
+		check(r.balls.has(b) and b.v.x < 0, "Wall %d reflects the shot instead of ending it" % crossing)
+		b.p = Vector2(-(Rules.HALF_WIDTH - 0.2), 1.6)
+		b.v = Vector2.LEFT * Rules.BALL_SPEED
+		r.advance_ball(b, 0.02)
+	check(r.balls.has(b) and b.bounces >= 24, "Twenty-four wall contacts later the shot is still alive (%d bounces)" % b.bounces)
 	r = active()
 	b = projectile(r, 0, Vector2(0, 2.4), Vector2.UP * Rules.BALL_SPEED, 2)
-	b.ricochets_left = 1
 	r.advance_ball(b, 0.05)
-	check(b.ricochets_left == 2 and b.damage == 2 and b.boosted, "Obstacle adds to unused ricochets without removing boost damage")
-	b.p = Vector2(0, 2.4)
-	b.v = Vector2.UP * Rules.BALL_SPEED
-	r.advance_ball(b, 0.05)
-	check(b.ricochets_left == 3, "Separate obstacle contacts each grant an extra ricochet")
+	check(b.damage == 2 and b.boosted and r.balls.has(b), "An obstacle rebound keeps the boost damage")
 	var replica = Rules.new()
 	replica.apply_snapshot(r.snapshot())
-	check(replica.balls[0].ricochets_left == 3, "PvP snapshot retains accumulated ricochet budget")
+	check(replica.balls[0].bounces == b.bounces and replica.balls[0].damage == 2, "PvP snapshot retains the bounce count and boost damage")
 	b.ttl = 0.01
 	r.step(0.02, [IDLE, IDLE])
-	check(r.balls.is_empty(), "Extra ricochets never bypass projectile lifetime")
+	check(r.balls.is_empty(), "The safety lifetime still clears a shot that never reaches a target")
 	r = active()
 	var state: Dictionary = r.snapshot().duplicate(true)
 	var original_events: Array = r.events.duplicate(true)

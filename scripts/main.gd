@@ -16,6 +16,8 @@ var local_team = 0
 var connected = false
 var remote_id = 0
 var remote_command = {"move": Vector2.ZERO, "fire": false}
+# Powers arrive on their own reliable channel, so a tap is never lost in the input stream.
+var remote_power = -1
 var remote_age = 0.0
 var network_tick = 0.0
 var connection_timer = 0.0
@@ -44,6 +46,8 @@ var level_index = -1
 var menu_level = 0
 var menu_preview_timer = -1.0
 var client_boosted_ids: Dictionary = {}
+# Last seen position of each explosive round, to replay the blast the host resolved.
+var client_blast_spots: Dictionary = {}
 
 func _ready() -> void:
 	arena = ArenaView.new()
@@ -239,9 +243,11 @@ func close_network() -> void:
 		multiplayer.multiplayer_peer.close()
 	multiplayer.multiplayer_peer = OfflineMultiplayerPeer.new()
 	remote_command = {"move": Vector2.ZERO, "fire": false}
+	remote_power = -1
 	remote_age = 0
 	packets_received = 0
 	client_boosted_ids.clear()
+	client_blast_spots.clear()
 
 func return_to_menu(message: String = "") -> void:
 	pve_paused = false
@@ -384,6 +390,14 @@ func _unhandled_key_input(event: InputEvent) -> void:
 		if event.keycode == KEY_LEFT or event.keycode == KEY_RIGHT:
 			step_menu_level(-1 if event.keycode == KEY_LEFT else 1)
 			return
+	if event.is_pressed() and not event.is_echo() and event is InputEventKey and mode != "menu":
+		# On a PC the three powers are on the number keys; phones use the HUD buttons.
+		var slot = [KEY_1, KEY_2, KEY_3].find(event.keycode)
+		if slot < 0:
+			slot = [KEY_KP_1, KEY_KP_2, KEY_KP_3].find(event.keycode)
+		if slot >= 0:
+			hud.request_power(slot)
+			return
 	if event.is_pressed() and event is InputEventKey and event.keycode == KEY_ESCAPE:
 		if hud.video_overlay.visible:
 			hud.close_video()
@@ -474,14 +488,16 @@ func change_video(fps: int, quality: int, sync: bool, counter: bool) -> void:
 
 func local_command() -> Dictionary:
 	if hud.video_overlay.visible or pve_paused:
-		return {"move": Vector2.ZERO, "fire": false}
+		# Drop anything tapped while the match was on hold.
+		hud.take_power()
+		return {"move": Vector2.ZERO, "fire": false, "power": -1}
 	# Gentle response curve: small thumb movements aim finely, full deflection still runs.
 	var stick: float = hud.move_vector.x
 	var response = signf(stick) * pow(absf(stick), 1.7) * game_settings.sensitivity_scale()
 	var move = Vector2(response, 0)
 	if DisplayServer.get_name() != "headless":
 		move += Vector2(float(Input.is_physical_key_pressed(KEY_D) or Input.is_physical_key_pressed(KEY_RIGHT)) - float(Input.is_physical_key_pressed(KEY_A) or Input.is_physical_key_pressed(KEY_LEFT)), float(Input.is_physical_key_pressed(KEY_S) or Input.is_physical_key_pressed(KEY_DOWN)) - float(Input.is_physical_key_pressed(KEY_W) or Input.is_physical_key_pressed(KEY_UP)))
-	return {"move": Vector2(clampf(move.x, -1, 1), 0), "fire": hud.touch_fire or mouse_firing}
+	return {"move": Vector2(clampf(move.x, -1, 1), 0), "fire": hud.touch_fire or mouse_firing, "power": hud.take_power()}
 
 func _physics_process(dt: float) -> void:
 	if mode == "menu":
@@ -497,6 +513,8 @@ func _physics_process(dt: float) -> void:
 		return
 	var command = local_command()
 	if mode == "client":
+		if command.power >= 0:
+			submit_power.rpc_id(1, command.power)
 		network_tick += dt
 		if network_tick >= 1.0 / 30:
 			network_tick = 0
@@ -507,7 +525,10 @@ func _physics_process(dt: float) -> void:
 		other = rules.ai_command() if not pause_ai else {"move": Vector2.ZERO, "fire": false}
 	else:
 		remote_age += dt
-		other = remote_command if remote_age < 0.35 else {"move": Vector2.ZERO, "fire": false}
+		var stale = remote_age >= 0.35
+		# The rival's power is spent on this tick only, never repeated while packets are late.
+		other = {"move": Vector2.ZERO if stale else remote_command.move, "fire": false if stale else remote_command.fire, "power": remote_power}
+		remote_power = -1
 	arena.capture_motion(rules)
 	rules.step(dt, [command, other])
 	for event in rules.events:
@@ -517,6 +538,15 @@ func _physics_process(dt: float) -> void:
 			play_tone("boost")
 		elif event.kind == "bounce":
 			play_tone("bounce")
+		elif event.kind == "power":
+			# Both sides are announced: a power launched at you should never be silent.
+			arena.power_flash(event.p, event.power)
+			play_tone("power")
+		elif event.kind == "power_ready" and event.team == local_team:
+			play_tone("ready")
+		elif event.kind == "explosion":
+			arena.explosion(event.p, event.radius)
+			play_tone("blast")
 	if mode == "host":
 		network_tick += dt
 		if network_tick >= 1.0 / 20:
@@ -533,6 +563,15 @@ func submit_input(move: Vector2, firing: bool) -> void:
 	remote_command = {"move": Vector2(clampf(move.x, -1, 1), 0), "fire": firing}
 	remote_age = 0
 	packets_received += 1
+
+@rpc("any_peer", "call_remote", "reliable")
+func submit_power(power: int) -> void:
+	# Reliable and separate: a dropped movement packet must not swallow a power.
+	if mode != "host" or multiplayer.get_remote_sender_id() != remote_id:
+		return
+	if power < 0 or power >= Rules.POWER_COSTS.size():
+		return
+	remote_power = power
 
 @rpc("authority", "call_remote", "unreliable_ordered", 2)
 func receive_state(data: Dictionary) -> void:
@@ -588,9 +627,19 @@ func _process(dt: float) -> void:
 			if ball.get("boosted", false) and not client_boosted_ids.has(ball.id):
 				play_tone("boost")
 				client_boosted_ids[ball.id] = true
+			if int(ball.get("power", 0)) == 1:
+				client_blast_spots[ball.id] = ball.p
 		for id in client_boosted_ids.keys():
 			if not present.has(id):
 				client_boosted_ids.erase(id)
+		for id in client_blast_spots.keys():
+			if present.has(id):
+				continue
+			# The host already resolved this blast; replay it where the round was last seen.
+			if rules.phase == "play":
+				arena.explosion(client_blast_spots[id], Rules.EXPLOSION_RADIUS)
+				play_tone("blast")
+			client_blast_spots.erase(id)
 
 func build_audio() -> void:
 	# A pool lets weapon tails, ricochets and impacts overlap instead of every
@@ -633,6 +682,31 @@ func build_audio() -> void:
 		boost_bytes.encode_s16(i * 2, int(clampf(shimmer * envelope, -1.0, 1.0) * 19000))
 	boost_wave.data = boost_bytes
 	tones["boost"] = boost_wave
+	# Power cues: a charged thump on release, a bright chime when one fills up and a
+	# low rumble for the blast, all clearly apart from the ricochet tick.
+	tones["power"] = sweep_wave(0.26, 640.0, 250.0, 0.45)
+	tones["ready"] = sweep_wave(0.34, 720.0, 1220.0, 0.0)
+	tones["blast"] = sweep_wave(0.42, 300.0, 68.0, 0.8)
+
+func sweep_wave(seconds: float, from_hz: float, to_hz: float, grit: float) -> AudioStreamWAV:
+	# Continuous phase keeps the sweep free of clicks; the noise share gives each cue its body.
+	var wave = AudioStreamWAV.new()
+	wave.format = AudioStreamWAV.FORMAT_16_BITS
+	wave.mix_rate = 22050
+	var count = int(22050 * seconds)
+	var bytes = PackedByteArray()
+	bytes.resize(count * 2)
+	var noise = RandomNumberGenerator.new()
+	noise.seed = int(from_hz + to_hz)
+	var phase = 0.0
+	for i in range(count):
+		var progress = float(i) / count
+		phase += TAU * lerpf(from_hz, to_hz, progress * progress) / 22050.0
+		var envelope = minf(float(i) / 140.0, 1.0) * pow(1.0 - progress, 1.55)
+		var value = sin(phase) + grit * noise.randf_range(-1.0, 1.0) * (1.0 - progress)
+		bytes.encode_s16(i * 2, int(clampf(value * envelope * 0.62, -1.0, 1.0) * 19000))
+	wave.data = bytes
+	return wave
 
 func play_tone(sound: String) -> void:
 	if audio_voices.is_empty() or not tones.has(sound):

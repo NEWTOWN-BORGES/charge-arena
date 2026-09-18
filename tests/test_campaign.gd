@@ -96,9 +96,7 @@ func run() -> void:
 	check(Campaign.ai_profile(5, 0).fire_gap > Campaign.ai_profile(5, 1).fire_gap and Campaign.ai_profile(5, 1).fire_gap > Campaign.ai_profile(5, 2).fire_gap, "FÁCIL and DIFÍCIL shift every boss")
 
 	var testing = Campaign.new()
-	check(Campaign.UNLOCK_ALL_FOR_TESTS and range(10).all(func(i): return testing.is_unlocked(i)) and testing.suggested_level() == 0, "Testing build: every level is open and the menu starts on the first unplayed one")
-	testing.completed = [0, 1]
-	check(testing.suggested_level() == 2, "The menu opens on the first level not yet won")
+	check(not Campaign.UNLOCK_ALL_FOR_TESTS and testing.is_unlocked(0) and not testing.is_unlocked(1) and testing.suggested_level() == 0, "A new campaign starts on level 1 with later levels locked")
 
 	# Level-by-level unlocking, as it works once the testing switch is turned off.
 	var progress = Campaign.new()
@@ -202,7 +200,7 @@ func run() -> void:
 	await process_frame
 	check(game.level_index == 1 and game.arena.map.id == "farol" and game.rules.walls.size() == 8, "Next level rebuilds the arena with the octagon map")
 	check(game.arena.unit_skins == [game.skins.selected, 1] and game.arena.brick_nodes[40].get_meta("skin") == 1, "The Faroleiro boss arrives with its own bricks")
-	check(game.rules.obstacles.size() == 3 and game.arena.obstacle_nodes.size() == 3 and hud.level_info.name == "Baía do Farol" and hud.level_info.boss_name == "FAROLEIRO", "Its three pillars, name and boss name come with it")
+	check(game.rules.obstacles.size() == 2 and game.arena.obstacle_nodes.size() == 2 and hud.level_info.name == "Baía do Farol" and hud.level_info.boss_name == "FAROLEIRO", "Its two friendly pillars, name and boss name come with it")
 	check(game.rules.ai_profile == Campaign.ai_profile(1, game.game_settings.difficulty), "The boss uses its level's pace")
 
 	game._process(0.02)

@@ -69,24 +69,24 @@ func _init() -> void:
 	check(is_equal_approx(b.v.length(), Rules.BALL_SPEED) and b.damage == 1, "Ordinary ricochet keeps normal speed and damage")
 	b.p = Vector2(-(Rules.HALF_WIDTH - 0.2), 1.6)
 	r.advance_ball(b, 0.05)
-	check(r.balls.is_empty(), "Second ordinary wall collision consumes the ball")
+	check(r.balls.size() == 1 and b.bounces == 2 and b.v.x > 0, "A second wall reflects the ball again instead of consuming it")
 	for side in [-1, 1]:
 		r = active()
 		b = ball(r, Vector2(side * (Rules.HALF_WIDTH - 1.0), 0), Vector2(side * Rules.BALL_SPEED, 0))
 		r.advance_ball(b, 0.07)
-		check(r.balls.size() == 1 and b.boosted and b.bounces == 1 and b.v.x * side < 0, "Booster reflects inward and consumes bounce: side " + str(side))
+		check(r.balls.size() == 1 and b.boosted and b.bounces == 1 and b.v.x * side < 0, "Booster reflects inward and counts a bounce: side " + str(side))
 		check(is_equal_approx(b.v.length(), Rules.BALL_SPEED * Rules.BOOST_SPEED) and b.damage == 2, "Booster applies 1.65x speed and damage 2: side " + str(side))
 	r = active()
 	b = ball(r, Vector2(Rules.HALF_WIDTH - 1.0, 0), Vector2(Rules.BALL_SPEED, 0), 1)
 	r.advance_ball(b, 0.07)
-	check(r.balls.is_empty(), "A previously bounced ball cannot gain a second bounce from a booster")
+	check(r.balls.size() == 1 and b.boosted and b.bounces == 2, "A booster charges a ball that has already bounced")
 	r = active()
 	b = ball(r, Vector2(Rules.HALF_WIDTH - 1.0, 0), Vector2(Rules.BALL_SPEED, 0))
 	r.advance_ball(b, 0.50)
 	# At normal speed the ball would only just cross the centre line in this frame.
 	check(b.bounces == 1 and b.p.x < -(Rules.HALF_WIDTH - 3.0) and b.v.length() > Rules.BALL_SPEED, "Boosted speed is used for the remainder of the same frame")
 	r.advance_ball(b, 0.1)
-	check(r.balls.is_empty(), "Second booster consumes a boosted shot instead of stacking boosts")
+	check(r.balls.size() == 1 and b.bounces == 2 and is_equal_approx(b.v.length(), Rules.BALL_SPEED * Rules.BOOST_SPEED) and b.damage == Rules.BOOST_DAMAGE, "A second booster relaunches the shot without stacking speed or damage")
 	r = active()
 	b = ball(r, Vector2(Rules.HALF_WIDTH - 1.0, 0.4), Vector2(Rules.BALL_SPEED, 0))
 	r.advance_ball(b, 0.07)
@@ -157,12 +157,12 @@ func _init() -> void:
 	r.step(3.0, IDLE)
 	check(r.phase == "countdown" and r.brick_count(1) == 40 and r.bricks.all(func(brick): return brick.hp == 3) and r.scores == [1, 0], "New round restores every brick's size/health and preserves the score")
 	r.phase = "play"
-	r.scores[0] = 2
+	r.scores[0] = Rules.WIN_SCORE - 1
 	clear_defense(r, 1)
 	r.players[1].p = Rules.track_position(1, Rules.TRACK_LIMIT)
 	b = ball(r, goal_shot, Vector2(0, -Rules.BALL_SPEED))
 	r.advance_ball(b, 0.04)
-	check(r.phase == "finished" and r.winner == 0, "First player to 3 goals wins")
+	check(r.phase == "finished" and r.winner == 0 and r.scores[0] == Rules.WIN_SCORE, "The deciding goal finishes the match at the configured score")
 	r = active()
 	hit_brick(r, 40, 2)
 	ball(r, Vector2(0, 0), Vector2(0, -20), 1, 2)
@@ -182,6 +182,8 @@ func _init() -> void:
 	for brick in r.bricks:
 		if brick.team == 0:
 			damage += 3 - brick.hp
-	check(damage > 0 and r.players[1].p.is_finite() and r.balls.size() < 20, "AI follows its arc and damages enemy banks during a 45s simulation")
+	# A machine-gun burst outlives itself (30 rounds, 4 s each) and an air burst adds nine
+	# at once, so the ceiling only has to rule out runaway spawning.
+	check(damage > 0 and r.players[1].p.is_finite() and r.balls.size() < 50, "AI follows its arc and damages enemy banks during a 45s simulation (%d balls in flight)" % r.balls.size())
 	print("RULES_RESULT ", checks - failures, "/", checks, " passed")
 	quit(1 if failures > 0 else 0)

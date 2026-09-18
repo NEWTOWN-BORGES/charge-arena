@@ -54,7 +54,8 @@ func run() -> void:
 	game.hud.move_vector = Vector2.RIGHT
 	game.mouse_firing = true
 	game.hud.open_video()
-	check(game.local_command() == {"move": Vector2.ZERO, "fire": false} and not game.mouse_firing, "Opening graphics settings releases movement and firing")
+	game.hud.request_power(0)
+	check(game.local_command() == {"move": Vector2.ZERO, "fire": false, "power": -1} and not game.mouse_firing and game.hud.power_request == -1, "Opening graphics settings releases movement, firing and powers")
 	var before: Dictionary = game.rules.snapshot().duplicate(true)
 	game._physics_process(0.1)
 	check(game.rules.snapshot() == before, "PvE simulation pauses while changing graphics settings")
