@@ -73,6 +73,14 @@ const THUNDER_SECONDS = 2.0
 const THUNDER_COUNT = 8
 const THUNDER_DAMAGE = 2
 const THUNDER_RADIUS = 0.8
+# Singularity: the pilot becomes the epicentre. Every shot in flight loses its course and
+# crawls into the core; what is swallowed leaves again in one fan of boosted rounds.
+const SINGULARITY_PULL = 1.4
+const SINGULARITY_SWALLOW = 0.55
+const SINGULARITY_SLOW = 0.22
+const SINGULARITY_MIN_SHOTS = 6
+const SINGULARITY_MAX_SHOTS = 14
+const SINGULARITY_FAN = 1.15
 # Bloom heals two lives, and a brick already whole grows past the usual three.
 const BLOOM_HEAL = 2
 const BRICK_MAX_LIVES = 5
@@ -87,7 +95,7 @@ const AIR_PELLETS = 5
 const AIR_DAMAGE = 2
 const AIR_SPREAD = 0.72
 const MAX_BALLS = 128
-const BALL_FIELDS = 12
+const BALL_FIELDS = 13
 # A shot ends on a target or after MAX_BOUNCES ricochets: walls, shields, boosters,
 # barriers and bumpers all reflect it. This lifetime is only a safety net for a shot caught in a repeating path
 # that would otherwise bounce for the rest of the match.
@@ -441,6 +449,9 @@ func step(dt: float, commands: Array) -> void:
 		if phase != "play":
 			break
 		if balls.has(ball):
+			if ball.get("held", false):
+				# Caught in a singularity: the pull moves it, and it touches nothing.
+				continue
 			ball.ttl -= dt
 			if ball.ttl <= 0:
 				if ball.get("power", 0) == 1:
@@ -511,6 +522,13 @@ func step_ultimate(team: int, dt: float) -> void:
 			return
 		fire_ultimate(team)
 		return
+	if String(state.ultimate_id) == "singularity" and state.ultimate_time > 0:
+		# The collapse is one long draw, not a string of strikes: it ends in the release.
+		state.ultimate_time = maxf(0.0, state.ultimate_time - dt)
+		singularity_pull(team, dt)
+		if state.ultimate_time <= 0:
+			singularity_burst(team)
+		return
 	if state.ultimate_time <= 0 and state.ultimate_shots <= 0:
 		return
 	# The count of strikes rules, not the clock: the last one always lands.
@@ -551,6 +569,10 @@ func fire_ultimate(team: int) -> void:
 			state.ultimate_tick = THUNDER_SECONDS / THUNDER_COUNT
 			state.ultimate_shots = THUNDER_COUNT - 1
 			sky_strike(team, "thunder", THUNDER_DAMAGE, THUNDER_RADIUS)
+		"singularity":
+			state.ultimate_time = SINGULARITY_PULL
+			state.ultimate_shots = 0
+			events.append({"kind": "singularity", "team": team, "p": players[team].p, "seconds": SINGULARITY_PULL})
 		"bloom":
 			bloom_bricks(team)
 		"plunder":
@@ -595,6 +617,55 @@ func sky_strike(team: int, kind: String, damage: int, radius: float) -> void:
 	if players[enemy].p.distance_to(at) <= radius:
 		damage_player(enemy, damage, players[enemy].p)
 	events.append({"kind": kind, "team": team, "p": at, "radius": radius})
+
+func singularity_pull(team: int, dt: float) -> void:
+	# Everything in flight is dragged towards the pilot, crawling and harmless on the way;
+	# whatever reaches the core is swallowed and counted for the release.
+	var core: Vector2 = players[team].p
+	var left: float = maxf(powers[team].ultimate_time, 0.12)
+	var index = balls.size() - 1
+	while index >= 0:
+		var ball: Dictionary = balls[index]
+		var offset: Vector2 = core - ball.p
+		var distance = offset.length()
+		if distance <= SINGULARITY_SWALLOW:
+			balls.remove_at(index)
+			powers[team].ultimate_shots = mini(powers[team].ultimate_shots + 1, SINGULARITY_MAX_SHOTS)
+			events.append({"kind": "swallow", "team": team, "p": core})
+			index -= 1
+			continue
+		ball["held"] = true
+		# Slow enough to watch, never so slow that a shot is left outside the collapse.
+		var speed = maxf(distance / left, BALL_SPEED * SINGULARITY_SLOW)
+		ball.v = offset / distance * speed
+		ball.p += ball.v * dt
+		ball.ttl = maxf(ball.ttl, left + 0.3)
+		index -= 1
+
+func singularity_burst(team: int) -> void:
+	# The core opens. Whatever it holds leaves at once in a fan, turbocharged and out of
+	# ricochets: the same round a booster hands back, in a dozen copies.
+	var core: Vector2 = players[team].p
+	var heading: Vector2 = forward_direction(team, players[team].angle)
+	var eaten: int = powers[team].ultimate_shots
+	var index = balls.size() - 1
+	while index >= 0:
+		# Anything still on its way in is compacted with the rest.
+		if balls[index].get("held", false):
+			balls.remove_at(index)
+			eaten += 1
+		index -= 1
+	var count = clampi(eaten, SINGULARITY_MIN_SHOTS, SINGULARITY_MAX_SHOTS)
+	powers[team].ultimate_shots = 0
+	for shot in range(count):
+		while balls.size() >= MAX_BALLS:
+			balls.remove_at(0)
+		var spread = 0.0 if count == 1 else lerpf(-SINGULARITY_FAN * 0.5, SINGULARITY_FAN * 0.5, float(shot) / float(count - 1))
+		var course: Vector2 = heading.rotated(spread)
+		balls.append({"id": next_id, "owner": team, "p": core + course * 0.7, "v": course * BALL_SPEED * BOOST_SPEED,
+			"bounces": MAX_BOUNCES, "boosted": true, "damage": BOOST_DAMAGE, "ttl": BALL_LIFE, "power": 0, "ghost": false, "held": false})
+		next_id += 1
+	events.append({"kind": "singularity_burst", "team": team, "p": core, "heading": heading, "count": count})
 
 func bloom_bricks(team: int) -> void:
 	# Two lives back on every brick; the ones already whole grow instead.
@@ -1178,7 +1249,7 @@ func network_snapshot() -> Dictionary:
 		hp.append(brick.hp)
 	var ball_data = PackedFloat32Array()
 	for ball in balls:
-		ball_data.append_array([ball.id, ball.owner, ball.p.x, ball.p.y, ball.v.x, ball.v.y, ball.bounces, 1.0 if ball.get("boosted", false) else 0.0, ball.get("damage", 1), ball.ttl, ball.get("power", 0), 1.0 if ball.get("ghost", false) else 0.0])
+		ball_data.append_array([ball.id, ball.owner, ball.p.x, ball.p.y, ball.v.x, ball.v.y, ball.bounces, 1.0 if ball.get("boosted", false) else 0.0, ball.get("damage", 1), ball.ttl, ball.get("power", 0), 1.0 if ball.get("ghost", false) else 0.0, 1.0 if ball.get("held", false) else 0.0])
 	var power_data = PackedFloat32Array()
 	for state in powers:
 		power_data.append_array([state.charge[0], state.charge[1], state.charge[2], state.destroyed, state.rapid_time,
@@ -1202,7 +1273,7 @@ func apply_network_snapshot(data: Dictionary) -> bool:
 			if not is_finite(value):
 				return false
 	for offset in range(0, ball_data.size(), BALL_FIELDS):
-		if ball_data[offset + 1] not in [0.0, 1.0] or ball_data[offset + 10] not in [0.0, 1.0, 2.0, 3.0] or ball_data[offset + 11] not in [0.0, 1.0]:
+		if ball_data[offset + 1] not in [0.0, 1.0] or ball_data[offset + 10] not in [0.0, 1.0, 2.0, 3.0] or ball_data[offset + 11] not in [0.0, 1.0] or ball_data[offset + 12] not in [0.0, 1.0]:
 			return false
 	for team in range(2):
 		var base = team * 11
@@ -1215,7 +1286,7 @@ func apply_network_snapshot(data: Dictionary) -> bool:
 		powers[team].mirror_time = clampf(power_data[base + 7], 0, MIRROR_SECONDS)
 		powers[team].walls_time = clampf(power_data[base + 8], 0, WALLS_SECONDS)
 		powers[team].ultimate_windup = clampf(power_data[base + 9], 0, ULTIMATE_WINDUP)
-		powers[team].ultimate_time = clampf(power_data[base + 10], 0, THUNDER_SECONDS)
+		powers[team].ultimate_time = clampf(power_data[base + 10], 0, maxf(THUNDER_SECONDS, SINGULARITY_PULL))
 		powers[team].ultimate_id = power_id(team, 2)
 		var angle = clampf(player_data[team * 4], -TRACK_LIMIT, TRACK_LIMIT)
 		players[team].angle = angle
@@ -1229,7 +1300,7 @@ func apply_network_snapshot(data: Dictionary) -> bool:
 		bricks[i].alive = bricks[i].hp > 0
 	balls.clear()
 	for offset in range(0, ball_data.size(), BALL_FIELDS):
-		balls.append({"id": int(ball_data[offset]), "owner": int(ball_data[offset + 1]), "p": Vector2(ball_data[offset + 2], ball_data[offset + 3]), "v": Vector2(ball_data[offset + 4], ball_data[offset + 5]), "bounces": int(ball_data[offset + 6]), "boosted": ball_data[offset + 7] > 0.5, "damage": int(ball_data[offset + 8]), "ttl": ball_data[offset + 9], "power": int(ball_data[offset + 10]), "ghost": ball_data[offset + 11] > 0.5})
+		balls.append({"id": int(ball_data[offset]), "owner": int(ball_data[offset + 1]), "p": Vector2(ball_data[offset + 2], ball_data[offset + 3]), "v": Vector2(ball_data[offset + 4], ball_data[offset + 5]), "bounces": int(ball_data[offset + 6]), "boosted": ball_data[offset + 7] > 0.5, "damage": int(ball_data[offset + 8]), "ttl": ball_data[offset + 9], "power": int(ball_data[offset + 10]), "ghost": ball_data[offset + 11] > 0.5, "held": ball_data[offset + 12] > 0.5})
 	obstacle_time = maxf(0.0, match_data[0])
 	for i in range(obstacles.size()):
 		obstacles[i].previous = obstacles[i].p

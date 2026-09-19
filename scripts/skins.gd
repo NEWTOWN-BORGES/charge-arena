@@ -19,7 +19,7 @@ const CATALOG = [
 		"body": "5f7f52", "light": "c8f08f", "shot": "9fe37a"},
 	{"name": "MINEIRO", "ultimate": "", "weapon": "Perfuradora de Cristal", "bricks": "Veios de cristal", "about": "Extrai cristais dos asteroides: capacete de obra com lanterna, carga de minério às costas e broca de quartzo.", "level": 6,
 		"body": "59606b", "light": "ff9ad8", "shot": "ff7ad0"},
-	{"name": "SENTINELA", "ultimate": "", "weapon": "Lança Eclipse", "bricks": "Monólitos Eclipse", "about": "Guarda de elite do circuito: capa de obsidiana, halo de eclipse dourado e lança de corona.", "level": 7,
+	{"name": "SENTINELA", "ultimate": "singularity", "weapon": "Lança Eclipse", "bricks": "Monólitos Eclipse", "about": "Guarda de elite do circuito: capa de obsidiana, halo de eclipse dourado e lança de corona.", "level": 7,
 		"body": "2e3140", "light": "f2f4ff", "shot": "eef2ff"},
 	{"name": "RELOJOEIRO", "ultimate": "", "weapon": "Canhão de Corda", "bricks": "Relógios de torre", "about": "Afina as engrenagens do circuito: monóculo de lupa, chave de corda nas costas e canhão de molas.", "level": 2,
 		"body": "7a5236", "light": "ffb14e", "shot": "ffa640"},

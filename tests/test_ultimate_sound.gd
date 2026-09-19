@@ -32,12 +32,12 @@ func run() -> void:
 	game.start_pve()
 	game.pause_ai = true
 	await process_frame
-	var names = ["charging", "unleash", "sun_ray", "meteor", "thunder", "bloom", "plunder"]
+	var names = ["charging", "unleash", "sun_ray", "meteor", "thunder", "bloom", "plunder", "singularity", "void_burst"]
 	check(names.all(func(n): return game.tones.has(n) and game.tones[n].data.size() > 1000), "Each ultimate cue is a real waveform")
 	var voices: Array = names.map(func(n): return game.tones[n])
 	check(voices.all(func(v): return voices.count(v) == 1), "No two of them share a sound")
 
-	for id in ["sun_ray", "meteors", "thunder", "bloom", "plunder"]:
+	for id in ["sun_ray", "meteors", "thunder", "bloom", "plunder", "singularity"]:
 		game.rules.phase = "play"
 		game.rules.loadouts[0] = ["blast", "air", id]
 		game.rules.powers[0].charge[2] = game.rules.power_charge_cost(0, 2)
@@ -55,6 +55,13 @@ func run() -> void:
 			for tick in range(60):
 				game._physics_process(1.0 / 60)
 			check(heard(game, "sun_ray" if id == "sun_ray" else "thunder"), "%s: the effect itself is heard while it lasts" % id)
+		if id == "singularity":
+			# The collapse rumbles with the discharge; the release has its own boom.
+			check(heard(game, "singularity"), "singularity: the collapse is heard as it draws in")
+			hush(game)
+			for tick in range(roundi(Rules.SINGULARITY_PULL * 60) + 6):
+				game._physics_process(1.0 / 60)
+			check(heard(game, "void_burst"), "singularity: the release booms when the core opens")
 		game.rules.powers[0] = Rules.new_power_state()
 	game.return_to_menu()
 	for leftover in [TMP, TMP + "s"]:

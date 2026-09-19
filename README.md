@@ -22,7 +22,7 @@ A escala do conteúdo acompanha a forma do ecrã: 720 unidades no lado curto, `c
 
 ## Poderes
 
-Cada piloto leva **três poderes** para a partida: **dois comprados** na aba PODERES e postos no kit, e um terceiro que é a **ultimate da skin equipada** (cinco skins já a têm; nas outras o botão aparece como `ULTIMATE · EM BREVE`). Dentro da partida cada poder enche a sua própria carga: cada tijolo inimigo destruído dá **um ponto a cada um dos três**, e ao usar um só esse volta a zero.
+Cada piloto leva **três poderes** para a partida: **dois comprados** na aba PODERES e postos no kit, e um terceiro que é a **ultimate da skin equipada** (seis skins já a têm; nas outras o botão aparece como `ULTIMATE · EM BREVE`). Dentro da partida cada poder enche a sua própria carga: cada tijolo inimigo destruído dá **um ponto a cada um dos três**, e ao usar um só esse volta a zero.
 
 | Poder | Tipo | Carga | Preço | Efeito |
 | --- | --- | --- | --- | --- |
@@ -45,8 +45,9 @@ Cada piloto leva **três poderes** para a partida: **dois comprados** na aba POD
 | Caça-Trovões | **Trovoada** | 2 segundos com 8 raios a cair ao acaso no campo do rival, 2 de dano cada. |
 | Jardineiro | **Florescer** | Cura 2 de vida em cada tijolo teu; os que já estão inteiros vão até 5 e ficam maiores, com anéis de luz e um +2 a subir. |
 | Corsário | **Pilhagem** | Troca a tua muralha com a do rival, tijolo a tijolo e em espelho: os números e as posições passam para o outro lado. |
+| Sentinela | **Singularidade** | O piloto vira epicentro: durante 1,4 s todas as bolas em campo, de ambos os lados, perdem o rumo e são arrastadas em câmara lenta até ao núcleo, sem tocar em nada pelo caminho. No colapso saem todas de uma vez num leque de 66°, à velocidade de bola turbinada, 2 de dano e sem ricochete — nunca menos de 6 nem mais de 14. |
 
-**Loja e kit** (`scripts/powers.gd`, aba PODERES do menu). Cada poder escolhido mostra uma **demonstração animada** em ciclo — uma arena em miniatura onde se vê o efeito a acontecer: a bala a rebentar, o jorro da metralhadora, o feixe a comer tijolos, as muralhas a subir, a capa a devolver a bala como boost, a onda a limpar o campo. A moeda são os **tijolos destruídos**, contados em qualquer modo e guardados em `user://powers.cfg` com as compras e o kit. Nesta versão de testes `UNLOCK_ALL_FOR_TESTS` entrega os nove já comprados com a carteira cheia; põe-no a `false` para voltar à progressão. Começas com Explosão e Rajada de Ar, que são de série e já vêm equipadas. Cada poder ocupa um slot de cada vez: equipá-lo no outro slot troca os dois.
+**Loja e kit** (`scripts/powers.gd`, aba PODERES do menu). Cada poder escolhido mostra uma **demonstração animada** em ciclo — uma arena em miniatura onde se vê o efeito a acontecer: a bala a rebentar, o jorro da metralhadora, o feixe a comer tijolos, as muralhas a subir, a capa a devolver a bala como boost, a onda a limpar o campo, o vórtice a engolir os tiros e a cuspí-los em leque. A moeda são os **tijolos destruídos**, contados em qualquer modo e guardados em `user://powers.cfg` com as compras e o kit. Nesta versão de testes `UNLOCK_ALL_FOR_TESTS` entrega os nove já comprados com a carteira cheia; põe-no a `false` para voltar à progressão. Começas com Explosão e Rajada de Ar, que são de série e já vêm equipadas. Cada poder ocupa um slot de cada vez: equipá-lo no outro slot troca os dois.
 
 No telemóvel os botões ficam em fila ao lado do joystick, na faixa livre por baixo da arena. Na horizontal essa faixa é o próprio estádio — e o teu piloto —, por isso passam para a bolsa por baixo do teu cartão, à esquerda da arena e acima do joystick, onde não tapam nada. O anel à volta de cada um mostra a carga (por exemplo `3/5`), acende quando o poder está pronto e, na metralhadora e no laser, passa a contar os segundos que faltam. No PC são as teclas **1, 2 e 3**.
 

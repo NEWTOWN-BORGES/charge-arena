@@ -680,6 +680,13 @@ func _physics_process(dt: float) -> void:
 		elif event.kind == "thunder":
 			arena.thunder_bolt(event.p, event.radius)
 			play_tone("thunder")
+		elif event.kind == "singularity":
+			arena.singularity_open(event.p)
+		elif event.kind == "swallow":
+			arena.singularity_swallow(event.p)
+		elif event.kind == "singularity_burst":
+			arena.singularity_burst(event.p, event.heading, int(event.count))
+			play_tone("void_burst")
 		elif event.kind == "bloom":
 			arena.bloom_flash(event.bricks.map(func(i): return rules.bricks[i].p), event.heal)
 		elif event.kind == "plunder":
@@ -838,6 +845,10 @@ func build_audio() -> void:
 	tones["thunder"] = crack_wave(0.42)
 	tones["bloom"] = chime_wave(0.7, 523.25)
 	tones["plunder"] = sweep_wave(0.5, 180.0, 760.0, 0.3)
+	# Singularity: a note that falls into itself while the hole draws everything in, then
+	# the release, which is all low end at once.
+	tones["singularity"] = sweep_wave(1.35, 700.0, 46.0, 0.3)
+	tones["void_burst"] = roar_wave(0.6, 78.0, 0.75)
 
 func roar_wave(seconds: float, base_hz: float, grit: float) -> AudioStreamWAV:
 	# A held, throaty beam: two detuned saws under a slow tremolo.

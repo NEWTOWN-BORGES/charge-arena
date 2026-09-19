@@ -33,6 +33,16 @@ func wait(r, seconds: float) -> Array:
 		seen.append_array(r.events)
 	return seen
 
+func run_until(r, kind: String, limit: float) -> Array:
+	# Steps only until that event lands: what follows is measured at the very moment.
+	var seen: Array = []
+	for tick in range(roundi(limit * 60)):
+		r.step(1.0 / 60, [idle, idle])
+		seen.append_array(r.events)
+		if r.events.any(func(e): return e.kind == kind):
+			break
+	return seen
+
 func in_band(r, origin: Vector2, heading: Vector2, side: Vector2) -> int:
 	return r.bricks.filter(func(b): return b.team == 1 and (b.p - origin).dot(heading) > 0 and absf((b.p - origin).dot(side)) <= Rules.SUN_RAY_HALF_WIDTH + Rules.BRICK_EXTENT.x).size()
 
@@ -52,10 +62,10 @@ func _initialize() -> void:
 
 func run() -> void:
 	# ---------------------------------------------------------------- the catalogue
-	check(Powers.ULTIMATES.size() == 5 and Powers.ULTIMATES.all(func(u): return u.charge == Powers.ULTIMATE_CHARGE and u.price == 0), "Five ultimates, none of them for sale and all charging the same")
+	check(Powers.ULTIMATES.size() == 6 and Powers.ULTIMATES.all(func(u): return u.charge == Powers.ULTIMATE_CHARGE and u.price == 0), "Six ultimates, none of them for sale and all charging the same")
 	check(Powers.ULTIMATES.all(func(u): return Powers.is_ultimate(u.id) and not Powers.entry(u.id).is_empty()), "Each one is found by id, like any other power")
 	var carriers = Skins.CATALOG.filter(func(s): return s.ultimate != "")
-	check(carriers.size() == 5 and carriers.all(func(s): return Powers.is_ultimate(s.ultimate)), "Five skins carry one each")
+	check(carriers.size() == 6 and carriers.all(func(s): return Powers.is_ultimate(s.ultimate)), "Six skins carry one each")
 	check(Skins.CATALOG[10].ultimate == "sun_ray" and Skins.CATALOG[2].ultimate == "meteors" and Skins.CATALOG[7].ultimate == "thunder" and Skins.CATALOG[3].ultimate == "bloom" and Skins.CATALOG[9].ultimate == "plunder", "Arconte, Astrónomo, Caça-Trovões, Jardineiro and Corsário, each with its own")
 
 	# ---------------------------------------------------------------- every ultimate glows first
@@ -142,6 +152,49 @@ func run() -> void:
 	check(standing(reef, 0) == theirs_before and standing(reef, 1) == mine_before and theirs_before != mine_before, "The two walls swap: %d bricks for %d" % [theirs_before, mine_before])
 	check(reef.bricks.slice(0, Rules.BRICK_COUNT).map(func(b): return b.hp) == mirror_before, "Brick for brick, in the mirrored place")
 	check(reef_events.any(func(e): return e.kind == "plunder"), "The swap is announced so the arena can flash")
+
+	# ---------------------------------------------------------------- singularity
+	var hole = playing("singularity")
+	launch(hole)
+	var opening: Array = wait(hole, Rules.ULTIMATE_WINDUP + 0.05)
+	check(opening.any(func(e): return e.kind == "singularity"), "The collapse is announced when the hole opens")
+	# Four shots in flight once the hole is open, two of each side, spread around the arena.
+	for spot in [Vector2(-3.0, 1.0), Vector2(2.5, -1.5), Vector2(-1.0, -3.0), Vector2(3.5, 2.0)]:
+		hole.balls.append({"id": hole.next_id, "owner": hole.next_id % 2, "p": spot, "v": Vector2(Rules.BALL_SPEED, 0),
+			"bounces": 0, "boosted": false, "damage": 1, "ttl": Rules.BALL_LIFE, "power": 0, "ghost": false})
+		hole.next_id += 1
+	var caught: Array = hole.balls.duplicate(true)
+	# Half way through the draw: everything is held, crawling, and aimed at the pilot.
+	wait(hole, Rules.SINGULARITY_PULL * 0.4)
+	var core: Vector2 = hole.players[0].p
+	var held: Array = hole.balls.filter(func(b): return b.get("held", false))
+	var inward = held.all(func(b): return b.v.normalized().dot((core - b.p).normalized()) > 0.99)
+	var crawling = held.all(func(b): return b.v.length() < Rules.BALL_SPEED)
+	var closer = held.all(func(b): return caught.any(func(c): return c.id == b.id and b.p.distance_to(core) < c.p.distance_to(core)))
+	check(not held.is_empty() and held.size() == hole.balls.size(), "Every shot in flight is caught, whoever fired it (%d)" % held.size())
+	check(inward and crawling and closer, "They crawl straight at the core instead of flying their own course")
+	var mine_mid = team_health(hole, 0)
+	# The release: the fan, turbocharged, two of damage and out of ricochets.
+	var release: Array = run_until(hole, "singularity_burst", Rules.SINGULARITY_PULL + 0.5)
+	var burst: Array = release.filter(func(e): return e.kind == "singularity_burst")
+	check(burst.size() == 1, "The core opens exactly once")
+	check(release.any(func(e): return e.kind == "swallow"), "Each round swallowed is announced")
+	check(hole.balls.size() == int(burst[0].count) and int(burst[0].count) >= Rules.SINGULARITY_MIN_SHOTS, "It fires back %d rounds, never fewer than %d" % [int(burst[0].count), Rules.SINGULARITY_MIN_SHOTS])
+	check(hole.balls.all(func(b): return b.owner == 0), "All of them belong to the pilot that cast it")
+	check(hole.balls.all(func(b): return b.damage == Rules.BOOST_DAMAGE and b.boosted and b.bounces >= Rules.MAX_BOUNCES), "Turbocharged, 2 of damage and out of ricochets, like a booster shot")
+	check(hole.balls.all(func(b): return not b.get("held", false)), "Nothing is left holding in the core")
+	var out_way: Vector2 = Rules.forward_direction(0, hole.players[0].angle)
+	var forward = hole.balls.all(func(b): return b.v.normalized().dot(out_way) > cos(Rules.SINGULARITY_FAN * 0.5 + 0.02))
+	var fanned: Array = hole.balls.map(func(b): return out_way.angle_to(b.v))
+	check(forward and absf(fanned.max() - fanned.min()) > Rules.SINGULARITY_FAN * 0.8, "They leave forwards, in a fan of %.0f degrees" % rad_to_deg(absf(fanned.max() - fanned.min())))
+	check(team_health(hole, 0) == mine_mid, "The draw itself never scratches the caster's own wall")
+	# On the wire, a held round keeps holding.
+	var wire = playing("singularity")
+	var mirror_wire = playing("singularity")
+	wire.balls.append({"id": 1, "owner": 1, "p": Vector2(-2.0, 0.5), "v": Vector2(Rules.BALL_SPEED, 0), "bounces": 0,
+		"boosted": false, "damage": 1, "ttl": Rules.BALL_LIFE, "power": 0, "ghost": false, "held": true})
+	check(mirror_wire.apply_network_snapshot(wire.network_snapshot()), "The snapshot with a held round is accepted")
+	check(mirror_wire.balls.size() == 1 and mirror_wire.balls[0].get("held", false), "And the client knows the round is inside the hole")
 
 	# ---------------------------------------------------------------- the kit carries it
 	var shop = Powers.new()

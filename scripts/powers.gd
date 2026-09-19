@@ -35,6 +35,8 @@ const ULTIMATES = [
 		"about": "Um segundo de meteoros roxos e amarelos a cair sobre metade do campo do rival, 1 de dano cada."},
 	{"id": "thunder", "short": "TROVOADA", "name": "TROVOADA", "kind": "ultimate", "charge": ULTIMATE_CHARGE, "price": 0, "color": "7fe6ff",
 		"about": "Dois segundos de raios a cair ao acaso no campo do rival, 2 de dano cada."},
+	{"id": "singularity", "short": "VÓRTICE", "name": "SINGULARIDADE", "kind": "ultimate", "charge": ULTIMATE_CHARGE, "price": 0, "color": "f3a13c",
+		"about": "O Sentinela vira epicentro: todas as bolas em campo perdem o rumo e são arrastadas em câmara lenta até ao núcleo. No colapso saem de uma vez em leque, à velocidade de bola turbinada, 2 de dano e sem ricochete."},
 	{"id": "bloom", "short": "FLORIR", "name": "FLORESCER", "kind": "ultimate", "charge": ULTIMATE_CHARGE, "price": 0, "color": "9fe37a",
 		"about": "Cura 2 de vida em cada tijolo teu; os que já estão inteiros ganham mais 2 e crescem."},
 	{"id": "plunder", "short": "PILHAGEM", "name": "PILHAGEM", "kind": "ultimate", "charge": ULTIMATE_CHARGE, "price": 0, "color": "ff5c8a",

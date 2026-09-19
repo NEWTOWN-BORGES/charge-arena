@@ -1138,6 +1138,31 @@ func draw_demo(panel: Control, id: String) -> void:
 				c.draw_arc(brick, 10 + age * 12, 0, TAU, 20, Color(color, 1.0 - age), 2.0, true)
 				if i % 2 == 0:
 					c.draw_string(font_bold, brick + Vector2(-8, -16 - age * 18), "+2", HORIZONTAL_ALIGNMENT_LEFT, -1, 12, Color(color, 1.0 - age))
+		"singularity":
+			demo_bricks(c, area, CORAL, enemy_y, [3, 4, 5] if u > 0.82 else [])
+			demo_bricks(c, area, CYAN, mine_y)
+			if u < 0.58:
+				# Dragged in: four shots crawling towards the pilot while rings fall inwards.
+				var draw_in = u / 0.58
+				for i in range(4):
+					var from = [Vector2(-42, -28), Vector2(34, -14), Vector2(-24, 18), Vector2(40, 24)][i]
+					demo_ball(c, my_pilot + from * (1.0 - ease(draw_in, 2.2)), CORAL if i % 2 == 0 else CYAN, 5.0)
+				for ring in range(2):
+					var span = (1.0 - fmod(draw_in + ring * 0.5, 1.0)) * 54.0
+					c.draw_arc(my_pilot, span, 0, TAU, 30, Color(color, 0.55), 1.8, true)
+				c.draw_circle(my_pilot, 4.0 + draw_in * 5.0, Color(0.02, 0.03, 0.05, 1.0), true, -1, true)
+				c.draw_arc(my_pilot, 4.0 + draw_in * 5.0, 0, TAU, 24, color, 1.8, true)
+			else:
+				# The release: a fan of turbocharged rounds, straight ahead.
+				var out = (u - 0.58) / 0.42
+				for i in range(7):
+					var spread = lerpf(-0.55, 0.55, i / 6.0)
+					var course = Vector2(sin(spread), -cos(spread))
+					var flying = my_pilot + course * out * 96.0
+					# A short trail behind each round, so the fan reads while it travels.
+					c.draw_line(flying - course * 16.0, flying, Color(color, 0.45), 2.4, true)
+					demo_ball(c, flying, color, 6.0)
+				c.draw_arc(my_pilot, out * 60.0, 0, TAU, 32, Color(color, 1.0 - out), 2.6, true)
 		"plunder":
 			# The two walls trade places: each side slides across to the other.
 			var slide = clampf((u - 0.15) / 0.55, 0, 1)
@@ -2318,6 +2343,13 @@ func power_icon(id: String, center: Vector2, color: Color, canvas: CanvasItem = 
 			c.draw_line(center + Vector2(0, 3), center + Vector2(0, -6), color, 2.2, true)
 			c.draw_circle(center + Vector2(-5, -8), 4.0, color, true, -1, true)
 			c.draw_circle(center + Vector2(5, -10), 4.0, brass, true, -1, true)
+		"singularity":
+			# Singularity: a black core with a ring of debris and shots falling in.
+			c.draw_arc(center, 12.0, 0, TAU, 28, Color(color, 0.85), 2.0, true)
+			c.draw_circle(center, 5.6, Color(0.02, 0.03, 0.05, 1.0), true, -1, true)
+			c.draw_arc(center, 5.6, 0, TAU, 20, brass, 1.6, true)
+			for way in [Vector2(-1, -1), Vector2(1, -1), Vector2(-1, 1), Vector2(1, 1)]:
+				c.draw_line(center + way * 15.0, center + way * 9.0, Color(color, 0.9), 1.8, true)
 		"plunder":
 			# Plunder: two stacks swapping places.
 			c.draw_rect(Rect2(center + Vector2(-13, -12), Vector2(11, 7)), color, true)

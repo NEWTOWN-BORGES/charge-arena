@@ -1998,6 +1998,72 @@ func plunder_flash(team: int) -> void:
 		var mark = torus(self, Vector3(brick.position.x, 0.4, brick.position.z), 0.34, 0.04, Color(pale, 0.8), true)
 		effects.append({"node": mark, "v": Vector3(0, 0.6, 0), "ttl": 0.5, "life": 0.5, "gravity": false, "base": Vector3.ONE * 1.3, "grow": true, "tint": color})
 
+func singularity_open(at: Vector2) -> void:
+	# The moment the hole opens: the floor is scorched under it and the arena dust lifts.
+	var color = Rules.power_color("singularity")
+	scorch(at, 5.0, Color("0b0d14"), Rules.SINGULARITY_PULL + 0.6)
+	scorch(at, 3.0, color, Rules.SINGULARITY_PULL + 0.2)
+	for step in range(3):
+		if effects.size() >= effect_limit:
+			break
+		# Three rings caught on the way in, staggered so the collapse reads at once.
+		var width = 5.4 - step * 1.2
+		var ring = torus(self, Vector3(at.x, 0.4 + step * 0.22, at.y), 1.0, 0.07 - step * 0.012, Color("ffe6b8" if step == 0 else color, 0.7), true)
+		ring.scale = Vector3(width, 0.3, width)
+		effects.append({"node": ring, "v": Vector3(0, 0.35, 0), "ttl": 0.5 + step * 0.16, "life": 0.5 + step * 0.16, "gravity": false, "base": Vector3(width, 0.3, width)})
+	dust(Vector3(at.x, 0.2, at.y), Color("c8b79a"), 14, 1.1, 2.2, 0.9)
+	flash(Vector3(at.x, 0.9, at.y), color, 6.0, 0.45, 12.0)
+	shake(0.4)
+
+func singularity_swallow(at: Vector2) -> void:
+	# One round going down the throat: a short bright lick around the core.
+	if effects.size() >= effect_limit:
+		return
+	var ring = torus(self, Vector3(at.x, 0.62, at.y), 0.42, 0.04, Color("fff0cf", 0.95), true)
+	ring.rotation.z = PI * 0.5
+	ring.scale = Vector3.ONE * 2.1
+	effects.append({"node": ring, "v": Vector3.ZERO, "ttl": 0.22, "life": 0.22, "gravity": false, "base": Vector3.ONE * 2.1})
+	emitter(Vector3(at.x, 0.62, at.y), Color("ffd79a"), 6, 0.25, 2.4, 120.0, 0.18, 0.0, Vector3.UP)
+
+func singularity_burst(at: Vector2, heading: Vector2, count: int) -> void:
+	# The release: the hole snaps shut and everything it ate leaves at once, so the light
+	# goes with it — a hard flash, a flat shock ring and a cone of embers down the fan.
+	var color = Rules.power_color("singularity")
+	var hot = Color("fff6e4")
+	var direction = Vector3(heading.x, 0, heading.y)
+	var origin = Vector3(at.x, 0.62, at.y)
+	if effects.size() + 4 < effect_limit:
+		var shock = torus(self, origin, 0.9, 0.13, Color(hot, 0.95), true)
+		shock.scale = Vector3(0.2, 0.3, 0.2)
+		effects.append({"node": shock, "v": Vector3.ZERO, "ttl": 0.75, "life": 0.75, "gravity": false, "base": Vector3(7.0, 0.5, 7.0), "grow": true, "tint": color})
+		var bubble = sphere(self, origin, Vector3.ONE * 0.9, Color(hot, 0.55), true)
+		effects.append({"node": bubble, "v": Vector3.ZERO, "ttl": 0.4, "life": 0.4, "gravity": false, "base": Vector3.ONE * 4.2, "grow": true, "tint": color})
+		# A second wave, a beat later, so the release does not end on one frame.
+		schedule(0.1, func():
+			if effects.size() >= effect_limit:
+				return
+			var echo = torus(self, origin, 0.7, 0.08, Color(color, 0.9), true)
+			echo.scale = Vector3(0.2, 0.3, 0.2)
+			effects.append({"node": echo, "v": Vector3.ZERO, "ttl": 0.6, "life": 0.6, "gravity": false, "base": Vector3(4.6, 0.4, 4.6), "grow": true, "tint": color}))
+	# One lance of light per round that left, spread across the fan.
+	var shown = mini(count, 9)
+	for index in range(shown):
+		if effects.size() >= effect_limit:
+			break
+		var spread = 0.0 if shown == 1 else lerpf(-Rules.SINGULARITY_FAN * 0.5, Rules.SINGULARITY_FAN * 0.5, float(index) / float(shown - 1))
+		var course: Vector2 = heading.rotated(spread)
+		var streak = Node3D.new()
+		add_child(streak)
+		segment(streak, origin, origin + Vector3(course.x, 0, course.y) * 5.0, 0.085, 0.085, Color(hot, 0.95), true)
+		segment(streak, origin, origin + Vector3(course.x, 0, course.y) * 3.4, 0.2, 0.2, Color(color, 0.5), true)
+		effects.append({"node": streak, "v": Vector3(course.x, 0, course.y) * 11.0, "ttl": 0.45, "life": 0.45, "gravity": false, "base": Vector3.ONE, "keep": true})
+	emitter(origin + direction * 0.8, hot, 34, 0.5, 11.0, 38.0, 0.28, -2.0, direction)
+	emitter(origin, color, 22, 0.7, 6.0, 120.0, 0.34, -3.0, Vector3.UP)
+	dust(Vector3(at.x, 0.16, at.y), Color("d8c4a4"), 12, 1.0, 2.6, 1.0)
+	flash(origin + direction * 1.2, hot, 8.0, 0.32, 9.0)
+	scorch(at, 4.4, color, 1.4)
+	shake(0.95)
+
 func shock_pulse(at: Vector2) -> void:
 	# Two rings racing outwards, a dome of light over the pilot and a spray of sparks.
 	var color = Rules.power_color("stun")
@@ -2079,6 +2145,37 @@ func update_power_effects(rules, dt: float) -> void:
 			if fmod(clock, 0.1) < dt:
 				emitter(muzzle, Color("fff4d2"), 10, 0.4, 7.0, 24.0, 0.3, -1.5, Vector3(aim.x, 0, aim.y))
 				shake(0.28)
+		var vortex: Node3D = power_nodes[team].get_node("Vortex")
+		var collapsing: bool = state.ultimate_time > 0 and String(state.ultimate_id) == "singularity"
+		vortex.visible = collapsing
+		if collapsing:
+			# The core swells and the disc spins faster as the collapse tightens; rings of
+			# shock keep falling inwards, and the light bends the same way.
+			var pilot: Vector2 = rules.players[team].p
+			var draw_in = clampf(1.0 - state.ultimate_time / Rules.SINGULARITY_PULL, 0.0, 1.0)
+			var glow: Color = Rules.power_color("singularity")
+			vortex.position = Vector3(pilot.x, 1.05, pilot.y)
+			vortex.scale = Vector3.ONE * lerpf(0.6, 1.35, draw_in) * (1.0 + sin(clock * 24.0) * 0.03)
+			vortex.get_node("Disc").rotation.y = clock * lerpf(2.6, 9.5, draw_in)
+			vortex.get_node("Rim").scale = Vector3.ONE * (1.0 + sin(clock * 17.0) * 0.07)
+			vortex.get_node("Halo").scale = Vector3.ONE * (1.0 + sin(clock * 11.0) * 0.12)
+			vortex.get_node("Core").scale = Vector3.ONE * lerpf(0.8, 1.15, draw_in)
+			for i in range(4):
+				var lance: Node3D = vortex.get_node("Lance%d" % i)
+				lance.rotation.y = -(i * TAU / 4.0 + clock * lerpf(1.4, 5.0, draw_in))
+				lance.position = Vector3(cos(-lance.rotation.y) * 1.05, 0, sin(-lance.rotation.y) * 1.05)
+			if fmod(clock, 0.12) < dt and effects.size() + 2 < effect_limit:
+				# A ring that falls into the core: it starts wide and is drawn to nothing.
+				var wave = torus(self, Vector3(pilot.x, 0.75, pilot.y), 1.0, 0.07, Color(glow, 0.6), true)
+				var width = lerpf(4.2, 2.0, draw_in)
+				wave.scale = Vector3(width, 0.3, width)
+				effects.append({"node": wave, "v": Vector3.ZERO, "ttl": 0.55, "life": 0.55, "gravity": false, "base": Vector3(width, 0.3, width)})
+				# Dust off the floor, thrown at the core rather than away from it.
+				var edge = pilot + Vector2(cos(clock * 3.1), sin(clock * 3.1)) * lerpf(4.6, 2.2, draw_in)
+				var inward = (pilot - edge).normalized()
+				emitter(Vector3(edge.x, 0.18, edge.y), Color("ffd79a"), 9, 0.5, 5.0 + draw_in * 5.0, 14.0, 0.24, 0.0, Vector3(inward.x, 0.12, inward.y))
+				flash(Vector3(pilot.x, 0.7, pilot.y), glow, 1.6 + draw_in * 3.0, 0.22, 7.5)
+				shake(0.12 + draw_in * 0.18)
 		var beam: Node3D = power_nodes[team].get_node("Beam")
 		beam.visible = state.laser_time > 0
 		if beam.visible:
@@ -2138,6 +2235,35 @@ func build_power_effects() -> void:
 			halo.name = "Ring%d" % i
 			halo.rotation.z = PI * 0.5
 		ray.hide()
+		var vortex = Node3D.new()
+		vortex.name = "Vortex"
+		root.add_child(vortex)
+		# A hole, not a light: an opaque black core, a searing rim around it, three discs of
+		# debris lying flat, and four lances of light bent around the edge.
+		var core = sphere(vortex, Vector3.ZERO, Vector3.ONE * 0.74, Color("04050a"), false)
+		core.name = "Core"
+		# A wider, softer shadow around it: the light nearby is bent, not lit.
+		sphere(vortex, Vector3.ZERO, Vector3.ONE * 1.12, Color("05070d", 0.45), false)
+		var rim = torus(vortex, Vector3.ZERO, 0.52, 0.09, Color("fff3d8"), true)
+		rim.name = "Rim"
+		rim.rotation.x = 0.16
+		var rim_glow = torus(vortex, Vector3.ZERO, 0.6, 0.2, Color("ffc46a", 0.45), true)
+		rim_glow.name = "Halo"
+		rim_glow.rotation.x = 0.16
+		var disc = Node3D.new()
+		disc.name = "Disc"
+		vortex.add_child(disc)
+		for i in range(3):
+			var ring = torus(disc, Vector3(0, -0.04 * i, 0), 0.88 + i * 0.36, 0.075 - i * 0.014, Color(Rules.power_color("singularity"), 0.95 - i * 0.2), true)
+			ring.name = "Ring%d" % i
+			ring.scale = Vector3(1, 0.18, 1)
+			ring.rotation.x = 0.13 + i * 0.05
+		for i in range(4):
+			var angle = i * TAU / 4.0
+			var lance = box(vortex, Vector3(cos(angle) * 1.05, 0, sin(angle) * 1.05), Vector3(0.9, 0.035, 0.035), Color("ffd79a"), true, 0.01)
+			lance.name = "Lance%d" % i
+			lance.rotation.y = -angle
+		vortex.hide()
 		var windup = Node3D.new()
 		windup.name = "Windup"
 		root.add_child(windup)

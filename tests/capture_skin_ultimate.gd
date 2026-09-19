@@ -17,11 +17,16 @@ func run() -> void:
 	game.skins.config_path = TMP
 	await create_timer(0.8).timeout
 	game.hud.open_skins()
-	for skin in [10, 3, 1]:
+	for skin in [10, 5, 3, 1]:
 		game.hud.preview_skin(skin)
 		game.hud.demo_clock = 1.1
 		await create_timer(0.5).timeout
 		await capture("preview-skin-ultimate-%d.png" % skin)
+	# The singularity demo twice over: the draw in, then the fan going out.
+	game.hud.preview_skin(5)
+	game.hud.demo_clock = 2.6
+	await create_timer(0.4).timeout
+	await capture("preview-skin-ultimate-5-burst.png")
 	root.size = Vector2i(540, 1200)
 	game.hud.preview_skin(2)
 	await create_timer(0.6).timeout
