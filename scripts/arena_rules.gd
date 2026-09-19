@@ -1308,10 +1308,11 @@ func ai_command() -> Dictionary:
 			# Hold this validated angle on the firing frame; movement is the only aiming.
 			move = Vector2.ZERO
 			ai_next_fire_check = elapsed + 0.10 + level.fire_gap
-			power = ai_power(outcome, level)
-		else:
-			# A wide fan needs no lined-up shot, so it covers the banks the boss cannot reach.
-			power = ai_slot(["air"], level)
+		# The ultimate is weighed first. Asked afterwards it never came out: the cheap
+		# powers spend the shared pause every few seconds and starve it forever.
+		power = ai_ultimate(level, fire and outcome.get("kind", "") == "brick")
+		if power < 0:
+			power = ai_power(outcome, level) if fire else ai_slot(["air"], level)
 		if power < 0:
 			power = ai_defensive_power(level)
 	return {"move": move, "fire": fire, "power": power}
@@ -1323,6 +1324,48 @@ func ai_power(outcome: Dictionary, level: Dictionary) -> int:
 		return -1
 	# Heavier powers first, so a cheap one does not keep the expensive kit idle.
 	return ai_slot(["laser", "rapid", "stun", "blast", "ghost"], level)
+
+func ai_ultimate(level: Dictionary, aimed: bool) -> int:
+	# The boss keeps its skin ultimate for the moment that ultimate is actually good for,
+	# and only once the level says it may: the first bosses sit on it for most of a match,
+	# the last ones bring it out early.
+	if elapsed < float(level.get("ultimate_wait", 30.0)) or elapsed < ai_next_power:
+		return -1
+	var id = power_id(1, POWER_SLOTS - 1)
+	if not Powers.is_ultimate(id) or not can_activate_power(1, POWER_SLOTS - 1):
+		return -1
+	var ready = false
+	match id:
+		"sun_ray":
+			# A beam straight out of the gun: only worth it lined up on the wall.
+			ready = aimed
+		"meteors", "thunder":
+			# They rain on the far half; anything still standing over there will do.
+			ready = brick_count(0) > 0
+		"bloom":
+			ready = team_health(1) < BRICK_COUNT * 3 * 0.7
+		"plunder":
+			# Worth it when the boss would be taking a better wall than it gives, or when
+			# its own is battered enough that any trade is an improvement.
+			ready = brick_count(1) < brick_count(0) or team_health(1) < BRICK_COUNT * 3 * 0.55
+		"singularity":
+			# Its whole point is a field full of shots to swallow.
+			ready = balls.size() >= 3
+		"sentries":
+			ready = turrets.filter(func(t): return t.alive and t.team == 1).is_empty()
+		_:
+			ready = true
+	if not ready:
+		return -1
+	ai_next_power = elapsed + float(level.get("power_gap", AI_POWER_GAP))
+	return POWER_SLOTS - 1
+
+func team_health(team: int) -> int:
+	var total = 0
+	for brick in bricks:
+		if brick.team == team:
+			total += brick.hp
+	return total
 
 func ai_slot(wanted: Array, level: Dictionary) -> int:
 	# One power at a time, never before its own pause has run out.

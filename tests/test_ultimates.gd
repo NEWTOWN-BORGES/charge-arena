@@ -257,6 +257,60 @@ func run() -> void:
 	check(watcher.apply_network_snapshot(watch.network_snapshot()), "The snapshot carrying sentries is accepted")
 	check(watcher.turrets.size() == watch.turrets.filter(func(t): return true).size() and watcher.turrets[0].hp == watch.turrets[0].hp, "And the client sees them where they stand, with the health they have left")
 
+	# ---------------------------------------------------------------- the bosses use theirs
+	var Campaign = load("res://scripts/campaign.gd")
+	var waits: Array = []
+	for level in range(Campaign.LEVELS.size()):
+		waits.append(float(Campaign.ai_profile(level, 1).ultimate_wait))
+	var ramps = true
+	for i in range(1, waits.size()):
+		ramps = ramps and waits[i] <= waits[i - 1] + 0.001
+	check(ramps and waits[0] > waits[waits.size() - 1] * 3.0, "The later the level, the sooner the boss reaches for its ultimate (%.0f s no primeiro, %.0f s no último)" % [waits[0], waits[waits.size() - 1]])
+	check(float(Campaign.ai_profile(8, 2).ultimate_wait) < float(Campaign.ai_profile(8, 0).ultimate_wait), "And DIFÍCIL brings it out sooner than FÁCIL")
+
+	# The last boss, played against a pilot that fights back, actually fires it.
+	var arena = playing("sun_ray")
+	arena.loadouts = [["blast", "air", ""], ["laser", "stun", "sun_ray"]]
+	arena.ai_profile = Campaign.ai_profile(10, 1)
+	var unleashed = -1.0
+	var too_early = false
+	for tick in range(60 * 90):
+		if tick % 30 == 0:
+			for slot in range(3):
+				arena.powers[1].charge[slot] = mini(arena.powers[1].charge[slot] + 1, Powers.ULTIMATE_CHARGE)
+		arena.step(1.0 / 60, [{"move": Vector2(sin(tick * 0.012), 0), "fire": true}, arena.ai_command()])
+		for event in arena.events:
+			if event.kind == "ultimate" and event.team == 1 and unleashed < 0:
+				unleashed = arena.elapsed
+				too_early = arena.elapsed < float(arena.ai_profile.ultimate_wait)
+		if unleashed >= 0:
+			break
+	check(unleashed >= 0, "The boss of the last level unleashes its ultimate on its own (%s)" % ("nunca" if unleashed < 0 else "%.1f s" % unleashed))
+	check(not too_early, "And not before the level says it may")
+
+	# A sentry boss puts its platforms down; a plunder boss only trades when it is behind.
+	var clockwork = playing("sentries")
+	clockwork.loadouts = [["blast", "air", ""], ["blast", "air", "sentries"]]
+	clockwork.ai_profile = Campaign.ai_profile(1, 1)
+	clockwork.elapsed = float(clockwork.ai_profile.ultimate_wait) + 1.0
+	for slot in range(3):
+		clockwork.powers[1].charge[slot] = Powers.ULTIMATE_CHARGE
+	check(clockwork.ai_ultimate(clockwork.ai_profile, false) == 2, "The Relojoeiro reaches for its sentries as soon as it may")
+	var corsair = playing("plunder")
+	corsair.loadouts = [["blast", "air", ""], ["blast", "air", "plunder"]]
+	corsair.ai_profile = Campaign.ai_profile(9, 1)
+	corsair.elapsed = float(corsair.ai_profile.ultimate_wait) + 1.0
+	for slot in range(3):
+		corsair.powers[1].charge[slot] = Powers.ULTIMATE_CHARGE
+	check(corsair.ai_ultimate(corsair.ai_profile, false) < 0, "The Corsário does not trade a wall that is already the better one")
+	var knocked = 0
+	for brick in corsair.bricks:
+		if brick.team == 1 and knocked < 22:
+			brick.hp = 0
+			brick.alive = false
+			knocked += 1
+	check(corsair.ai_ultimate(corsair.ai_profile, false) == 2, "But it trades the moment its own wall is the worse one")
+
 	# ---------------------------------------------------------------- the kit carries it
 	var shop = Powers.new()
 	check(shop.loadout("sun_ray") == [shop.kit[0], shop.kit[1], "sun_ray"], "The ultimate always rides in the third slot")

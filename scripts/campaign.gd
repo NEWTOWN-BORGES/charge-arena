@@ -110,18 +110,23 @@ static func ai_profile(index: int, difficulty: int) -> Dictionary:
 	# The campaign starts welcoming and ramps smoothly. Bosses still develop their
 	# own behaviour, but leave time to aim around the scenery.
 	# Powers too: the first bosses save them for a long time, the last ones keep them coming.
-	var profile = {"fire_gap": lerpf(2.35, 0.55, tier), "move": lerpf(0.34, 0.76, tier), "dodge": tier >= 0.5, "power_gap": lerpf(9.5, 3.0, tier)}
+	# The ultimate too: the first bosses only reach for it near the end of a long match,
+	# the last ones open with it.
+	var profile = {"fire_gap": lerpf(2.35, 0.55, tier), "move": lerpf(0.34, 0.76, tier), "dodge": tier >= 0.5,
+		"power_gap": lerpf(9.5, 3.0, tier), "ultimate_wait": lerpf(42.0, 7.0, tier)}
 	match difficulty:
 		0:
 			profile.fire_gap = profile.fire_gap * 1.55 + 0.55
 			profile.move *= 0.8
 			profile.dodge = tier >= 0.7
 			profile.power_gap *= 1.5
+			profile.ultimate_wait *= 1.5
 		2:
 			profile.fire_gap *= 0.55
 			profile.move = minf(1.0, profile.move * 1.15)
 			profile.dodge = true
 			profile.power_gap *= 0.65
+			profile.ultimate_wait *= 0.6
 	return profile
 
 func is_unlocked(index: int) -> bool:
