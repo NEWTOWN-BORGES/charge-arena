@@ -176,14 +176,16 @@ func _init() -> void:
 	check(network_replica.apply_network_snapshot(network_state), "Packed PvP state is accepted")
 	check(network_replica.players[0].p.is_equal_approx(r.players[0].p) and network_replica.bricks[0].hp == r.bricks[0].hp and network_replica.balls.size() == r.balls.size(), "Packed PvP state reconstructs deterministic positions and gameplay")
 	r = active()
+	# Counted as it happens, not read off the wall at the end: a goal resets the round and
+	# puts every brick back, so the final health says nothing about how the AI played.
+	var damage = 0
 	for i in range(60 * 45):
 		r.step(1.0 / 60, [IDLE[0], r.ai_command()])
-	var damage = 0
-	for brick in r.bricks:
-		if brick.team == 0:
-			damage += 3 - brick.hp
+		for event in r.events:
+			if event.kind in ["brick_hit", "brick"] and event.team == 0:
+				damage += 1
 	# A machine-gun burst outlives itself (30 rounds, 4 s each) and an air burst adds nine
 	# at once, so the ceiling only has to rule out runaway spawning.
-	check(damage > 0 and r.players[1].p.is_finite() and r.balls.size() < 50, "AI follows its arc and damages enemy banks during a 45s simulation (%d balls in flight)" % r.balls.size())
+	check(damage > 0 and r.players[1].p.is_finite() and r.balls.size() < 50, "AI follows its arc and damages enemy banks during a 45s simulation (%d acertos, %d balls in flight)" % [damage, r.balls.size()])
 	print("RULES_RESULT ", checks - failures, "/", checks, " passed")
 	quit(1 if failures > 0 else 0)

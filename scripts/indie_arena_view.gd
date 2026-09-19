@@ -2015,6 +2015,46 @@ func singularity_open(at: Vector2) -> void:
 	flash(Vector3(at.x, 0.9, at.y), color, 6.0, 0.45, 12.0)
 	shake(0.4)
 
+func singularity_wave(at: Vector2, index: int, seconds: float) -> void:
+	# A shock front out of the sky. It comes down past the rim of the arena and closes on
+	# the pilot, a bright band with a curtain of light hanging off it, sweeping everything
+	# it passes over towards the core.
+	var color = Rules.power_color("singularity")
+	var pale = Color("ffeccb")
+	if effects.size() + 3 >= effect_limit:
+		return
+	var front = Node3D.new()
+	add_child(front)
+	# The front starts just outside the rim, so it sweeps the arena and not the screen. It
+	# is modelled at radius 1 and scaled flat: only the ground plane grows, never the
+	# height, or the band would come out as thick as a wall.
+	var reach = Rules.HALF_LENGTH * 1.5
+	var band = torus(front, Vector3.ZERO, 1.0, 0.011, Color(pale, 0.95), true)
+	var halo = torus(front, Vector3.ZERO, 1.0, 0.03, Color(color, 0.28), true)
+	halo.scale = Vector3(1, 1.8, 1)
+	# A fainter band chasing the first one: two edges read as a wave, one reads as a hoop.
+	var trail = torus(front, Vector3(0, 0.3, 0), 0.93, 0.02, Color(color, 0.2), true)
+	trail.scale = Vector3(1, 1.2, 1)
+	# A low skirt under the band rather than hanging spokes: a slab sheared by the flat
+	# scale reads as a stray bar, a second ring does not.
+	var skirt = torus(front, Vector3(0, -0.22, 0), 1.0, 0.026, Color(color, 0.5), true)
+	skirt.scale = Vector3(1, 2.4, 1)
+	var sky = 4.6 - index * 1.1
+	front.position = Vector3(at.x, sky, at.y)
+	front.scale = Vector3(reach, 1.0, reach)
+	# The default fade shrinks it to nothing: that is the sweep closing on the pilot.
+	effects.append({"node": front, "v": Vector3(0, -(sky - 0.45) / seconds, 0), "ttl": seconds, "life": seconds, "gravity": false, "base": Vector3(reach, 1.0, reach)})
+	# Dust lifted off the floor all around the rim as the wave breaks over it.
+	for i in range(6):
+		if effects.size() >= effect_limit:
+			break
+		var angle = i * TAU / 6.0 + index * 0.4
+		var edge = at + Vector2(cos(angle), sin(angle)) * (Rules.HALF_WIDTH * 0.85)
+		var inward = (at - edge).normalized()
+		emitter(Vector3(edge.x, 0.3, edge.y), color, 10, 0.75, 6.0, 22.0, 0.3, -1.0, Vector3(inward.x, 0.25, inward.y))
+	flash(Vector3(at.x, 2.4, at.y), color, 5.0 + index * 1.5, 0.3, 14.0)
+	shake(0.3 + index * 0.12)
+
 func singularity_swallow(at: Vector2) -> void:
 	# One round going down the throat: a short bright lick around the core.
 	if effects.size() >= effect_limit:
@@ -2045,8 +2085,8 @@ func singularity_burst(at: Vector2, heading: Vector2, count: int) -> void:
 			var echo = torus(self, origin, 0.7, 0.08, Color(color, 0.9), true)
 			echo.scale = Vector3(0.2, 0.3, 0.2)
 			effects.append({"node": echo, "v": Vector3.ZERO, "ttl": 0.6, "life": 0.6, "gravity": false, "base": Vector3(4.6, 0.4, 4.6), "grow": true, "tint": color}))
-	# One lance of light per round that left, spread across the fan.
-	var shown = mini(count, 9)
+	# One lance of light per round that left, spread across the whole fan.
+	var shown = mini(count, 22)
 	for index in range(shown):
 		if effects.size() >= effect_limit:
 			break
@@ -2057,9 +2097,12 @@ func singularity_burst(at: Vector2, heading: Vector2, count: int) -> void:
 		segment(streak, origin, origin + Vector3(course.x, 0, course.y) * 5.0, 0.085, 0.085, Color(hot, 0.95), true)
 		segment(streak, origin, origin + Vector3(course.x, 0, course.y) * 3.4, 0.2, 0.2, Color(color, 0.5), true)
 		effects.append({"node": streak, "v": Vector3(course.x, 0, course.y) * 11.0, "ttl": 0.45, "life": 0.45, "gravity": false, "base": Vector3.ONE, "keep": true})
-	emitter(origin + direction * 0.8, hot, 34, 0.5, 11.0, 38.0, 0.28, -2.0, direction)
-	emitter(origin, color, 22, 0.7, 6.0, 120.0, 0.34, -3.0, Vector3.UP)
-	dust(Vector3(at.x, 0.16, at.y), Color("d8c4a4"), 12, 1.0, 2.6, 1.0)
+		if index % 3 == 0:
+			# Embers thrown down every third lane, so the fan has body and not just edges.
+			emitter(origin + Vector3(course.x, 0, course.y) * 1.4, hot, 12, 0.45, 13.0, 16.0, 0.26, -2.0, Vector3(course.x, 0.08, course.y))
+	emitter(origin + direction * 0.8, hot, 40, 0.55, 12.0, 92.0, 0.3, -2.0, direction)
+	emitter(origin, color, 30, 0.8, 7.0, 150.0, 0.36, -3.0, Vector3.UP)
+	dust(Vector3(at.x, 0.16, at.y), Color("d8c4a4"), 16, 1.1, 3.2, 1.1)
 	flash(origin + direction * 1.2, hot, 8.0, 0.32, 9.0)
 	scorch(at, 4.4, color, 1.4)
 	shake(0.95)
@@ -2164,18 +2207,21 @@ func update_power_effects(rules, dt: float) -> void:
 				var lance: Node3D = vortex.get_node("Lance%d" % i)
 				lance.rotation.y = -(i * TAU / 4.0 + clock * lerpf(1.4, 5.0, draw_in))
 				lance.position = Vector3(cos(-lance.rotation.y) * 1.05, 0, sin(-lance.rotation.y) * 1.05)
-			if fmod(clock, 0.12) < dt and effects.size() + 2 < effect_limit:
-				# A ring that falls into the core: it starts wide and is drawn to nothing.
-				var wave = torus(self, Vector3(pilot.x, 0.75, pilot.y), 1.0, 0.07, Color(glow, 0.6), true)
-				var width = lerpf(4.2, 2.0, draw_in)
+			if fmod(clock, 0.09) < dt and effects.size() + 3 < effect_limit:
+				# Embers torn off the floor right where the wave is passing, all pulled in.
+				var span = clampf(rules.singularity_front(team), 1.2, Rules.HALF_LENGTH)
+				for spoke in range(2):
+					var around = clock * 2.6 + spoke * PI
+					var edge = pilot + Vector2(cos(around), sin(around)) * span
+					var inward = (pilot - edge).normalized()
+					emitter(Vector3(edge.x, 0.18, edge.y), Color("ffd79a"), 10, 0.55, 6.0 + draw_in * 6.0, 16.0, 0.26, 0.0, Vector3(inward.x, 0.14, inward.y))
+				# And a ring around the core itself, drawn down to nothing.
+				var wave = torus(self, Vector3(pilot.x, 0.75, pilot.y), 1.0, 0.07, Color(glow, 0.55), true)
+				var width = lerpf(3.4, 1.6, draw_in)
 				wave.scale = Vector3(width, 0.3, width)
-				effects.append({"node": wave, "v": Vector3.ZERO, "ttl": 0.55, "life": 0.55, "gravity": false, "base": Vector3(width, 0.3, width)})
-				# Dust off the floor, thrown at the core rather than away from it.
-				var edge = pilot + Vector2(cos(clock * 3.1), sin(clock * 3.1)) * lerpf(4.6, 2.2, draw_in)
-				var inward = (pilot - edge).normalized()
-				emitter(Vector3(edge.x, 0.18, edge.y), Color("ffd79a"), 9, 0.5, 5.0 + draw_in * 5.0, 14.0, 0.24, 0.0, Vector3(inward.x, 0.12, inward.y))
+				effects.append({"node": wave, "v": Vector3.ZERO, "ttl": 0.5, "life": 0.5, "gravity": false, "base": Vector3(width, 0.3, width)})
 				flash(Vector3(pilot.x, 0.7, pilot.y), glow, 1.6 + draw_in * 3.0, 0.22, 7.5)
-				shake(0.12 + draw_in * 0.18)
+				shake(0.1 + draw_in * 0.22)
 		var beam: Node3D = power_nodes[team].get_node("Beam")
 		beam.visible = state.laser_time > 0
 		if beam.visible:

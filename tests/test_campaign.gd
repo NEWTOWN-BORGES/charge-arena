@@ -92,7 +92,7 @@ func run() -> void:
 
 	var default_rules = Rules.new()
 	var same_obstacles = range(40).all(func(t): return default_rules.obstacle_at(0, t * 0.1).is_equal_approx(Rules.obstacle_position(0, t * 0.1)) and default_rules.obstacle_at(1, t * 0.1).is_equal_approx(Rules.obstacle_position(1, t * 0.1)))
-	check(default_rules.walls == Rules.WALLS and default_rules.boost_centers == Rules.BOOST_CENTERS and default_rules.barriers.is_empty() and same_obstacles, "Quick play and PvP keep the original arena exactly")
+	check(default_rules.walls == Rules.WALLS and default_rules.boost_centers == Rules.booster_centers(Rules.default_map()) and default_rules.barriers.is_empty() and same_obstacles, "Quick play and PvP keep the original arena exactly")
 	var first = Campaign.ai_profile(0, 1)
 	var last = Campaign.ai_profile(9, 1)
 	check(first.fire_gap > last.fire_gap and first.move < last.move, "The first boss fires and moves far less than the last")

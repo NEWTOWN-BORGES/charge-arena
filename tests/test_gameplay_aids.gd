@@ -77,14 +77,21 @@ func run() -> void:
 	var hud = game.hud
 	var arena = game.arena
 
-	# The stick: a light push aims finely, full deflection runs.
+	# The stick has to answer at once: a nudge already walks, half runs, full sprints.
 	game.rules.players[0].angle = 0.0
+	hud.move_vector = Vector2(0.11, 0)
+	var nudge: Dictionary = game.local_command()
 	hud.move_vector = Vector2(0.5, 0)
 	var half: Dictionary = game.local_command()
 	hud.move_vector = Vector2(1, 0)
 	var full: Dictionary = game.local_command()
+	hud.move_vector = Vector2(0.04, 0)
+	var resting: Dictionary = game.local_command()
 	hud.move_vector = Vector2.ZERO
-	check(half.move.x > 0.2 and half.move.x < 0.45 and is_equal_approx(full.move.x, 1.0), "Half stick moves slowly for fine aim, full stick still runs")
+	check(nudge.move.x > 0.3, "The lightest push past the dead zone already moves the pilot (%.2f)" % nudge.move.x)
+	check(half.move.x > 0.5 and half.move.x < 0.8, "Half the stick is better than half the speed (%.2f)" % half.move.x)
+	check(is_equal_approx(full.move.x, 1.0), "Full deflection still sprints")
+	check(absf(resting.move.x) < 0.3, "Inside the dead zone the thumb is treated as resting")
 	hud.move_vector = Vector2(0.75, 0)
 	game.game_settings.configure(1, true, 0)
 	var slow: float = game.local_command().move.x

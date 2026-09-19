@@ -39,7 +39,8 @@ func run() -> void:
 		brick.alive = false
 		brick.hp = 0
 	var brick = r.bricks[0]
-	brick.p = Vector2(Rules.HALF_WIDTH - 0.7, 2.5)
+	# Between two bumpers of the side rail, so the wall behind really is bare wall.
+	brick.p = Vector2(Rules.HALF_WIDTH - 0.7, 1.7)
 	brick.hp = 3
 	brick.alive = true
 	var shot = ball(r, 0, brick.p - Vector2(0.8, 0), Vector2(10, 0))

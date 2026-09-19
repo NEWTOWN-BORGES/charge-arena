@@ -11,6 +11,12 @@ func check(ok: bool, description: String) -> void:
 	else:
 		print("PASS: ", description)
 
+func nearest_gap(scene, angle: float) -> float:
+	var best = INF
+	for option in scene.rules.firing_angles(0):
+		best = minf(best, absf(option.angle - angle))
+	return best
+
 func _initialize() -> void:
 	call_deferred("run")
 
@@ -52,13 +58,19 @@ func run() -> void:
 	var hud = scene.hud
 	scene.game_settings.aim_assist = true
 
-	# 3a. Standing a hair beside a target, a still thumb is eased onto it.
+	# 3a. Standing a hair beside a target, a still thumb is eased onto the nearest one.
 	var aim_targets = scene.rules.firing_angles(0)
 	var mark = aim_targets[aim_targets.size() / 2]
 	scene.rules.players[0].angle = mark.angle + 0.02
 	hud.move_vector = Vector2.ZERO
+	var gap_before: float = nearest_gap(scene, scene.rules.players[0].angle)
 	var nudge: float = scene.local_command().move.x
-	check(nudge < 0.0 and absf(nudge) < 0.4, "A still thumb beside a target is eased onto it (%.3f)" % nudge)
+	scene.rules.phase = "play"
+	for tick in range(12):
+		scene.rules.step(1.0 / 60, [scene.local_command(), {"move": Vector2.ZERO, "fire": false}])
+	var gap_after: float = nearest_gap(scene, scene.rules.players[0].angle)
+	check(absf(nudge) > 0.0 and absf(nudge) < 0.4, "A still thumb beside a target is eased, gently (%.3f)" % nudge)
+	check(gap_after < gap_before, "And the easing closes the gap to the nearest target (%.4f para %.4f)" % [gap_before, gap_after])
 
 	# 3b. Too far away, the magnetism keeps quiet: the thumb decides.
 	scene.rules.players[0].angle = mark.angle + 0.4

@@ -1139,30 +1139,33 @@ func draw_demo(panel: Control, id: String) -> void:
 				if i % 2 == 0:
 					c.draw_string(font_bold, brick + Vector2(-8, -16 - age * 18), "+2", HORIZONTAL_ALIGNMENT_LEFT, -1, 12, Color(color, 1.0 - age))
 		"singularity":
-			demo_bricks(c, area, CORAL, enemy_y, [3, 4, 5] if u > 0.82 else [])
+			demo_bricks(c, area, CORAL, enemy_y, [2, 3, 4, 5, 6] if u > 0.84 else [])
 			demo_bricks(c, area, CYAN, mine_y)
-			if u < 0.58:
-				# Dragged in: four shots crawling towards the pilot while rings fall inwards.
-				var draw_in = u / 0.58
-				for i in range(4):
-					var from = [Vector2(-42, -28), Vector2(34, -14), Vector2(-24, 18), Vector2(40, 24)][i]
-					demo_ball(c, my_pilot + from * (1.0 - ease(draw_in, 2.2)), CORAL if i % 2 == 0 else CYAN, 5.0)
-				for ring in range(2):
-					var span = (1.0 - fmod(draw_in + ring * 0.5, 1.0)) * 54.0
-					c.draw_arc(my_pilot, span, 0, TAU, 30, Color(color, 0.55), 1.8, true)
-				c.draw_circle(my_pilot, 4.0 + draw_in * 5.0, Color(0.02, 0.03, 0.05, 1.0), true, -1, true)
-				c.draw_arc(my_pilot, 4.0 + draw_in * 5.0, 0, TAU, 24, color, 1.8, true)
+			if u < 0.62:
+				# Three waves sweep in from beyond the arena, each one collecting whatever
+				# it washes over; the core swells as it eats.
+				var draw_in = u / 0.62
+				for wave in range(3):
+					var span = 1.0 - fmod(draw_in * 3.0 - wave * 0.02, 1.0)
+					if span < 0 or span > 1:
+						continue
+					c.draw_arc(my_pilot, 30 + span * 150.0, 0, TAU, 44, Color(color, 0.7 * (1.0 - span * 0.5)), 2.4, true)
+				for i in range(5):
+					var from = [Vector2(-52, -34), Vector2(40, -18), Vector2(-28, 22), Vector2(48, 28), Vector2(4, -44)][i]
+					var caught = clampf((draw_in - i * 0.06) / 0.7, 0, 1)
+					demo_ball(c, my_pilot + from * (1.0 - ease(caught, 2.4)), CORAL if i % 2 == 0 else CYAN, 5.0)
+				c.draw_circle(my_pilot, 4.0 + draw_in * 6.0, Color(0.02, 0.03, 0.05, 1.0), true, -1, true)
+				c.draw_arc(my_pilot, 4.5 + draw_in * 6.0, 0, TAU, 26, color, 2.0, true)
 			else:
-				# The release: a fan of turbocharged rounds, straight ahead.
-				var out = (u - 0.58) / 0.42
-				for i in range(7):
-					var spread = lerpf(-0.55, 0.55, i / 6.0)
+				# The release: a wide fan of turbocharged rounds across the whole arena.
+				var out = (u - 0.62) / 0.38
+				for i in range(13):
+					var spread = lerpf(-1.35, 1.35, i / 12.0)
 					var course = Vector2(sin(spread), -cos(spread))
-					var flying = my_pilot + course * out * 96.0
-					# A short trail behind each round, so the fan reads while it travels.
-					c.draw_line(flying - course * 16.0, flying, Color(color, 0.45), 2.4, true)
-					demo_ball(c, flying, color, 6.0)
-				c.draw_arc(my_pilot, out * 60.0, 0, TAU, 32, Color(color, 1.0 - out), 2.6, true)
+					var flying = my_pilot + course * out * 108.0
+					c.draw_line(flying - course * 18.0, flying, Color(color, 0.45), 2.4, true)
+					demo_ball(c, flying, color, 5.5)
+				c.draw_arc(my_pilot, out * 70.0, 0, TAU, 36, Color(color, 1.0 - out), 2.8, true)
 		"plunder":
 			# The two walls trade places: each side slides across to the other.
 			var slide = clampf((u - 0.15) / 0.55, 0, 1)
@@ -1725,7 +1728,7 @@ func _input(event: InputEvent) -> void:
 				move_vector = Vector2.ZERO
 				move_center = move_home
 	if event is InputEventScreenDrag and event.index == move_id:
-		move_vector = ((event.position - move_center) / 58).limit_length()
+		move_vector = ((event.position - move_center) / 44).limit_length()
 	queue_redraw()
 
 func write(text: String, pos: Vector2, font_size: int, color: Color, bold: bool = false) -> void:

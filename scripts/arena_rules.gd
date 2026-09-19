@@ -16,6 +16,12 @@ const FIRE_INTERVAL = 0.42
 const PLAYER_LIVES = 5
 const STUN_SECONDS = 0.5
 const FACING_FACTOR = 1.35
+# The turn saturates instead of running on: the pilot never faces more than this far off
+# the arena's axis, so cornered against a wall it still fires down the field rather than
+# 46 degrees into the side. The curve has to stay strictly increasing — a facing that
+# turned back on itself would leave two arc positions aiming the same way, and every
+# solver in here, the aiming and the AI included, would have nothing to converge on.
+const FACING_LIMIT = 0.50
 ## A generous default keeps the arena readable: obstacles create interesting
 ## ricochets without closing the player's firing lanes.
 const OBSTACLE_RADIUS = 0.46
@@ -29,6 +35,7 @@ const BRICK_EXTENT = Vector2(0.27, 0.14)
 const BOOST_SPEED = 1.65
 const BOOST_DAMAGE = 2
 const BOOST_RADIUS = 1.10
+const BOOST_RAIL_SPACING = 3.4
 const BOOST_CENTERS = [Vector2(-HALF_WIDTH - 0.75, 0), Vector2(HALF_WIDTH + 0.75, 0)]
 const BALL_RADIUS = 0.14
 const Powers = preload("res://scripts/powers.gd")
@@ -75,12 +82,16 @@ const THUNDER_DAMAGE = 2
 const THUNDER_RADIUS = 0.8
 # Singularity: the pilot becomes the epicentre. Every shot in flight loses its course and
 # crawls into the core; what is swallowed leaves again in one fan of boosted rounds.
-const SINGULARITY_PULL = 1.4
+const SINGULARITY_PULL = 2.1
 const SINGULARITY_SWALLOW = 0.55
 const SINGULARITY_SLOW = 0.22
-const SINGULARITY_MIN_SHOTS = 6
-const SINGULARITY_MAX_SHOTS = 14
-const SINGULARITY_FAN = 1.15
+const SINGULARITY_MIN_SHOTS = 26
+const SINGULARITY_MAX_SHOTS = 44
+const SINGULARITY_FAN = 2.7
+# Three waves come in out of the sky and sweep the arena, each one reaching further in;
+# a shot is only caught once its wave has washed over it.
+const SINGULARITY_WAVES = 3
+const SINGULARITY_REACH = 18.0
 # Bloom heals two lives, and a brick already whole grows past the usual three.
 const BLOOM_HEAL = 2
 const BRICK_MAX_LIVES = 5
@@ -214,10 +225,18 @@ static func side_x(kind: String) -> float:
 	return {"pinch": HALF_WIDTH - 1.9, "wide": HALF_WIDTH + 1.3}.get(kind, HALF_WIDTH)
 
 static func booster_centers(layout: Dictionary) -> Array:
+	# A rail of bumpers down each side wall instead of a single one at mid-field. With the
+	# turn eased off at the ends of the arc, a shot from the corner no longer crosses the
+	# middle of the side wall, and one lonely bumper there was simply never reached.
 	if not layout.get("boosters", true):
 		return []
-	var side = side_x(layout.get("outline", "hex"))
-	return [Vector2(-side - 0.75, 0), Vector2(side + 0.75, 0)]
+	var outline: Array = outline_points(layout.get("outline", "hex"))
+	var centers: Array = []
+	for depth in [-BOOST_RAIL_SPACING, 0.0, BOOST_RAIL_SPACING]:
+		var side = outline_x_at(outline, depth)
+		centers.append(Vector2(-side - 0.75, depth))
+		centers.append(Vector2(side + 0.75, depth))
+	return centers
 
 static func outline_x_at(points: Array, y: float) -> float:
 	# Widest boundary crossing at a given depth, for placing decoration outside the walls.
@@ -316,8 +335,9 @@ static func track_position(team: int, angle: float) -> Vector2:
 	return goal_center(team) + Vector2(sin(angle), -cos(angle) * (1 if team == 0 else -1)) * TRACK_RADIUS
 
 static func forward_direction(team: int, angle: float) -> Vector2:
-	# Fixed facing for each arc position; the wider fan keeps the side boosters reachable.
-	var facing = angle * FACING_FACTOR
+	# Fixed facing for each arc position: the full turn near the middle, easing smoothly
+	# into FACING_LIMIT at the ends and never past it.
+	var facing = FACING_LIMIT * tanh(angle * FACING_FACTOR / FACING_LIMIT)
 	return Vector2(sin(facing), -cos(facing) * (1 if team == 0 else -1))
 
 static func obstacle_position(index: int, time: float) -> Vector2:
@@ -524,7 +544,15 @@ func step_ultimate(team: int, dt: float) -> void:
 		return
 	if String(state.ultimate_id) == "singularity" and state.ultimate_time > 0:
 		# The collapse is one long draw, not a string of strikes: it ends in the release.
+		var before = 1.0 - state.ultimate_time / SINGULARITY_PULL
 		state.ultimate_time = maxf(0.0, state.ultimate_time - dt)
+		var after = 1.0 - state.ultimate_time / SINGULARITY_PULL
+		for wave in range(SINGULARITY_WAVES):
+			# Each wave is announced as it breaks, so both sides see the same three sweeps.
+			var mark = float(wave) / float(SINGULARITY_WAVES)
+			if before <= mark and after > mark:
+				events.append({"kind": "singularity_wave", "team": team, "p": players[team].p,
+					"index": wave, "seconds": SINGULARITY_PULL / float(SINGULARITY_WAVES)})
 		singularity_pull(team, dt)
 		if state.ultimate_time <= 0:
 			singularity_burst(team)
@@ -618,16 +646,30 @@ func sky_strike(team: int, kind: String, damage: int, radius: float) -> void:
 		damage_player(enemy, damage, players[enemy].p)
 	events.append({"kind": kind, "team": team, "p": at, "radius": radius})
 
+func singularity_front(team: int) -> float:
+	# Three waves come in out of the sky, and each one sweeps the whole arena: this is how
+	# far in the current one has washed. Everything beyond the front has been passed over
+	# and is being dragged to the core, and whatever is fired in between is caught by the
+	# next sweep.
+	var progress = clampf(1.0 - powers[team].ultimate_time / SINGULARITY_PULL, 0.0, 1.0)
+	return SINGULARITY_REACH * (1.0 - fmod(progress * float(SINGULARITY_WAVES), 1.0))
+
 func singularity_pull(team: int, dt: float) -> void:
-	# Everything in flight is dragged towards the pilot, crawling and harmless on the way;
-	# whatever reaches the core is swallowed and counted for the release.
+	# A wave sweeps the arena and everything it washes over is dragged towards the pilot,
+	# crawling and harmless on the way; what reaches the core is swallowed and counted.
 	var core: Vector2 = players[team].p
 	var left: float = maxf(powers[team].ultimate_time, 0.12)
+	var front: float = singularity_front(team)
 	var index = balls.size() - 1
 	while index >= 0:
 		var ball: Dictionary = balls[index]
 		var offset: Vector2 = core - ball.p
 		var distance = offset.length()
+		if not ball.get("held", false) and distance < front:
+			# Still inside the front: the wave has not washed over it yet, so it flies its
+			# own course a moment longer.
+			index -= 1
+			continue
 		if distance <= SINGULARITY_SWALLOW:
 			balls.remove_at(index)
 			powers[team].ultimate_shots = mini(powers[team].ultimate_shots + 1, SINGULARITY_MAX_SHOTS)
@@ -655,7 +697,9 @@ func singularity_burst(team: int) -> void:
 			balls.remove_at(index)
 			eaten += 1
 		index -= 1
-	var count = clampi(eaten, SINGULARITY_MIN_SHOTS, SINGULARITY_MAX_SHOTS)
+	# Every round it ate is fired back, doubled, and the blast is never thin: it opens with
+	# a full spread whatever it caught. They pass straight through the moving obstacles.
+	var count = clampi(eaten * 3, SINGULARITY_MIN_SHOTS, SINGULARITY_MAX_SHOTS)
 	powers[team].ultimate_shots = 0
 	for shot in range(count):
 		while balls.size() >= MAX_BALLS:
@@ -663,7 +707,7 @@ func singularity_burst(team: int) -> void:
 		var spread = 0.0 if count == 1 else lerpf(-SINGULARITY_FAN * 0.5, SINGULARITY_FAN * 0.5, float(shot) / float(count - 1))
 		var course: Vector2 = heading.rotated(spread)
 		balls.append({"id": next_id, "owner": team, "p": core + course * 0.7, "v": course * BALL_SPEED * BOOST_SPEED,
-			"bounces": MAX_BOUNCES, "boosted": true, "damage": BOOST_DAMAGE, "ttl": BALL_LIFE, "power": 0, "ghost": false, "held": false})
+			"bounces": MAX_BOUNCES, "boosted": true, "damage": BOOST_DAMAGE, "ttl": BALL_LIFE, "power": 0, "ghost": true, "held": false})
 		next_id += 1
 	events.append({"kind": "singularity_burst", "team": team, "p": core, "heading": heading, "count": count})
 
@@ -832,6 +876,12 @@ func explode(ball: Dictionary) -> void:
 		damage_player(enemy, EXPLOSION_DAMAGE, ball.p)
 	events.append({"kind": "explosion", "p": ball.p, "team": ball.owner, "radius": EXPLOSION_RADIUS})
 
+static func facing_slope(angle: float) -> float:
+	# How fast the facing turns at this point of the arc; it flattens towards the ends, and
+	# the solvers step by it instead of assuming the old straight ratio.
+	var shaped = tanh(angle * FACING_FACTOR / FACING_LIMIT)
+	return maxf(FACING_FACTOR * (1.0 - shaped * shaped), 0.22)
+
 func direct_angle(team: int, target: Vector2) -> float:
 	# The place on the arc from which the pilot points straight at a spot. Solved by a
 	# couple of refinements instead of by simulating shots: it costs microseconds, and the
@@ -839,11 +889,15 @@ func direct_angle(team: int, target: Vector2) -> float:
 	var goal = goal_center(team)
 	var sign_y = 1.0 if team == 0 else -1.0
 	var depth = maxf((goal.y - target.y) * sign_y, 0.25)
-	var angle = clampf(atan2(target.x, depth) / FACING_FACTOR, -TRACK_LIMIT, TRACK_LIMIT)
-	for pass_index in range(3):
+	var wanted = clampf(atan2(target.x, depth), -FACING_LIMIT * 0.999, FACING_LIMIT * 0.999)
+	var angle = clampf(atanh(wanted / FACING_LIMIT) * FACING_LIMIT / FACING_FACTOR, -TRACK_LIMIT, TRACK_LIMIT)
+	for pass_index in range(4):
 		var from = track_position(team, angle)
-		var error = angle_difference((target - from).angle(), forward_direction(team, angle).angle())
-		angle = clampf(angle + error / FACING_FACTOR, -TRACK_LIMIT, TRACK_LIMIT)
+		# angle_difference(a, b) is b - a, so the heading goes first: this is how far the
+		# pilot still has to turn to look at the target. With the arguments the other way
+		# round every refinement walked away from the answer.
+		var error = angle_difference(forward_direction(team, angle).angle(), (target - from).angle())
+		angle = clampf(angle + error / facing_slope(angle), -TRACK_LIMIT, TRACK_LIMIT)
 	return angle
 
 func firing_angles(team: int, _samples: int = 0) -> Array:
@@ -858,11 +912,11 @@ func firing_angles(team: int, _samples: int = 0) -> Array:
 			continue
 		var angle = direct_angle(team, brick.p)
 		# Bricks stacked exactly behind one another share an angle; keep one of them. The
-		# whole wall only spans about a third of a radian, so this window has to be tight
-		# or most of the targets disappear.
+		# whole wall only spans about a third of a radian, and the turn is eased off at the
+		# ends of the arc, so this window has to be very tight or most targets disappear.
 		var duplicate = false
 		for option in found:
-			if absf(option.angle - angle) < 0.004:
+			if absf(option.angle - angle) < 0.001:
 				duplicate = true
 				break
 		if duplicate:

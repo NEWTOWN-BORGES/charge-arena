@@ -95,7 +95,9 @@ func run() -> void:
 	check(first == game.local_command() and first.fire and not first.has("aim"), "Mouse motion cannot steer: aiming is only the arc")
 	click.pressed = false
 	game._input(click)
-	check(game.local_command().fire and game.local_command().move == Vector2.ZERO, "The pilot keeps firing by itself with no button held")
+	# It fires by itself, and with no thumb on the stick the only thing that may move it is
+	# the aiming magnetism, which never does more than ease it onto the target beside it.
+	check(game.local_command().fire and absf(game.local_command().move.x) < 0.4 and game.local_command().move.y == 0.0, "The pilot keeps firing by itself with no button held")
 	game.arena.update_state(game.rules, 0, 0.016)
 	check(game.arena.obstacle_nodes.size() == 2, "Both colliders have visible 3D obstacle models")
 	print("FORWARD_OBSTACLES_RESULT ", count - failures, "/", count, " passed")

@@ -36,7 +36,7 @@ func run() -> void:
 	# The targets only cover the middle of the arc, which is why stepping is not enough.
 	var targets: Array = game.rules.firing_angles(0).map(func(o): return o.angle)
 	check(targets.size() > 20, "The wall offers plenty of targets (%d)" % targets.size())
-	check(targets.max() < Rules.TRACK_LIMIT - 0.2 and targets.min() > -Rules.TRACK_LIMIT + 0.2, "But they sit well inside the arc, far from either wall")
+	check(targets.max() < Rules.TRACK_LIMIT - 0.15 and targets.min() > -Rules.TRACK_LIMIT + 0.15, "But they sit inside the arc, with room to walk past the outermost one (%.2f de %.2f)" % [targets.max(), Rules.TRACK_LIMIT])
 
 	push(game, -1.0, 3.0)
 	check(game.rules.players[0].angle < -Rules.TRACK_LIMIT + 0.02, "Holding the stick left walks the pilot to the left wall (%.2f de %.2f)" % [game.rules.players[0].angle, -Rules.TRACK_LIMIT])

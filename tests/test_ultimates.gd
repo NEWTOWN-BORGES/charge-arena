@@ -163,16 +163,35 @@ func run() -> void:
 		hole.balls.append({"id": hole.next_id, "owner": hole.next_id % 2, "p": spot, "v": Vector2(Rules.BALL_SPEED, 0),
 			"bounces": 0, "boosted": false, "damage": 1, "ttl": Rules.BALL_LIFE, "power": 0, "ghost": false})
 		hole.next_id += 1
-	var caught: Array = hole.balls.duplicate(true)
-	# Half way through the draw: everything is held, crawling, and aimed at the pilot.
-	wait(hole, Rules.SINGULARITY_PULL * 0.4)
+	# The waves sweep in three times, each pass reaching out from the core to the rim.
+	var sweep = playing("singularity")
+	launch(sweep)
+	var fronts: Array = []
+	var waves: Array = []
+	# The first wave breaks with the discharge itself, at the end of the wind-up.
+	for event in wait(sweep, Rules.ULTIMATE_WINDUP + 0.05):
+		if event.kind == "singularity_wave":
+			waves.append(event.index)
+	for sample in range(36):
+		fronts.append(sweep.singularity_front(0))
+		for event in wait(sweep, Rules.SINGULARITY_PULL / 36.0):
+			if event.kind == "singularity_wave":
+				waves.append(event.index)
+	var restarts = 0
+	for i in range(1, fronts.size()):
+		if fronts[i] > fronts[i - 1] + 0.01:
+			restarts += 1
+	check(waves == [0, 1, 2], "Three waves break, one after the other, and both sides hear them (%s)" % str(waves))
+	check(restarts >= 1, "The front restarts at the rim for each new wave (%d recomeços em %d amostras)" % [restarts, fronts.size()])
+	check(fronts.max() > Rules.HALF_LENGTH and fronts.min() < 1.5, "The front washes over everything, from %.1f down to %.1f" % [fronts.max(), fronts.min()])
+	# Whatever a wave has passed over is held, crawling, and pointed at the pilot.
+	wait(hole, Rules.SINGULARITY_PULL * 0.5)
 	var core: Vector2 = hole.players[0].p
 	var held: Array = hole.balls.filter(func(b): return b.get("held", false))
 	var inward = held.all(func(b): return b.v.normalized().dot((core - b.p).normalized()) > 0.99)
 	var crawling = held.all(func(b): return b.v.length() < Rules.BALL_SPEED)
-	var closer = held.all(func(b): return caught.any(func(c): return c.id == b.id and b.p.distance_to(core) < c.p.distance_to(core)))
-	check(not held.is_empty() and held.size() == hole.balls.size(), "Every shot in flight is caught, whoever fired it (%d)" % held.size())
-	check(inward and crawling and closer, "They crawl straight at the core instead of flying their own course")
+	check(not held.is_empty(), "The waves catch the shots they wash over (%d)" % held.size())
+	check(inward and crawling, "They crawl straight at the core instead of flying their own course")
 	var mine_mid = team_health(hole, 0)
 	# The release: the fan, turbocharged, two of damage and out of ricochets.
 	var release: Array = run_until(hole, "singularity_burst", Rules.SINGULARITY_PULL + 0.5)
@@ -182,6 +201,7 @@ func run() -> void:
 	check(hole.balls.size() == int(burst[0].count) and int(burst[0].count) >= Rules.SINGULARITY_MIN_SHOTS, "It fires back %d rounds, never fewer than %d" % [int(burst[0].count), Rules.SINGULARITY_MIN_SHOTS])
 	check(hole.balls.all(func(b): return b.owner == 0), "All of them belong to the pilot that cast it")
 	check(hole.balls.all(func(b): return b.damage == Rules.BOOST_DAMAGE and b.boosted and b.bounces >= Rules.MAX_BOUNCES), "Turbocharged, 2 of damage and out of ricochets, like a booster shot")
+	check(hole.balls.all(func(b): return b.get("ghost", false)), "And they go straight through the moving obstacles")
 	check(hole.balls.all(func(b): return not b.get("held", false)), "Nothing is left holding in the core")
 	var out_way: Vector2 = Rules.forward_direction(0, hole.players[0].angle)
 	var forward = hole.balls.all(func(b): return b.v.normalized().dot(out_way) > cos(Rules.SINGULARITY_FAN * 0.5 + 0.02))

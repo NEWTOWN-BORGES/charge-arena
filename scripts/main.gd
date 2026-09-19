@@ -45,6 +45,10 @@ var credited_bricks = 0
 # The angle the pilot is walking to, chosen by tapping the stadium or stepping with the
 # arrows. INF means "stay where you are".
 const MAGNET_ANGLE = 0.05
+# The stick: anything under the dead zone is a resting thumb, and anything over it moves
+# the pilot at once, never below STICK_FLOOR of its speed.
+const STICK_DEADZONE = 0.08
+const STICK_FLOOR = 0.34
 var game_settings = GameSettings.new()
 var campaign = Campaign.new()
 # Campaign level being played, or -1 for quick play, PvP and the menu.
@@ -579,12 +583,17 @@ func local_command() -> Dictionary:
 		# Drop anything tapped while the match was on hold.
 		hud.take_power()
 		return {"move": Vector2.ZERO, "fire": false, "power": -1}
-	# Gentle response curve: small thumb movements aim finely, full deflection still runs.
+	# Past a small dead zone the pilot leaves at once: the first sliver of the push is
+	# already worth a third of the speed, so nudging the stick never feels like nothing
+	# happened. From there it climbs almost straight to a full run.
 	var stick: float = hud.move_vector.x
-	var response = signf(stick) * pow(absf(stick), 1.7) * game_settings.sensitivity_scale()
-	if absf(stick) < 0.12:
-		# Nearly still: let the magnetism settle the pilot on the target it is beside.
-		response += magnet_pull()
+	var response = 0.0
+	if absf(stick) > STICK_DEADZONE:
+		var push = (absf(stick) - STICK_DEADZONE) / (1.0 - STICK_DEADZONE)
+		response = signf(stick) * lerpf(STICK_FLOOR, 1.0, pow(push, 1.2)) * game_settings.sensitivity_scale()
+	else:
+		# Thumb still: let the magnetism settle the pilot on the target it is beside.
+		response = magnet_pull()
 	var move = Vector2(response, 0)
 	if DisplayServer.get_name() != "headless":
 		var keys = Vector2(float(Input.is_physical_key_pressed(KEY_D) or Input.is_physical_key_pressed(KEY_RIGHT)) - float(Input.is_physical_key_pressed(KEY_A) or Input.is_physical_key_pressed(KEY_LEFT)), float(Input.is_physical_key_pressed(KEY_S) or Input.is_physical_key_pressed(KEY_DOWN)) - float(Input.is_physical_key_pressed(KEY_W) or Input.is_physical_key_pressed(KEY_UP)))
@@ -682,6 +691,9 @@ func _physics_process(dt: float) -> void:
 			play_tone("thunder")
 		elif event.kind == "singularity":
 			arena.singularity_open(event.p)
+		elif event.kind == "singularity_wave":
+			arena.singularity_wave(event.p, int(event.index), float(event.seconds))
+			play_tone("void_wave")
 		elif event.kind == "swallow":
 			arena.singularity_swallow(event.p)
 		elif event.kind == "singularity_burst":
@@ -849,6 +861,7 @@ func build_audio() -> void:
 	# the release, which is all low end at once.
 	tones["singularity"] = sweep_wave(1.35, 700.0, 46.0, 0.3)
 	tones["void_burst"] = roar_wave(0.6, 78.0, 0.75)
+	tones["void_wave"] = sweep_wave(0.5, 1250.0, 160.0, 0.4)
 
 func roar_wave(seconds: float, base_hz: float, grit: float) -> AudioStreamWAV:
 	# A held, throaty beam: two detuned saws under a slow tremolo.

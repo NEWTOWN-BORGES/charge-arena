@@ -30,11 +30,12 @@ func run() -> void:
 			"v": Vector2(game.Rules.BALL_SPEED, 0), "bounces": 0, "boosted": false, "damage": 1,
 			"ttl": game.Rules.BALL_LIFE, "power": 0, "ghost": false})
 		game.rules.next_id += 1
-	await create_timer(game.Rules.ULTIMATE_WINDUP + 0.18).timeout
+	# Three moments: the first wave breaking, the last one closing, and the release itself.
+	await create_timer(game.Rules.ULTIMATE_WINDUP + 0.22).timeout
 	await capture("preview-fx-singularity-open.png")
-	await create_timer(game.Rules.SINGULARITY_PULL * 0.6).timeout
+	await create_timer(game.Rules.SINGULARITY_PULL * 0.78 - 0.22).timeout
 	await capture("preview-fx-singularity-draw.png")
-	await create_timer(game.Rules.SINGULARITY_PULL * 0.4 + 0.05).timeout
+	await create_timer(game.Rules.SINGULARITY_PULL * 0.22 + 0.07).timeout
 	await capture("preview-fx-singularity-burst.png")
 	await create_timer(0.6).timeout
 	DirAccess.remove_absolute(ProjectSettings.globalize_path(TMP))
