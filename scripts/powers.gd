@@ -38,7 +38,7 @@ const ULTIMATES = [
 	{"id": "singularity", "short": "VÓRTICE", "name": "SINGULARIDADE", "kind": "ultimate", "charge": ULTIMATE_CHARGE, "price": 0, "color": "f3a13c",
 		"about": "Três ondas de choque caem do céu e varrem a arena: tudo o que apanham perde o rumo e é arrastado em câmara lenta até ao Sentinela. Quando está tudo compactado, o núcleo abre-se e devolve dezenas de projéteis num leque que ocupa a arena quase toda, à velocidade de bola turbinada, 2 de dano e sem ricochete."},
 	{"id": "sentries", "short": "SENTINELAS", "name": "SENTINELAS", "kind": "ultimate", "charge": ULTIMATE_CHARGE, "price": 0, "color": "8fd3c7",
-		"about": "Duas mini-guns automáticas ficam de pé no meio do ringue. Disparam sozinhas ao ritmo normal, 2 de dano e sem ricochete, atacam a muralha do rival e metem golo se apanharem a baliza aberta. Têm 5 vidas cada uma e ficam expostas: qualquer bola em jogo as pode abater."},
+		"about": "Duas mini-guns automáticas ficam de pé no meio do ringue. Disparam sozinhas, devagar, 2 de dano e sem ricochete, atacam a muralha do rival e metem golo se a baliza já estiver aberta. São frágeis — 2 vidas cada — e estão expostas: duas bolas em jogo bastam para abater uma."},
 	{"id": "bloom", "short": "FLORIR", "name": "FLORESCER", "kind": "ultimate", "charge": ULTIMATE_CHARGE, "price": 0, "color": "9fe37a",
 		"about": "Cura 2 de vida em cada tijolo teu; os que já estão inteiros ganham mais 2 e crescem."},
 	{"id": "plunder", "short": "PILHAGEM", "name": "PILHAGEM", "kind": "ultimate", "charge": ULTIMATE_CHARGE, "price": 0, "color": "ff5c8a",

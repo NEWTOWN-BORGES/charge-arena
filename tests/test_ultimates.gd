@@ -220,13 +220,14 @@ func run() -> void:
 	var watch = playing("sentries")
 	launch(watch)
 	var posted: Array = wait(watch, Rules.ULTIMATE_WINDUP + 0.05)
-	check(watch.turrets.size() == 2 and watch.turrets.all(func(t): return t.alive and t.hp == Rules.TURRET_LIVES), "Two sentries are posted, five lives each")
+	check(watch.turrets.size() == 2 and watch.turrets.all(func(t): return t.alive and t.hp == Rules.TURRET_LIVES), "Two sentries are posted, two lives each")
 	check(watch.turrets.all(func(t): return absf(t.p.y) < 1.0), "They stand out in the middle of the ring, where any ball can reach them")
 	check(posted.any(func(e): return e.kind == "sentries"), "The arena is told to build them")
 	var wall_before = team_health(watch, 1)
 	var firing: Array = wait(watch, 4.0)
 	var rounds: Array = firing.filter(func(e): return e.kind == "turret_shot")
-	check(rounds.size() >= 14, "They fire by themselves at the normal rate (%d rondas em 4 s)" % rounds.size())
+	var expected = int(4.0 / Rules.TURRET_INTERVAL) * 2 - 2
+	check(rounds.size() >= expected, "They fire by themselves, on their own slow clock (%d rondas em 4 s)" % rounds.size())
 	check(team_health(watch, 1) < wall_before, "And they chew through the rival wall (%d de dano)" % (wall_before - team_health(watch, 1)))
 	var sentry_rounds: Array = watch.balls.filter(func(b): return b.owner == 0 and b.damage == Rules.TURRET_DAMAGE)
 	check(sentry_rounds.all(func(b): return b.bounces >= Rules.MAX_BOUNCES and not b.get("boosted", false)), "Their rounds carry two of damage and never ricochet")
@@ -238,7 +239,7 @@ func run() -> void:
 			"bounces": 0, "boosted": false, "damage": 1, "ttl": 2.0, "power": 0, "ghost": false, "held": false})
 		watch.next_id += 1
 		knocks.append_array(wait(watch, 0.2))
-	check(not doomed.alive and doomed.hp == 0, "Five rounds bring a sentry down")
+	check(not doomed.alive and doomed.hp == 0, "Two rounds bring a sentry down")
 	check(knocks.any(func(e): return e.kind == "turret_down"), "And its fall is announced, so the arena can blow it apart")
 	check(watch.turrets.filter(func(t): return t.alive).size() == 1, "The other one keeps firing")
 	# An open goal: with the wall gone, a sentry takes the shot.

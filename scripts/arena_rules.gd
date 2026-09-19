@@ -99,10 +99,12 @@ const SINGULARITY_REACH = 18.0
 # Sentries: two little gun platforms left standing in the middle of the ring. They fire by
 # themselves, take the open goal when they can see it, and the rival has to shoot them down
 # — they carry the same five lives a pilot does, and any loose ball can hurt them.
-const TURRET_LIVES = 5
+const TURRET_LIVES = 2
 const TURRET_RADIUS = 0.42
 const TURRET_DAMAGE = 2
-const TURRET_INTERVAL = FIRE_INTERVAL
+# Deliberately slower than a pilot's gun: two of them at the normal rate took the rival's
+# whole wall down in thirteen seconds.
+const TURRET_INTERVAL = FIRE_INTERVAL * 2.2
 const TURRET_SPOTS = [Vector2(-3.1, 0.0), Vector2(3.1, 0.0)]
 # Bloom heals two lives, and a brick already whole grows past the usual three.
 const BLOOM_HEAL = 2

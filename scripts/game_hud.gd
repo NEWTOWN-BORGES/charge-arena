@@ -1183,9 +1183,9 @@ func draw_demo(panel: Control, id: String) -> void:
 				c.draw_circle(post, 3.0 * arrival, Color(INK, 0.8), true, -1, true)
 				if arrival >= 1:
 					# Five pips of health, and a round on its way to the wall.
-					for pip in range(5):
+					for pip in range(Rules.TURRET_LIVES):
 						var lost = 1 if side < 0 and u > 0.7 else 0
-						c.draw_circle(post + Vector2(-10 + pip * 5, 13), 1.8, Color(color, 0.35 if pip >= 5 - lost else 1.0), true, -1, true)
+						c.draw_circle(post + Vector2(-5 + pip * 6, 13), 2.0, Color(color, 0.35 if pip >= Rules.TURRET_LIVES - lost else 1.0), true, -1, true)
 					var travel = fmod(u * 3.4 + (0.5 if side > 0 else 0.0), 1.0)
 					var aim = demo_brick_row(area, 3 if side < 0 else 6, true)
 					demo_ball(c, post.lerp(aim, travel), color, 4.5)
