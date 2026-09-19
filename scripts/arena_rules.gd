@@ -5,7 +5,11 @@ const HALF_WIDTH = 6.0 * MAP_SCALE
 const HALF_LENGTH = 6.93 * MAP_SCALE
 const GOAL_RADIUS = 1.65
 const TRACK_RADIUS = 2.6
-const TRACK_LIMIT = 0.60
+# How far along its arc a pilot may walk. The arc is a circle around its own goal, so this
+# cannot grow much further: at 0.95 the pilot already clips the hexagon's wall, and at 0.85
+# there is 0.51 of clearance against a pilot radius of 0.43. Walking out this far is what
+# puts the side boosters back within reach.
+const TRACK_LIMIT = 0.85
 # Aim assist: how far the shot may be nudged to line up with a brick, and how finely the
 # nearby angles are sampled looking for one.
 const ASSIST_ANGLE = 0.10
@@ -75,11 +79,11 @@ const SUN_RAY_HALF_WIDTH = 1.35
 const METEOR_SECONDS = 1.0
 const METEOR_COUNT = 14
 const METEOR_DAMAGE = 1
-const METEOR_RADIUS = 0.62
+const METEOR_RADIUS = 0.38
 const THUNDER_SECONDS = 2.0
 const THUNDER_COUNT = 8
 const THUNDER_DAMAGE = 2
-const THUNDER_RADIUS = 0.8
+const THUNDER_RADIUS = 0.42
 # Singularity: the pilot becomes the epicentre. Every shot in flight loses its course and
 # crawls into the core; what is swallowed leaves again in one fan of boosted rounds.
 const SINGULARITY_PULL = 2.1
@@ -654,10 +658,25 @@ func sky_strike(team: int, kind: String, damage: int, radius: float) -> void:
 	var enemy = 1 - team
 	var sign_y = 1.0 if enemy == 0 else -1.0
 	var at = Vector2.ZERO
+	# Rain that falls on empty floor is only a light show. Each strike picks a brick that is
+	# still standing and comes down on it, scattered just enough to look like weather.
+	var standing: Array = []
+	for brick in bricks:
+		if brick.alive and brick.team == enemy:
+			standing.append(brick.p)
+	if not standing.is_empty():
+		var mark: Vector2 = standing[power_rng.randi_range(0, standing.size() - 1)]
+		at = mark + Vector2(power_rng.randf_range(-1, 1), power_rng.randf_range(-1, 1)) * radius * 0.45
+		if point_inside(walls, at):
+			return sky_hit(team, kind, damage, radius, at)
 	for attempt in range(12):
 		at = Vector2(power_rng.randf_range(-HALF_WIDTH, HALF_WIDTH), sign_y * power_rng.randf_range(0.4, HALF_LENGTH - 0.9))
 		if point_inside(walls, at):
 			break
+	return sky_hit(team, kind, damage, radius, at)
+
+func sky_hit(team: int, kind: String, damage: int, radius: float, at: Vector2) -> void:
+	var enemy = 1 - team
 	for index in range(bricks.size()):
 		var brick: Dictionary = bricks[index]
 		if brick.alive and brick.team != team and brick.p.distance_to(at) <= radius + BRICK_EXTENT.x:
@@ -1271,7 +1290,8 @@ func ai_command() -> Dictionary:
 		if ai_scan_index == 0:
 			ai_best_score = ai_angle_score(ai_target_angle)
 		for _candidate in range(4):
-			var angle = 0.0 if ai_scan_index == 0 else ceilf(ai_scan_index / 2.0) * 0.025 * (1 if ai_scan_index % 2 else -1)
+			# The step follows the arc, so the scan always covers it end to end.
+			var angle = 0.0 if ai_scan_index == 0 else ceilf(ai_scan_index / 2.0) * (TRACK_LIMIT / 24.0) * (1 if ai_scan_index % 2 else -1)
 			var score = ai_angle_score(angle)
 			if score > ai_best_score + 0.05:
 				ai_best_score = score

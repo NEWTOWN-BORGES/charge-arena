@@ -159,7 +159,7 @@ func run() -> void:
 	game._process(0.1)
 	game._process(0.1)
 	await process_frame
-	check(game.arena.map.id == "aurora" and game.arena.unit_skins[1] == 6 and game.arena.brick_nodes[40].get_meta("skin") == 6, "The stadium then shows level 2's arena, boss and bricks")
+	check(game.arena.map.id == "oficina" and game.arena.unit_skins[1] == 6 and game.arena.brick_nodes[40].get_meta("skin") == 6, "The stadium then shows level 2's arena, boss and bricks")
 	swipe.call(middle, middle + Vector2(30, 4))
 	check(game.menu_level == 1, "A tap or short drag does not change level")
 	swipe.call(middle + Vector2(0, -100), middle + Vector2(90, 120))
@@ -200,7 +200,7 @@ func run() -> void:
 
 	hud.next_button.pressed.emit()
 	await process_frame
-	check(game.level_index == 1 and game.arena.map.id == "aurora" and game.rules.obstacles.size() == 2, "Next level rebuilds the arena with the clockwork sliders")
+	check(game.level_index == 1 and game.arena.map.id == "oficina" and game.rules.obstacles.size() == 2, "Next level rebuilds the arena with the clockwork sliders")
 	check(game.arena.unit_skins == [game.skins.selected, 6] and game.arena.brick_nodes[40].get_meta("skin") == 6, "The Relojoeiro boss arrives with its own bricks")
 	check(game.rules.obstacles.size() == 2 and game.arena.obstacle_nodes.size() == 2 and hud.level_info.name == "Oficina do Relógio" and hud.level_info.boss_name == "RELOJOEIRO", "Its two friendly pillars, name and boss name come with it")
 	check(game.rules.ai_profile == Campaign.ai_profile(1, game.game_settings.difficulty), "The boss uses its level's pace")
@@ -216,7 +216,7 @@ func run() -> void:
 
 	hud.levels_button.pressed.emit()
 	await process_frame
-	check(game.mode == "menu" and hud.levels_overlay.visible and game.level_index == -1 and game.menu_level == 1 and game.arena.map.id == "aurora", "NÍVEIS returns to the menu previewing the level just played")
+	check(game.mode == "menu" and hud.levels_overlay.visible and game.level_index == -1 and game.menu_level == 1 and game.arena.map.id == "oficina", "NÍVEIS returns to the menu previewing the level just played")
 	hud.close_levels()
 	hud.campaign_button.pressed.emit()
 	check(game.mode == "pve" and game.level_index == 1, "JOGAR NÍVEL starts the previewed level")
