@@ -88,10 +88,22 @@ const SINGULARITY_SLOW = 0.22
 const SINGULARITY_MIN_SHOTS = 26
 const SINGULARITY_MAX_SHOTS = 44
 const SINGULARITY_FAN = 2.7
+# A round whose lane passes this close to a standing brick is laid onto it instead: the
+# blast still opens right across the arena, but it stops pouring itself through the gap
+# between the two banks.
+const SINGULARITY_SNAP = 0.22
 # Three waves come in out of the sky and sweep the arena, each one reaching further in;
 # a shot is only caught once its wave has washed over it.
 const SINGULARITY_WAVES = 3
 const SINGULARITY_REACH = 18.0
+# Sentries: two little gun platforms left standing in the middle of the ring. They fire by
+# themselves, take the open goal when they can see it, and the rival has to shoot them down
+# — they carry the same five lives a pilot does, and any loose ball can hurt them.
+const TURRET_LIVES = 5
+const TURRET_RADIUS = 0.42
+const TURRET_DAMAGE = 2
+const TURRET_INTERVAL = FIRE_INTERVAL
+const TURRET_SPOTS = [Vector2(-3.1, 0.0), Vector2(3.1, 0.0)]
 # Bloom heals two lives, and a brick already whole grows past the usual three.
 const BLOOM_HEAL = 2
 const BRICK_MAX_LIVES = 5
@@ -107,6 +119,7 @@ const AIR_DAMAGE = 2
 const AIR_SPREAD = 0.72
 const MAX_BALLS = 128
 const BALL_FIELDS = 13
+const TURRET_FIELDS = 8
 # A shot ends on a target or after MAX_BOUNCES ricochets: walls, shields, boosters,
 # barriers and bumpers all reflect it. This lifetime is only a safety net for a shot caught in a repeating path
 # that would otherwise bounce for the rest of the match.
@@ -157,6 +170,7 @@ var assist_team = -1
 var map: Dictionary = {}
 var walls: Array = WALLS.duplicate()
 var boost_centers: Array = BOOST_CENTERS.duplicate()
+var turrets: Array = []
 var barriers: Array = []
 # Where each team's defensive walls stand on this map (see team_walls).
 var wall_slabs: Array = [[], []]
@@ -317,6 +331,7 @@ func reset_round() -> void:
 		{"p": track_position(1, 0), "angle": 0.0, "aim": Vector2.DOWN, "hp": PLAYER_LIVES, "stun": 0.0, "cooldown": 0.0}
 	]
 	balls.clear()
+	turrets.clear()
 	bricks = make_bricks(map.get("bricks", "banks"))
 	obstacle_time = 0.0
 	obstacles.clear()
@@ -465,6 +480,7 @@ func step(dt: float, commands: Array) -> void:
 			shoot(team, 2)
 		elif cmd.get("fire", false) and p.cooldown <= 0:
 			shoot(team)
+	step_turrets(dt)
 	for ball in balls.duplicate():
 		if phase != "play":
 			break
@@ -601,6 +617,8 @@ func fire_ultimate(team: int) -> void:
 			state.ultimate_time = SINGULARITY_PULL
 			state.ultimate_shots = 0
 			events.append({"kind": "singularity", "team": team, "p": players[team].p, "seconds": SINGULARITY_PULL})
+		"sentries":
+			deploy_turrets(team)
 		"bloom":
 			bloom_bricks(team)
 		"plunder":
@@ -701,15 +719,102 @@ func singularity_burst(team: int) -> void:
 	# a full spread whatever it caught. They pass straight through the moving obstacles.
 	var count = clampi(eaten * 3, SINGULARITY_MIN_SHOTS, SINGULARITY_MAX_SHOTS)
 	powers[team].ultimate_shots = 0
+	# Where every standing enemy brick lies, as seen from the core.
+	var marks: Array = []
+	for brick in bricks:
+		if brick.alive and brick.team != team:
+			marks.append({"bearing": angle_difference(heading.angle(), (brick.p - core).angle()), "p": brick.p})
+	var impacts: Array = []
 	for shot in range(count):
 		while balls.size() >= MAX_BALLS:
 			balls.remove_at(0)
 		var spread = 0.0 if count == 1 else lerpf(-SINGULARITY_FAN * 0.5, SINGULARITY_FAN * 0.5, float(shot) / float(count - 1))
+		var aimed = Vector2.ZERO
+		var closest = SINGULARITY_SNAP
+		for mark in marks:
+			var gap: float = absf(mark.bearing - spread)
+			if gap < closest:
+				closest = gap
+				spread = mark.bearing
+				aimed = mark.p
+		impacts.append(aimed)
 		var course: Vector2 = heading.rotated(spread)
 		balls.append({"id": next_id, "owner": team, "p": core + course * 0.7, "v": course * BALL_SPEED * BOOST_SPEED,
 			"bounces": MAX_BOUNCES, "boosted": true, "damage": BOOST_DAMAGE, "ttl": BALL_LIFE, "power": 0, "ghost": true, "held": false})
 		next_id += 1
-	events.append({"kind": "singularity_burst", "team": team, "p": core, "heading": heading, "count": count})
+	events.append({"kind": "singularity_burst", "team": team, "p": core, "heading": heading, "count": count, "impacts": impacts})
+
+func deploy_turrets(team: int) -> void:
+	# Two platforms in the middle of the ring, one on each side of the centre. They stand
+	# in the open on purpose: they shoot for you, and they can be shot.
+	for spot in TURRET_SPOTS:
+		turrets.append({"id": next_id, "team": team, "p": spot, "hp": TURRET_LIVES, "cooldown": TURRET_INTERVAL * 0.5, "alive": true, "aim": forward_direction(team, 0.0)})
+		next_id += 1
+	events.append({"kind": "sentries", "team": team, "spots": TURRET_SPOTS.duplicate()})
+
+func clear_line(from: Vector2, to: Vector2, team: int, watch_pilot: bool = false) -> bool:
+	# Nothing of that team's wall standing between these two points — and, when it matters,
+	# no pilot either: the rival stands in front of its own goal and eats anything aimed at
+	# it, so a sentry firing there would only be feeding the keeper.
+	var travel: Vector2 = to - from
+	if watch_pilot and segment_circle(from, travel, players[team].p, 0.43 + BALL_RADIUS) >= 0:
+		return false
+	for brick in bricks:
+		if not brick.alive or brick.team != team:
+			continue
+		var t = segment_box((from - brick.p).rotated(-brick.rotation), travel.rotated(-brick.rotation), Vector2.ZERO, BRICK_EXTENT * brick_scale(brick.hp) + Vector2.ONE * BALL_RADIUS)
+		if t >= 0 and t <= 1:
+			return false
+	return true
+
+func turret_target(turret: Dictionary) -> Vector2:
+	# The open goal first — a sentry that can see it takes it — and otherwise the nearest
+	# brick of the rival wall.
+	var enemy = 1 - int(turret.team)
+	var goal = goal_center(enemy)
+	# The goal only counts once that wall is gone; until then it is a shield that eats the
+	# round. So a sentry takes the goal exactly when a pilot could: wall down, keeper not
+	# in the way.
+	if brick_count(enemy) == 0 and clear_line(turret.p, goal, enemy, true):
+		return goal
+	var best = Vector2.INF
+	var best_distance = INF
+	for brick in bricks:
+		if not brick.alive or brick.team != enemy:
+			continue
+		var distance: float = turret.p.distance_squared_to(brick.p)
+		if distance < best_distance:
+			best_distance = distance
+			best = brick.p
+	return best
+
+func step_turrets(dt: float) -> void:
+	for turret in turrets:
+		if not turret.alive:
+			continue
+		turret.cooldown = maxf(0.0, turret.cooldown - dt)
+		var target: Vector2 = turret_target(turret)
+		if target == Vector2.INF:
+			continue
+		turret.aim = (target - turret.p).normalized()
+		if turret.cooldown > 0:
+			continue
+		turret.cooldown = TURRET_INTERVAL
+		while balls.size() >= MAX_BALLS:
+			balls.remove_at(0)
+		# The sentry's round: two of damage, standard rate, and no ricochet at all.
+		balls.append({"id": next_id, "owner": int(turret.team), "p": turret.p + turret.aim * (TURRET_RADIUS + 0.22), "v": turret.aim * BALL_SPEED,
+			"bounces": MAX_BOUNCES, "boosted": false, "damage": TURRET_DAMAGE, "ttl": BALL_LIFE, "power": 0, "ghost": false, "held": false})
+		next_id += 1
+		events.append({"kind": "turret_shot", "team": int(turret.team), "p": turret.p, "heading": turret.aim})
+
+func damage_turret(index: int, damage: int, at: Vector2) -> void:
+	var turret: Dictionary = turrets[index]
+	if not turret.alive:
+		return
+	turret.hp = maxi(0, int(turret.hp) - damage)
+	turret.alive = turret.hp > 0
+	events.append({"kind": "turret_down" if not turret.alive else "turret_hit", "team": int(turret.team), "p": at, "hp": turret.hp})
 
 func bloom_bricks(team: int) -> void:
 	# Two lives back on every brick; the ones already whole grow instead.
@@ -1009,6 +1114,15 @@ func advance_ball(ball: Dictionary, dt: float, sweep_obstacles: bool = false, pr
 				best = t
 				kind = "player"
 				target = team
+		for index in range(turrets.size()):
+			var turret: Dictionary = turrets[index]
+			if not turret.alive or int(turret.team) == ball.owner:
+				continue
+			var t = segment_circle(start, travel, turret.p, TURRET_RADIUS + BALL_RADIUS)
+			if t >= 0 and t < best:
+				best = t
+				kind = "turret"
+				target = index
 		# Sweep against moving bumpers in their relative frame, including post-bounce time.
 		for obstacle in (obstacles if not ball.get("ghost", false) else []):
 			var obstacle_start: Vector2 = obstacle.previous + obstacle.v * (dt - remaining) if sweep_obstacles else obstacle.p
@@ -1065,7 +1179,7 @@ func advance_ball(ball: Dictionary, dt: float, sweep_obstacles: bool = false, pr
 			ball.p += travel
 			return {}
 		ball.p = start + travel * best
-		if preview and kind in ["brick", "player", "goal"]:
+		if preview and kind in ["brick", "player", "goal", "turret"]:
 			return {"kind": kind, "target": target, "damage": ball.get("damage", 1)}
 		match kind:
 			"brick":
@@ -1083,6 +1197,13 @@ func advance_ball(ball: Dictionary, dt: float, sweep_obstacles: bool = false, pr
 					remaining *= 1.0 - best
 					continue
 				damage_brick(target, int(ball.get("damage", 1)), ball.owner, ball.p)
+				if ball.get("power", 0) == 1:
+					explode(ball)
+				balls.erase(ball)
+				return {"kind": kind, "target": target}
+			"turret":
+				# A sentry soaks the shot: five lives, like a pilot, and then it is gone.
+				damage_turret(target, int(ball.get("damage", 1)), ball.p)
 				if ball.get("power", 0) == 1:
 					explode(ball)
 				balls.erase(ball)
@@ -1274,7 +1395,7 @@ func snapshot() -> Dictionary:
 	var hp = PackedByteArray()
 	for brick in bricks:
 		hp.append(brick.hp)
-	return {"players": players.duplicate(true), "powers": powers.duplicate(true), "loadouts": loadouts.duplicate(true), "obstacle_stun": obstacle_stun, "brick_hp": hp, "balls": balls.duplicate(true), "obstacles": obstacles.duplicate(true), "obstacle_time": obstacle_time, "scores": scores.duplicate(), "phase": phase, "timer": timer, "winner": winner, "elapsed": elapsed}
+	return {"players": players.duplicate(true), "powers": powers.duplicate(true), "loadouts": loadouts.duplicate(true), "obstacle_stun": obstacle_stun, "brick_hp": hp, "balls": balls.duplicate(true), "turrets": turrets.duplicate(true), "obstacles": obstacles.duplicate(true), "obstacle_time": obstacle_time, "scores": scores.duplicate(), "phase": phase, "timer": timer, "winner": winner, "elapsed": elapsed}
 
 func apply_snapshot(data: Dictionary) -> void:
 	players = data.players
@@ -1283,6 +1404,7 @@ func apply_snapshot(data: Dictionary) -> void:
 		bricks[i].hp = data.brick_hp[i]
 		bricks[i].alive = bricks[i].hp > 0
 	balls = data.balls
+	turrets = data.get("turrets", [])
 	obstacles = data.obstacles
 	obstacle_time = data.obstacle_time
 	obstacle_stun = data.get("obstacle_stun", 0.0)
@@ -1308,13 +1430,23 @@ func network_snapshot() -> Dictionary:
 	for state in powers:
 		power_data.append_array([state.charge[0], state.charge[1], state.charge[2], state.destroyed, state.rapid_time,
 			state.ghost_time, state.laser_time, state.mirror_time, state.walls_time, state.ultimate_windup, state.ultimate_time])
+	# Sentries: team, place, health and reload, so the client draws and predicts the same.
+	var turret_data = PackedFloat32Array()
+	for turret in turrets:
+		turret_data.append_array([turret.id, turret.team, turret.p.x, turret.p.y, turret.hp, turret.cooldown, turret.aim.x, turret.aim.y])
 	var phase_id = ["countdown", "play", "goal", "finished"].find(phase)
 	var match_data = PackedFloat32Array([obstacle_time, scores[0], scores[1], phase_id, timer, winner, elapsed, obstacle_stun])
-	return {"p": player_data, "h": hp, "b": ball_data, "m": match_data, "w": power_data}
+	return {"p": player_data, "h": hp, "b": ball_data, "m": match_data, "w": power_data, "t": turret_data}
 
 func apply_network_snapshot(data: Dictionary) -> bool:
 	if not data.has_all(["p", "h", "b", "m", "w"]):
 		return false
+	var turret_data: PackedFloat32Array = data.get("t", PackedFloat32Array())
+	if turret_data.size() % TURRET_FIELDS != 0 or turret_data.size() > TURRET_SPOTS.size() * 2 * TURRET_FIELDS:
+		return false
+	for value in turret_data:
+		if not is_finite(value):
+			return false
 	var player_data: PackedFloat32Array = data.p
 	var hp: PackedByteArray = data.h
 	var ball_data: PackedFloat32Array = data.b
@@ -1352,6 +1484,12 @@ func apply_network_snapshot(data: Dictionary) -> bool:
 	for i in range(bricks.size()):
 		bricks[i].hp = mini(int(hp[i]), BRICK_MAX_LIVES)
 		bricks[i].alive = bricks[i].hp > 0
+	turrets.clear()
+	for offset in range(0, turret_data.size(), TURRET_FIELDS):
+		turrets.append({"id": int(turret_data[offset]), "team": clampi(int(turret_data[offset + 1]), 0, 1),
+			"p": Vector2(turret_data[offset + 2], turret_data[offset + 3]),
+			"hp": clampi(int(turret_data[offset + 4]), 0, TURRET_LIVES), "cooldown": maxf(0.0, turret_data[offset + 5]),
+			"alive": turret_data[offset + 4] > 0, "aim": Vector2(turret_data[offset + 6], turret_data[offset + 7]).normalized()})
 	balls.clear()
 	for offset in range(0, ball_data.size(), BALL_FIELDS):
 		balls.append({"id": int(ball_data[offset]), "owner": int(ball_data[offset + 1]), "p": Vector2(ball_data[offset + 2], ball_data[offset + 3]), "v": Vector2(ball_data[offset + 4], ball_data[offset + 5]), "bounces": int(ball_data[offset + 6]), "boosted": ball_data[offset + 7] > 0.5, "damage": int(ball_data[offset + 8]), "ttl": ball_data[offset + 9], "power": int(ball_data[offset + 10]), "ghost": ball_data[offset + 11] > 0.5, "held": ball_data[offset + 12] > 0.5})

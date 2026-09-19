@@ -697,8 +697,16 @@ func _physics_process(dt: float) -> void:
 		elif event.kind == "swallow":
 			arena.singularity_swallow(event.p)
 		elif event.kind == "singularity_burst":
-			arena.singularity_burst(event.p, event.heading, int(event.count))
+			arena.singularity_burst(event.p, event.heading, int(event.count), event.get("impacts", []))
 			play_tone("void_burst")
+		elif event.kind == "turret_shot":
+			# Lighter than the pilot's gun, so a wall of sentry fire stays readable.
+			play_tone("sentry")
+		elif event.kind == "turret_hit":
+			play_tone("power")
+		elif event.kind == "turret_down":
+			arena.sentry_down(event.p, int(event.team))
+			play_tone("blast")
 		elif event.kind == "bloom":
 			arena.bloom_flash(event.bricks.map(func(i): return rules.bricks[i].p), event.heal)
 		elif event.kind == "plunder":
@@ -862,6 +870,8 @@ func build_audio() -> void:
 	tones["singularity"] = sweep_wave(1.35, 700.0, 46.0, 0.3)
 	tones["void_burst"] = roar_wave(0.6, 78.0, 0.75)
 	tones["void_wave"] = sweep_wave(0.5, 1250.0, 160.0, 0.4)
+	# The sentries: a dry mechanical tap, far lighter than the pilot's own gun.
+	tones["sentry"] = sweep_wave(0.09, 900.0, 430.0, 0.25)
 
 func roar_wave(seconds: float, base_hz: float, grit: float) -> AudioStreamWAV:
 	# A held, throaty beam: two detuned saws under a slow tremolo.

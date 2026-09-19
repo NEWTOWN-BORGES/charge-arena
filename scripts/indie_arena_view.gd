@@ -25,6 +25,7 @@ var units: Array = []
 var brick_nodes: Array = []
 var goals: Array = []
 var projectiles: Dictionary = {}
+var sentries: Dictionary = {}
 var effects: Array = []
 var camera: Camera3D
 var aim_line: Node3D
@@ -1530,6 +1531,7 @@ func update_state(rules, local_team: int, dt: float, motion_alpha: float = 1.0) 
 			projectiles[id].queue_free()
 			projectiles.erase(id)
 			ball_previous.erase(id)
+	update_sentries(rules, dt)
 	var player: Dictionary = rules.players[local_team]
 	aim_line.visible = rules.phase == "play" and player.stun <= 0 and not guide_enabled
 	update_aim_guide(rules, local_team, dt)
@@ -2065,7 +2067,7 @@ func singularity_swallow(at: Vector2) -> void:
 	effects.append({"node": ring, "v": Vector3.ZERO, "ttl": 0.22, "life": 0.22, "gravity": false, "base": Vector3.ONE * 2.1})
 	emitter(Vector3(at.x, 0.62, at.y), Color("ffd79a"), 6, 0.25, 2.4, 120.0, 0.18, 0.0, Vector3.UP)
 
-func singularity_burst(at: Vector2, heading: Vector2, count: int) -> void:
+func singularity_burst(at: Vector2, heading: Vector2, count: int, impacts: Array = []) -> void:
 	# The release: the hole snaps shut and everything it ate leaves at once, so the light
 	# goes with it — a hard flash, a flat shock ring and a cone of embers down the fan.
 	var color = Rules.power_color("singularity")
@@ -2085,21 +2087,38 @@ func singularity_burst(at: Vector2, heading: Vector2, count: int) -> void:
 			var echo = torus(self, origin, 0.7, 0.08, Color(color, 0.9), true)
 			echo.scale = Vector3(0.2, 0.3, 0.2)
 			effects.append({"node": echo, "v": Vector3.ZERO, "ttl": 0.6, "life": 0.6, "gravity": false, "base": Vector3(4.6, 0.4, 4.6), "grow": true, "tint": color}))
-	# One lance of light per round that left, spread across the whole fan.
+	# One lance of light per round that left. A round laid onto a brick draws all the way
+	# to it and lights it up; the rest streak off across the arena.
 	var shown = mini(count, 22)
 	for index in range(shown):
 		if effects.size() >= effect_limit:
 			break
 		var spread = 0.0 if shown == 1 else lerpf(-Rules.SINGULARITY_FAN * 0.5, Rules.SINGULARITY_FAN * 0.5, float(index) / float(shown - 1))
 		var course: Vector2 = heading.rotated(spread)
+		var length = 5.0
+		var mark: Vector2 = impacts[index] if index < impacts.size() and typeof(impacts[index]) == TYPE_VECTOR2 else Vector2.ZERO
+		var travelling = true
+		if mark != Vector2.ZERO:
+			# Straight to the brick it takes, and there it stops.
+			course = (mark - at).normalized()
+			length = maxf(at.distance_to(mark) - 0.3, 0.6)
+			travelling = false
+		var reach = Vector3(course.x, 0, course.y)
 		var streak = Node3D.new()
 		add_child(streak)
-		segment(streak, origin, origin + Vector3(course.x, 0, course.y) * 5.0, 0.085, 0.085, Color(hot, 0.95), true)
-		segment(streak, origin, origin + Vector3(course.x, 0, course.y) * 3.4, 0.2, 0.2, Color(color, 0.5), true)
-		effects.append({"node": streak, "v": Vector3(course.x, 0, course.y) * 11.0, "ttl": 0.45, "life": 0.45, "gravity": false, "base": Vector3.ONE, "keep": true})
-		if index % 3 == 0:
-			# Embers thrown down every third lane, so the fan has body and not just edges.
-			emitter(origin + Vector3(course.x, 0, course.y) * 1.4, hot, 12, 0.45, 13.0, 16.0, 0.26, -2.0, Vector3(course.x, 0.08, course.y))
+		segment(streak, origin, origin + reach * length, 0.085, 0.085, Color(hot, 0.95), true)
+		segment(streak, origin, origin + reach * (length * 0.7), 0.2, 0.2, Color(color, 0.5), true)
+		effects.append({"node": streak, "v": reach * (11.0 if travelling else 0.0), "ttl": 0.45 if travelling else 0.3, "life": 0.45 if travelling else 0.3, "gravity": false, "base": Vector3.ONE, "keep": true})
+		if not travelling:
+			# The brick it reached flares where the lance lands.
+			var hit = Vector3(mark.x, 0.45, mark.y)
+			var ring = torus(self, hit, 0.4, 0.05, Color(hot, 0.9), true)
+			effects.append({"node": ring, "v": Vector3.ZERO, "ttl": 0.35, "life": 0.35, "gravity": false, "base": Vector3.ONE * 1.8, "grow": true, "tint": color})
+			if index % 2 == 0:
+				emitter(hit, hot, 10, 0.4, 5.5, 70.0, 0.24, -4.0, Vector3.UP)
+		elif index % 3 == 0:
+			# Embers thrown down every third open lane, so the fan has body, not just edges.
+			emitter(origin + reach * 1.4, hot, 12, 0.45, 13.0, 16.0, 0.26, -2.0, Vector3(course.x, 0.08, course.y))
 	emitter(origin + direction * 0.8, hot, 40, 0.55, 12.0, 92.0, 0.3, -2.0, direction)
 	emitter(origin, color, 30, 0.8, 7.0, 150.0, 0.36, -3.0, Vector3.UP)
 	dust(Vector3(at.x, 0.16, at.y), Color("d8c4a4"), 16, 1.1, 3.2, 1.1)
@@ -2132,6 +2151,89 @@ func rebuild_flash(positions: Array) -> void:
 		var ring = torus(self, Vector3(at.x, 0.42, at.y), 0.62, 0.07, Color(Rules.power_color("rebuild"), 0.95), true)
 		ring.scale = Vector3(2.0, 1.0, 2.0)
 		effects.append({"node": ring, "v": Vector3.ZERO, "ttl": 0.55, "life": 0.55, "gravity": false, "base": Vector3(2.0, 1.0, 2.0), "tint": Rules.power_color("rebuild")})
+
+func build_sentry(team: int) -> Node3D:
+	# A squat little gun platform: ceramic drum on a brass ring, a barrel that recoils, and
+	# five pips of health around the collar so the rival can see how close it is to falling.
+	var color = CYAN if team == 0 else CORAL
+	var root = Node3D.new()
+	add_child(root)
+	# A glow on the floor marks it as yours from across the arena, the way a shot does.
+	soft_disc(root, Vector3(0, 0.02, 0), Vector2(2.2, 2.2), Color(color, 0.4))
+	cylinder(root, Vector3(0, 0.1, 0), 0.5, 0.2, DARK, false, 18)
+	cylinder(root, Vector3(0, 0.26, 0), 0.44, 0.12, Color(GOLD, 0.95), false, 18)
+	var drum = Node3D.new()
+	drum.name = "Drum"
+	root.add_child(drum)
+	# Tall enough not to be taken for a bumper, with a lit head and a barrel out front.
+	box(drum, Vector3(0, 0.62, 0), Vector3(0.54, 0.62, 0.54), CREAM, false, 0.09)
+	box(drum, Vector3(0, 0.98, 0), Vector3(0.34, 0.16, 0.34), Color(color, 0.95), true, 0.04)
+	cylinder(drum, Vector3(0, 1.1, 0), 0.06, 0.22, Color(GOLD, 0.9), true, 10)
+	var gun = Node3D.new()
+	gun.name = "Gun"
+	drum.add_child(gun)
+	box(gun, Vector3(0, 0.6, 0.42), Vector3(0.2, 0.2, 0.62), DARK, false, 0.03)
+	box(gun, Vector3(0, 0.6, 0.3), Vector3(0.3, 0.3, 0.18), Color(GOLD, 0.85), false, 0.04)
+	var flash = sphere(gun, Vector3(0, 0.6, 0.78), Vector3.ONE * 0.2, Color("fff2cf"), true)
+	flash.name = "Flash"
+	flash.scale = Vector3.ONE * 0.001
+	for pip in range(Rules.TURRET_LIVES):
+		var angle = -PI * 0.5 + (pip - (Rules.TURRET_LIVES - 1) * 0.5) * 0.36
+		var light = sphere(root, Vector3(cos(angle) * 0.5, 0.34, sin(angle) * 0.5), Vector3.ONE * 0.075, Color(color, 0.95), true)
+		light.name = "Pip%d" % pip
+	return root
+
+func update_sentries(rules, dt: float) -> void:
+	# Built when the ultimate puts them down, lit by their own health, and freed the moment
+	# the rival shoots one apart.
+	var alive: Array = []
+	for data in rules.turrets:
+		if not data.alive:
+			continue
+		alive.append(data.id)
+		if not sentries.has(data.id):
+			sentries[data.id] = build_sentry(int(data.team))
+			sentries[data.id].set_meta("reload", float(data.cooldown))
+			spawn_flash(data.p, CYAN if data.team == 0 else CORAL)
+		var node: Node3D = sentries[data.id]
+		node.position = Vector3(data.p.x, 0.0, data.p.y)
+		var drum: Node3D = node.get_node("Drum")
+		drum.rotation.y = atan2(data.aim.x, data.aim.y)
+		var gun: Node3D = drum.get_node("Gun")
+		# A round just left: kick the barrel back and light the muzzle.
+		if float(data.cooldown) > float(node.get_meta("reload")) + 0.05:
+			gun.position.z = -0.16
+			gun.get_node("Flash").scale = Vector3.ONE * 1.0
+			emitter(node.position + Vector3(data.aim.x, 0.0, data.aim.y) * 0.8 + Vector3(0, 0.6, 0), Color("fff2cf"), 8, 0.28, 6.0, 20.0, 0.2, -1.0, Vector3(data.aim.x, 0.1, data.aim.y))
+		node.set_meta("reload", float(data.cooldown))
+		gun.position.z = lerpf(gun.position.z, 0.0, minf(dt * 16, 1))
+		gun.get_node("Flash").scale = gun.get_node("Flash").scale.lerp(Vector3.ONE * 0.001, minf(dt * 20, 1))
+		for pip in range(Rules.TURRET_LIVES):
+			node.get_node("Pip%d" % pip).visible = pip < int(data.hp)
+	for id in sentries.keys():
+		if not alive.has(id):
+			sentries[id].queue_free()
+			sentries.erase(id)
+
+func spawn_flash(at: Vector2, color: Color) -> void:
+	# A sentry arriving: it unfolds out of a ring of light.
+	if effects.size() + 2 >= effect_limit:
+		return
+	var ring = torus(self, Vector3(at.x, 0.12, at.y), 0.7, 0.06, Color(color, 0.9), true)
+	ring.scale = Vector3(0.3, 1, 0.3)
+	effects.append({"node": ring, "v": Vector3.ZERO, "ttl": 0.5, "life": 0.5, "gravity": false, "base": Vector3(2.4, 1, 2.4), "grow": true, "tint": color})
+	emitter(Vector3(at.x, 0.3, at.y), color, 18, 0.6, 4.0, 60.0, 0.24, -3.0, Vector3.UP)
+	flash(Vector3(at.x, 0.8, at.y), color, 4.0, 0.35, 8.0)
+
+func sentry_down(at: Vector2, team: int) -> void:
+	# And leaving: the drum blows apart, the ring collapses, the floor is scorched.
+	var color = CYAN if team == 0 else CORAL
+	burst(at, color, true)
+	emitter(Vector3(at.x, 0.4, at.y), Color("ffd7a1"), 26, 0.7, 7.0, 95.0, 0.3, -6.0, Vector3.UP)
+	dust(Vector3(at.x, 0.15, at.y), Color("c9b79a"), 10, 0.9, 2.0, 0.8)
+	flash(Vector3(at.x, 0.7, at.y), color, 6.0, 0.4, 9.0)
+	scorch(at, 2.2, color, 1.0)
+	shake(0.45)
 
 func update_power_effects(rules, dt: float) -> void:
 	# Capes over the bricks and a curtain in front of a shielded goal.

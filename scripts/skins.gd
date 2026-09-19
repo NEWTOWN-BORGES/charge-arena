@@ -21,7 +21,7 @@ const CATALOG = [
 		"body": "59606b", "light": "ff9ad8", "shot": "ff7ad0"},
 	{"name": "SENTINELA", "ultimate": "singularity", "weapon": "Lança Eclipse", "bricks": "Monólitos Eclipse", "about": "Guarda de elite do circuito: capa de obsidiana, halo de eclipse dourado e lança de corona.", "level": 7,
 		"body": "2e3140", "light": "f2f4ff", "shot": "eef2ff"},
-	{"name": "RELOJOEIRO", "ultimate": "", "weapon": "Canhão de Corda", "bricks": "Relógios de torre", "about": "Afina as engrenagens do circuito: monóculo de lupa, chave de corda nas costas e canhão de molas.", "level": 2,
+	{"name": "RELOJOEIRO", "ultimate": "sentries", "weapon": "Canhão de Corda", "bricks": "Relógios de torre", "about": "Afina as engrenagens do circuito: monóculo de lupa, chave de corda nas costas e canhão de molas.", "level": 2,
 		"body": "7a5236", "light": "ffb14e", "shot": "ffa640"},
 	{"name": "CAÇA-TROVÕES", "ultimate": "thunder", "weapon": "Bobina de Tesla", "bricks": "Para-raios", "about": "Persegue tempestades de plasma: capacete com para-raios, bateria às costas e bobina de Tesla.", "level": 8,
 		"body": "36445e", "light": "7fe6ff", "shot": "8aeeff"},

@@ -1166,6 +1166,30 @@ func draw_demo(panel: Control, id: String) -> void:
 					c.draw_line(flying - course * 18.0, flying, Color(color, 0.45), 2.4, true)
 					demo_ball(c, flying, color, 5.5)
 				c.draw_arc(my_pilot, out * 70.0, 0, TAU, 36, Color(color, 1.0 - out), 2.8, true)
+		"sentries":
+			var fallen: Array = []
+			if u > 0.55:
+				fallen = [3, 5]
+			if u > 0.8:
+				fallen = [2, 3, 5, 6]
+			demo_bricks(c, area, CORAL, enemy_y, fallen)
+			demo_bricks(c, area, CYAN, mine_y)
+			# Two platforms in the middle of the ring, firing up the field.
+			for side in [-1, 1]:
+				var post = area.get_center() + Vector2(side * 46, 0)
+				var arrival = clampf(u / 0.16, 0, 1)
+				c.draw_circle(post, 11.0 * arrival, Color(color, 0.25), true, -1, true)
+				c.draw_circle(post, 7.0 * arrival, color, true, -1, true)
+				c.draw_circle(post, 3.0 * arrival, Color(INK, 0.8), true, -1, true)
+				if arrival >= 1:
+					# Five pips of health, and a round on its way to the wall.
+					for pip in range(5):
+						var lost = 1 if side < 0 and u > 0.7 else 0
+						c.draw_circle(post + Vector2(-10 + pip * 5, 13), 1.8, Color(color, 0.35 if pip >= 5 - lost else 1.0), true, -1, true)
+					var travel = fmod(u * 3.4 + (0.5 if side > 0 else 0.0), 1.0)
+					var aim = demo_brick_row(area, 3 if side < 0 else 6, true)
+					demo_ball(c, post.lerp(aim, travel), color, 4.5)
+					c.draw_line(post, post.lerp(aim, 0.16), Color(color, 0.8), 3.0, true)
 		"plunder":
 			# The two walls trade places: each side slides across to the other.
 			var slide = clampf((u - 0.15) / 0.55, 0, 1)
@@ -2353,6 +2377,14 @@ func power_icon(id: String, center: Vector2, color: Color, canvas: CanvasItem = 
 			c.draw_arc(center, 5.6, 0, TAU, 20, brass, 1.6, true)
 			for way in [Vector2(-1, -1), Vector2(1, -1), Vector2(-1, 1), Vector2(1, 1)]:
 				c.draw_line(center + way * 15.0, center + way * 9.0, Color(color, 0.9), 1.8, true)
+		"sentries":
+			# Sentries: two gun platforms side by side, firing upwards.
+			for side in [-1, 1]:
+				var post = center + Vector2(side * 8, 4)
+				c.draw_circle(post, 5.0, color, true, -1, true)
+				c.draw_circle(post, 2.0, Color(INK, 0.85), true, -1, true)
+				c.draw_line(post + Vector2(0, -4), post + Vector2(0, -11), brass, 2.2, true)
+			c.draw_line(center + Vector2(-13, 10), center + Vector2(13, 10), Color(color, 0.7), 2.0, true)
 		"plunder":
 			# Plunder: two stacks swapping places.
 			c.draw_rect(Rect2(center + Vector2(-13, -12), Vector2(11, 7)), color, true)

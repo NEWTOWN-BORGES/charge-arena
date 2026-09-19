@@ -22,7 +22,7 @@ A escala do conteúdo acompanha a forma do ecrã: 720 unidades no lado curto, `c
 
 ## Poderes
 
-Cada piloto leva **três poderes** para a partida: **dois comprados** na aba PODERES e postos no kit, e um terceiro que é a **ultimate da skin equipada** (seis skins já a têm; nas outras o botão aparece como `ULTIMATE · EM BREVE`). Dentro da partida cada poder enche a sua própria carga: cada tijolo inimigo destruído dá **um ponto a cada um dos três**, e ao usar um só esse volta a zero.
+Cada piloto leva **três poderes** para a partida: **dois comprados** na aba PODERES e postos no kit, e um terceiro que é a **ultimate da skin equipada** (sete skins já a têm; nas outras o botão aparece como `ULTIMATE · EM BREVE`). Dentro da partida cada poder enche a sua própria carga: cada tijolo inimigo destruído dá **um ponto a cada um dos três**, e ao usar um só esse volta a zero.
 
 | Poder | Tipo | Carga | Preço | Efeito |
 | --- | --- | --- | --- | --- |
@@ -45,7 +45,8 @@ Cada piloto leva **três poderes** para a partida: **dois comprados** na aba POD
 | Caça-Trovões | **Trovoada** | 2 segundos com 8 raios a cair ao acaso no campo do rival, 2 de dano cada. |
 | Jardineiro | **Florescer** | Cura 2 de vida em cada tijolo teu; os que já estão inteiros vão até 5 e ficam maiores, com anéis de luz e um +2 a subir. |
 | Corsário | **Pilhagem** | Troca a tua muralha com a do rival, tijolo a tijolo e em espelho: os números e as posições passam para o outro lado. |
-| Sentinela | **Singularidade** | Três ondas de choque caem do céu e varrem a arena inteira, uma atrás da outra: tudo o que apanham perde o rumo e é arrastado em câmara lenta até ao núcleo, sem tocar em nada pelo caminho. Ao fim de 2,1 s o núcleo abre-se e devolve 26 a 44 projéteis num leque de 155°, à velocidade de bola turbinada, 2 de dano, sem ricochete e a atravessar os obstáculos móveis. |
+| Sentinela | **Singularidade** | Três ondas de choque caem do céu e varrem a arena inteira, uma atrás da outra: tudo o que apanham perde o rumo e é arrastado em câmara lenta até ao núcleo. Ao fim de 2,1 s o núcleo abre-se e devolve 26 a 44 projéteis num leque de 155° — os que têm um tijolo na sua faixa são deitados em cima dele —, à velocidade de bola turbinada, 2 de dano, sem ricochete e a atravessar os obstáculos móveis. |
+| Relojoeiro | **Sentinelas** | Duas mini-guns automáticas ficam de pé no meio do ringue. Disparam sozinhas ao ritmo normal, 2 de dano e sem ricochete, atacam a muralha do rival e metem golo se a baliza já estiver aberta. Têm 5 vidas cada e estão expostas: qualquer bola em jogo as pode abater. |
 
 **Loja e kit** (`scripts/powers.gd`, aba PODERES do menu). Cada poder escolhido mostra uma **demonstração animada** em ciclo — uma arena em miniatura onde se vê o efeito a acontecer: a bala a rebentar, o jorro da metralhadora, o feixe a comer tijolos, as muralhas a subir, a capa a devolver a bala como boost, a onda a limpar o campo, o vórtice a engolir os tiros e a cuspí-los em leque. A moeda são os **tijolos destruídos**, contados em qualquer modo e guardados em `user://powers.cfg` com as compras e o kit. Nesta versão de testes `UNLOCK_ALL_FOR_TESTS` entrega os nove já comprados com a carteira cheia; põe-no a `false` para voltar à progressão. Começas com Explosão e Rajada de Ar, que são de série e já vêm equipadas. Cada poder ocupa um slot de cada vez: equipá-lo no outro slot troca os dois.
 

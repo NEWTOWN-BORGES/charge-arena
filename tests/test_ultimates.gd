@@ -62,10 +62,10 @@ func _initialize() -> void:
 
 func run() -> void:
 	# ---------------------------------------------------------------- the catalogue
-	check(Powers.ULTIMATES.size() == 6 and Powers.ULTIMATES.all(func(u): return u.charge == Powers.ULTIMATE_CHARGE and u.price == 0), "Six ultimates, none of them for sale and all charging the same")
+	check(Powers.ULTIMATES.size() == 7 and Powers.ULTIMATES.all(func(u): return u.charge == Powers.ULTIMATE_CHARGE and u.price == 0), "Seven ultimates, none of them for sale and all charging the same")
 	check(Powers.ULTIMATES.all(func(u): return Powers.is_ultimate(u.id) and not Powers.entry(u.id).is_empty()), "Each one is found by id, like any other power")
 	var carriers = Skins.CATALOG.filter(func(s): return s.ultimate != "")
-	check(carriers.size() == 6 and carriers.all(func(s): return Powers.is_ultimate(s.ultimate)), "Six skins carry one each")
+	check(carriers.size() == 7 and carriers.all(func(s): return Powers.is_ultimate(s.ultimate)), "Seven skins carry one each")
 	check(Skins.CATALOG[10].ultimate == "sun_ray" and Skins.CATALOG[2].ultimate == "meteors" and Skins.CATALOG[7].ultimate == "thunder" and Skins.CATALOG[3].ultimate == "bloom" and Skins.CATALOG[9].ultimate == "plunder", "Arconte, Astrónomo, Caça-Trovões, Jardineiro and Corsário, each with its own")
 
 	# ---------------------------------------------------------------- every ultimate glows first
@@ -215,6 +215,46 @@ func run() -> void:
 		"boosted": false, "damage": 1, "ttl": Rules.BALL_LIFE, "power": 0, "ghost": false, "held": true})
 	check(mirror_wire.apply_network_snapshot(wire.network_snapshot()), "The snapshot with a held round is accepted")
 	check(mirror_wire.balls.size() == 1 and mirror_wire.balls[0].get("held", false), "And the client knows the round is inside the hole")
+
+	# ---------------------------------------------------------------- sentries
+	var watch = playing("sentries")
+	launch(watch)
+	var posted: Array = wait(watch, Rules.ULTIMATE_WINDUP + 0.05)
+	check(watch.turrets.size() == 2 and watch.turrets.all(func(t): return t.alive and t.hp == Rules.TURRET_LIVES), "Two sentries are posted, five lives each")
+	check(watch.turrets.all(func(t): return absf(t.p.y) < 1.0), "They stand out in the middle of the ring, where any ball can reach them")
+	check(posted.any(func(e): return e.kind == "sentries"), "The arena is told to build them")
+	var wall_before = team_health(watch, 1)
+	var firing: Array = wait(watch, 4.0)
+	var rounds: Array = firing.filter(func(e): return e.kind == "turret_shot")
+	check(rounds.size() >= 14, "They fire by themselves at the normal rate (%d rondas em 4 s)" % rounds.size())
+	check(team_health(watch, 1) < wall_before, "And they chew through the rival wall (%d de dano)" % (wall_before - team_health(watch, 1)))
+	var sentry_rounds: Array = watch.balls.filter(func(b): return b.owner == 0 and b.damage == Rules.TURRET_DAMAGE)
+	check(sentry_rounds.all(func(b): return b.bounces >= Rules.MAX_BOUNCES and not b.get("boosted", false)), "Their rounds carry two of damage and never ricochet")
+	# The rival shoots one down: five hits and it is gone.
+	var doomed: Dictionary = watch.turrets[0]
+	var knocks: Array = []
+	for hit in range(Rules.TURRET_LIVES):
+		watch.balls.append({"id": watch.next_id, "owner": 1, "p": doomed.p + Vector2(0, -1.0), "v": Vector2(0, Rules.BALL_SPEED),
+			"bounces": 0, "boosted": false, "damage": 1, "ttl": 2.0, "power": 0, "ghost": false, "held": false})
+		watch.next_id += 1
+		knocks.append_array(wait(watch, 0.2))
+	check(not doomed.alive and doomed.hp == 0, "Five rounds bring a sentry down")
+	check(knocks.any(func(e): return e.kind == "turret_down"), "And its fall is announced, so the arena can blow it apart")
+	check(watch.turrets.filter(func(t): return t.alive).size() == 1, "The other one keeps firing")
+	# An open goal: with the wall gone, a sentry takes the shot.
+	var open_goal = playing("sentries")
+	launch(open_goal)
+	wait(open_goal, Rules.ULTIMATE_WINDUP + 0.05)
+	for brick in open_goal.bricks:
+		if brick.team == 1:
+			brick.hp = 0
+			brick.alive = false
+	var scoring: Array = wait(open_goal, 3.0)
+	check(open_goal.scores[0] > 0 or scoring.any(func(e): return e.kind == "goal"), "With the wall down they put it in the empty net")
+	# On the wire the sentries travel with everything else.
+	var watcher = playing("sentries")
+	check(watcher.apply_network_snapshot(watch.network_snapshot()), "The snapshot carrying sentries is accepted")
+	check(watcher.turrets.size() == watch.turrets.filter(func(t): return true).size() and watcher.turrets[0].hp == watch.turrets[0].hp, "And the client sees them where they stand, with the health they have left")
 
 	# ---------------------------------------------------------------- the kit carries it
 	var shop = Powers.new()
