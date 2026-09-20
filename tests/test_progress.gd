@@ -97,7 +97,36 @@ func run() -> void:
 	check(again_skins.is_unlocked(boss_two), "The won pilot is still yours")
 	check(again_shop.is_owned("laser") and again_shop.kit[0] == "laser", "The bought power is still bought, and still equipped")
 
-	for leftover in ["-campaign.tmp", "-skins.tmp", "-powers.tmp"]:
+	# ---------------------------------------------------------------- an old open save is refused
+	# Exactly what sits on a phone that ran the unlocked test builds: everything won, a full
+	# wallet, and no version stamp.
+	var stale = ConfigFile.new()
+	stale.set_value("campaign", "unlocked", Campaign.LEVELS.size())
+	stale.set_value("campaign", "completed", range(Campaign.LEVELS.size()))
+	stale.save(TMP + "-old-campaign.tmp")
+	stale = ConfigFile.new()
+	stale.set_value("skins", "defeated", range(1, Skins.CATALOG.size()))
+	stale.set_value("skins", "selected", 5)
+	stale.save(TMP + "-old-skins.tmp")
+	stale = ConfigFile.new()
+	stale.set_value("powers", "bricks", 5000)
+	stale.set_value("powers", "owned", Powers.all_ids())
+	stale.set_value("powers", "kit", ["laser", "mirror"])
+	stale.save(TMP + "-old-powers.tmp")
+	var old_campaign = fresh_campaign()
+	old_campaign.config_path = TMP + "-old-campaign.tmp"
+	old_campaign.load_preferences()
+	var old_skins = fresh_skins()
+	old_skins.config_path = TMP + "-old-skins.tmp"
+	old_skins.load_preferences()
+	var old_shop = fresh_shop()
+	old_shop.config_path = TMP + "-old-powers.tmp"
+	old_shop.load_preferences()
+	check(not old_campaign.is_unlocked(1), "A save from an unlocked build opens no level here")
+	check(old_skins.unlocked_count() == 1, "And hands over no pilot")
+	check(old_shop.bricks == 0 and not old_shop.is_owned("laser"), "And no bricks and no bought power")
+
+	for leftover in ["-campaign.tmp", "-skins.tmp", "-powers.tmp", "-old-campaign.tmp", "-old-skins.tmp", "-old-powers.tmp"]:
 		DirAccess.remove_absolute(ProjectSettings.globalize_path(TMP + leftover))
 	print("PROGRESS_RESULT failures=", failures)
 	quit(failures)

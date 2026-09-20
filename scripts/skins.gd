@@ -35,6 +35,10 @@ const CATALOG = [
 # Testing build: every skin can be worn without beating its boss first. Set to false to
 # earn them again; the bosses you have beaten are saved either way.
 const UNLOCK_ALL_FOR_TESTS = false
+# Saves written by the old unlocked test builds have every pilot already won. The demo
+# refuses to read them, so a run starts with the standard pilot alone.
+const SAVE_VERSION = 2
+
 var config_path = CONFIG_PATH
 var unlock_all = UNLOCK_ALL_FOR_TESTS
 var defeated: Array = []
@@ -81,6 +85,8 @@ func load_preferences() -> void:
 	var config = ConfigFile.new()
 	if config.load(config_path) != OK:
 		return
+	if int(config.get_value("skins", "version", 1)) < SAVE_VERSION:
+		return
 	defeated = []
 	for index in Array(config.get_value("skins", "defeated", [])):
 		if index is int and index > 0 and index < CATALOG.size() and not defeated.has(index):
@@ -90,6 +96,7 @@ func load_preferences() -> void:
 
 func save_preferences() -> Error:
 	var config = ConfigFile.new()
+	config.set_value("skins", "version", SAVE_VERSION)
 	config.set_value("skins", "defeated", defeated)
 	config.set_value("skins", "selected", selected)
 	return config.save(config_path)

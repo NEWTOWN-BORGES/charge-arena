@@ -46,6 +46,10 @@ const ULTIMATES = [
 ]
 # The kit every pilot starts with, and how many bought powers it holds. The third slot is
 # always the skin's ultimate, so it is neither bought nor equipped.
+# Saves written by the old unlocked test builds have everything open and a full wallet.
+# The demo refuses to read them: a stored file without this stamp is left behind and the
+# run starts from nothing, which is the whole point of a progression build.
+const SAVE_VERSION = 2
 const STARTER_KIT = ["blast", "air"]
 const KIT_SIZE = 2
 # Testing build: every power is already bought, with a full wallet, so the whole kit can
@@ -120,6 +124,8 @@ func load_preferences() -> void:
 	var config = ConfigFile.new()
 	if config.load(config_path) != OK:
 		return
+	if int(config.get_value("powers", "version", 1)) < SAVE_VERSION:
+		return
 	bricks = maxi(int(config.get_value("powers", "bricks", 0)), 0)
 	owned = all_ids() if unlock_all else STARTER_KIT.duplicate()
 	if unlock_all:
@@ -134,6 +140,7 @@ func load_preferences() -> void:
 
 func save_preferences() -> Error:
 	var config = ConfigFile.new()
+	config.set_value("powers", "version", SAVE_VERSION)
 	config.set_value("powers", "bricks", bricks)
 	config.set_value("powers", "owned", owned)
 	config.set_value("powers", "kit", kit)

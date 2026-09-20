@@ -131,6 +131,7 @@ func run() -> void:
 	restored.load_preferences()
 	check(restored.unlocked == 2 and restored.completed == [0], "Progress survives a restart")
 	var edited = ConfigFile.new()
+	edited.set_value("campaign", "version", Campaign.SAVE_VERSION)
 	edited.set_value("campaign", "unlocked", 99)
 	edited.set_value("campaign", "completed", [0, 3, 50, "x"])
 	edited.save(TMP)

@@ -6,6 +6,11 @@ const Rules = preload("res://scripts/arena_rules.gd")
 const CONFIG_PATH = "user://campaign.cfg"
 # A single match victory unlocks the next arena. Progress is saved on device.
 const UNLOCK_ALL_FOR_TESTS = false
+# Saves written by the old unlocked test builds have everything open and a full wallet.
+# The demo refuses to read them: a stored file without this stamp is left behind and the
+# run starts from nothing, which is the whole point of a progression build.
+const SAVE_VERSION = 2
+
 # boss: skin worn by the rival (and its bricks), a different one per level; beating it
 # unlocks that skin. tier: 0 (gentle) to 9 (relentless).
 const LEVELS = [
@@ -151,11 +156,14 @@ func load_preferences() -> void:
 	var config = ConfigFile.new()
 	if config.load(config_path) != OK:
 		return
+	if int(config.get_value("campaign", "version", 1)) < SAVE_VERSION:
+		return
 	unlocked = clampi(int(config.get_value("campaign", "unlocked", 1)), 1, LEVELS.size())
 	completed = Array(config.get_value("campaign", "completed", [])).filter(func(i): return i is int and i >= 0 and i < unlocked)
 
 func save_preferences() -> Error:
 	var config = ConfigFile.new()
+	config.set_value("campaign", "version", SAVE_VERSION)
 	config.set_value("campaign", "unlocked", unlocked)
 	config.set_value("campaign", "completed", completed)
 	return config.save(config_path)

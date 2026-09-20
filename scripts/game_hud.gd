@@ -259,8 +259,7 @@ func build_skins_menu() -> void:
 	titles.add_child(label("SKINS", 25, WHITE, true))
 	titles.add_child(label("Arrasta o piloto para o rodar.", 14, MUTED))
 	skins_total = label("", 13, CYAN, true)
-	skins_total.size_flags_vertical = Control.SIZE_SHRINK_END
-	header.add_child(skins_total)
+	titles.add_child(skins_total)
 	skins_body = BoxContainer.new()
 	skins_body.add_theme_constant_override("separation", 16)
 	list.add_child(skins_body)
@@ -804,9 +803,8 @@ func build_powers_menu() -> void:
 	header.add_child(titles)
 	titles.add_child(label("PODERES", 25, WHITE, true))
 	titles.add_child(label("Compra com os tijolos que destruíres e leva dois para a partida.", 14, MUTED))
-	powers_wallet = label("", 13, CYAN, true)
-	powers_wallet.size_flags_vertical = Control.SIZE_SHRINK_END
-	header.add_child(powers_wallet)
+	powers_wallet = label("", 15, CYAN, true)
+	titles.add_child(powers_wallet)
 	# Fourteen cards do not fit a phone screen, so the grid scrolls inside the panel.
 	var scroll = ScrollContainer.new()
 	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED

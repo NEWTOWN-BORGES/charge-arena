@@ -60,6 +60,7 @@ func run() -> void:
 	check(restored.defeated.has(1) and restored.defeated.has(6) and restored.defeated.has(10) and restored.selected == 6, "Defeated bosses and equipped skin survive reload")
 
 	var edited = ConfigFile.new()
+	edited.set_value("skins", "version", Skins.SAVE_VERSION)
 	edited.set_value("skins", "defeated", [1])
 	edited.set_value("skins", "selected", 6)
 	edited.save(TMP)
