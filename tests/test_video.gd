@@ -20,7 +20,7 @@ func run() -> void:
 	game.set_physics_process(false)
 	game.set_process(false)
 	var settings = Settings.new()
-	for limit in [60, 90, 120]:
+	for limit in Settings.FPS_OPTIONS:
 		for quality in range(3):
 			settings.configure(limit, quality, false, true)
 			settings.apply(root, game.arena)
@@ -35,13 +35,15 @@ func run() -> void:
 	restored.configure(-1, 500, false, false)
 	check(restored.fps == 60 and restored.quality == 2, "Invalid settings are clamped safely")
 	restored.configure(120, 2, false, false)
+	check(restored.fps == 60, "A setting of 120 saved by an older build lands on 60")
+	restored.configure(90, 2, false, false)
 	restored.apply(root, game.arena)
 	for i in range(4):
 		restored.adapt(root, 45, true)
-	check(restored.runtime_fps == 90 and is_equal_approx(root.scaling_3d_scale, 1.0) and root.msaa_3d == Settings.AA_LEVELS[2], "Refinado falls from 120 to 90 FPS without lowering graphics")
+	check(restored.runtime_fps == 60 and is_equal_approx(root.scaling_3d_scale, 1.0) and root.msaa_3d == Settings.AA_LEVELS[2], "Refinado falls from 90 to 60 FPS without lowering graphics")
 	for i in range(4):
 		restored.adapt(root, 45, true)
-	check(restored.runtime_fps == 60 and is_equal_approx(root.scaling_3d_scale, 1.0), "Refinado falls from 90 to 60 FPS while preserving native 3D resolution")
+	check(restored.runtime_fps == 30 and is_equal_approx(root.scaling_3d_scale, 1.0), "And from 60 to 30 while preserving native 3D resolution")
 	restored.configure(60, 0, false, false)
 	restored.apply(root, game.arena)
 	for i in range(2):

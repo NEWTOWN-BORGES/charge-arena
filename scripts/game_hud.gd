@@ -63,6 +63,14 @@ var sensitivity_choice: OptionButton
 var viewer_audio: AudioStreamPlayer
 var viewer_sound_pending = false
 var font: Font
+# Soft edges on every little circle and arc cost one draw call each. Kept on the roomier
+# profiles, dropped on the light one, where the frame budget matters more than the edges.
+var smooth = true
+# The HUD redraws at most thirty times a second. Dragging the stick used to redraw it on
+# every frame, and the HUD is over half the draw calls in a frame.
+const REDRAW_INTERVAL = 1.0 / 30.0
+var redraw_wait = 0.0
+var redraw_asked = false
 var font_bold: Font
 var video_overlay: ColorRect
 var video_panel: PanelContainer
@@ -552,8 +560,8 @@ func draw_swatches() -> void:
 	var items = [["CORPO", palette.body], ["LUZ", palette.light], ["DISPARO", palette.shot]]
 	for i in range(items.size()):
 		var at = Vector2(11 + i * 106, 13)
-		skin_swatches.draw_circle(at, 10, items[i][1], true, -1, true)
-		skin_swatches.draw_arc(at, 10, 0, TAU, 32, Color(WHITE, 0.3), 1, true)
+		skin_swatches.draw_circle(at, 10, items[i][1], true, -1, smooth)
+		skin_swatches.draw_arc(at, 10, 0, TAU, 32, Color(WHITE, 0.3), 1, smooth)
 		skin_swatches.draw_string(font_bold, at + Vector2(17, 5), items[i][0], HORIZONTAL_ALIGNMENT_LEFT, -1, 11, WHITE)
 	var note = "Paleta própria · ombros na cor da equipa"
 	if locked:
@@ -572,7 +580,7 @@ func draw_thumb(canvas: Control, index: int) -> void:
 	var caption = ""
 	var color = MUTED
 	if locked:
-		canvas.draw_circle(Vector2(canvas.size.x * 0.5, 56), 47, Color(0.02, 0.05, 0.06, 0.45), true, -1, true)
+		canvas.draw_circle(Vector2(canvas.size.x * 0.5, 56), 47, Color(0.02, 0.05, 0.06, 0.45), true, -1, smooth)
 		caption = "BOSS NÍVEL %d" % Skins.CATALOG[index].level
 	elif skins_progress.selected == index:
 		caption = "EQUIPADA"
@@ -595,7 +603,16 @@ func announce_unlock(names: Array) -> void:
 	unlock_timer = 4.0
 	queue_redraw()
 
+func ask_redraw() -> void:
+	# Marks the HUD dirty; the repaint happens on the next slot of the redraw clock.
+	redraw_asked = true
+
 func _process(dt: float) -> void:
+	redraw_wait += dt
+	if redraw_asked and redraw_wait >= REDRAW_INTERVAL:
+		redraw_wait = 0.0
+		redraw_asked = false
+		queue_redraw()
 	if unlock_timer > 0:
 		unlock_timer = maxf(unlock_timer - dt, 0)
 		queue_redraw()
@@ -907,10 +924,10 @@ func draw_power_card(canvas: Control, index: int) -> void:
 	var owned: bool = ultimate or (power_shop != null and power_shop.is_owned(entry.id))
 	var slot: int = power_shop.kit.find(entry.id) if power_shop != null else -1
 	var medallion = Vector2(40, canvas.size.y * 0.5)
-	canvas.draw_circle(medallion + Vector2(0, 2), 25, Color(INK, 0.5), true, -1, true)
-	canvas.draw_circle(medallion, 25, Color(color, 0.14 if owned else 0.07), true, -1, true)
-	canvas.draw_arc(medallion, 25, 0, TAU, 40, Color(BRASS, 0.9 if owned else 0.35), 1.4, true)
-	canvas.draw_arc(medallion, 21, -PI * 0.75, PI * 0.15, 24, Color(CERAMIC, 0.18), 1.0, true)
+	canvas.draw_circle(medallion + Vector2(0, 2), 25, Color(INK, 0.5), true, -1, smooth)
+	canvas.draw_circle(medallion, 25, Color(color, 0.14 if owned else 0.07), true, -1, smooth)
+	canvas.draw_arc(medallion, 25, 0, TAU, 40, Color(BRASS, 0.9 if owned else 0.35), 1.4, smooth)
+	canvas.draw_arc(medallion, 21, -PI * 0.75, PI * 0.15, 24, Color(CERAMIC, 0.18), 1.0, smooth)
 	power_icon(String(entry.id), medallion, color if owned else Color(color, 0.42), canvas)
 	var left = 76.0
 	canvas.draw_string(font_bold, Vector2(left, medallion.y - 14), String(entry.short), HORIZONTAL_ALIGNMENT_LEFT, -1, 15, WHITE if owned else Color(WHITE, 0.55))
@@ -931,7 +948,7 @@ func draw_power_card(canvas: Control, index: int) -> void:
 		status_color = BRASS
 	canvas.draw_string(font_bold, Vector2(left, medallion.y + 32), status, HORIZONTAL_ALIGNMENT_LEFT, -1, 10, status_color)
 	if slot >= 0:
-		canvas.draw_line(Vector2(left, medallion.y + 37), Vector2(left + 54, medallion.y + 37), Color(LIME, 0.5), 1.2, true)
+		canvas.draw_line(Vector2(left, medallion.y + 37), Vector2(left + 54, medallion.y + 37), Color(LIME, 0.5), 1.2, smooth)
 
 func skin_with_ultimate(id: String) -> String:
 	for skin in Skins.CATALOG:
@@ -948,9 +965,9 @@ func charge_glyph(canvas: CanvasItem, at: Vector2, charge: int, color: Color) ->
 const DEMO_LOOP = 3.2
 
 func demo_ball(c: CanvasItem, at: Vector2, color: Color, size: float = 5.0) -> void:
-	c.draw_circle(at + Vector2(0, 2), size, Color(INK, 0.5), true, -1, true)
-	c.draw_circle(at, size, color, true, -1, true)
-	c.draw_circle(at, size * 0.45, Color(WHITE, 0.85), true, -1, true)
+	c.draw_circle(at + Vector2(0, 2), size, Color(INK, 0.5), true, -1, smooth)
+	c.draw_circle(at, size, color, true, -1, smooth)
+	c.draw_circle(at, size * 0.45, Color(WHITE, 0.85), true, -1, smooth)
 
 func demo_bricks(c: CanvasItem, area: Rect2, team: Color, y: float, gone: Array = []) -> void:
 	for i in range(9):
@@ -961,15 +978,15 @@ func demo_bricks(c: CanvasItem, area: Rect2, team: Color, y: float, gone: Array 
 		c.draw_rect(Rect2(at - Vector2(13, 7), Vector2(26, 3)), Color(WHITE, 0.35), true)
 
 func demo_pilot(c: CanvasItem, at: Vector2, team: Color, dazed: bool = false) -> void:
-	c.draw_circle(at, 11, CERAMIC, true, -1, true)
+	c.draw_circle(at, 11, CERAMIC, true, -1, smooth)
 	c.draw_rect(Rect2(at - Vector2(7, 2), Vector2(14, 5)), INK, true)
-	c.draw_arc(at, 15, 0, TAU, 24, Color(team, 0.75), 2.0, true)
+	c.draw_arc(at, 15, 0, TAU, 24, Color(team, 0.75), 2.0, smooth)
 	if dazed:
 		for i in range(3):
 			var angle = demo_clock * 3.0 + i * TAU / 3.0
 			var star = at + Vector2(cos(angle), sin(angle) * 0.4) * 19 - Vector2(0, 16)
-			c.draw_line(star - Vector2(3, 0), star + Vector2(3, 0), LIME, 2.0, true)
-			c.draw_line(star - Vector2(0, 3), star + Vector2(0, 3), LIME, 2.0, true)
+			c.draw_line(star - Vector2(3, 0), star + Vector2(3, 0), LIME, 2.0, smooth)
+			c.draw_line(star - Vector2(0, 3), star + Vector2(0, 3), LIME, 2.0, smooth)
 
 func demo_brick_row(area: Rect2, index: int, top: bool) -> Vector2:
 	var y = area.position.y + 50 if top else area.end.y - 56
@@ -985,7 +1002,7 @@ func draw_demo(panel: Control, id: String) -> void:
 	var frame = Rect2(Vector2.ZERO, panel.size)
 	panel.draw_style_box(style(Color(0.03, 0.08, 0.09, 0.96), Color("2f4f53"), 14), frame)
 	var area = frame.grow(-12)
-	panel.draw_arc(area.get_center(), 26, 0, TAU, 40, Color(CERAMIC, 0.07), 1.2, true)
+	panel.draw_arc(area.get_center(), 26, 0, TAU, 40, Color(CERAMIC, 0.07), 1.2, smooth)
 	var enemy_y = area.position.y + 50
 	var mine_y = area.end.y - 56
 	var my_pilot = Vector2(area.get_center().x, area.end.y - 16)
@@ -1009,7 +1026,7 @@ func draw_demo(panel: Control, id: String) -> void:
 				demo_ball(c, my_pilot.lerp(demo_brick_row(area, 4, true), u / 0.6), color, 6.0)
 			else:
 				var blast = (u - 0.6) / 0.4
-				c.draw_arc(demo_brick_row(area, 4, true), 10 + blast * 52, 0, TAU, 40, Color(color, 1.0 - blast), 3.0, true)
+				c.draw_arc(demo_brick_row(area, 4, smooth), 10 + blast * 52, 0, TAU, 40, Color(color, 1.0 - blast), 3.0, true)
 		"rapid":
 			if u > 0.75:
 				gone_enemy = [4]
@@ -1030,8 +1047,8 @@ func draw_demo(panel: Control, id: String) -> void:
 			demo_bricks(c, area, CORAL, enemy_y, [6] if u > 0.8 else [])
 			demo_bricks(c, area, CYAN, mine_y)
 			var pillar = Vector2(area.get_center().x + 26, area.get_center().y)
-			c.draw_circle(pillar, 17, Color(CERAMIC, 0.5), true, -1, true)
-			c.draw_arc(pillar, 17, 0, TAU, 28, Color(BRASS, 0.8), 1.6, true)
+			c.draw_circle(pillar, 17, Color(CERAMIC, 0.5), true, -1, smooth)
+			c.draw_arc(pillar, 17, 0, TAU, 28, Color(BRASS, 0.8), 1.6, smooth)
 			demo_ball(c, my_pilot.lerp(demo_brick_row(area, 6, true), minf(u / 0.8, 1.0)), color, 5.5)
 		"laser":
 			var reach = minf(u / 0.25, 1.0)
@@ -1039,10 +1056,10 @@ func draw_demo(panel: Control, id: String) -> void:
 			var bitten = int(clampf((u - 0.3) / 0.18, 0, 3))
 			demo_bricks(c, area, CORAL, enemy_y, [4] if bitten >= 2 else [])
 			demo_bricks(c, area, CYAN, mine_y)
-			c.draw_line(my_pilot, beam_end, Color(color, 0.35), 12.0, true)
-			c.draw_line(my_pilot, beam_end, color, 4.0, true)
+			c.draw_line(my_pilot, beam_end, Color(color, 0.35), 12.0, smooth)
+			c.draw_line(my_pilot, beam_end, color, 4.0, smooth)
 			if u > 0.3:
-				c.draw_circle(demo_brick_row(area, 4, true), 8 + sin(demo_clock * 22) * 3, Color(color, 0.5), true, -1, true)
+				c.draw_circle(demo_brick_row(area, 4, smooth), 8 + sin(demo_clock * 22) * 3, Color(color, 0.5), true, -1, true)
 		"rebuild":
 			var back = int(clampf(u / 0.7 * 4, 0, 4))
 			var missing = [1, 3, 5, 7].slice(back)
@@ -1052,7 +1069,7 @@ func draw_demo(panel: Control, id: String) -> void:
 				var slot = [1, 3, 5, 7][i]
 				if i < back and u < 0.85:
 					var age = clampf(u - i * 0.175, 0, 0.3) / 0.3
-					c.draw_arc(demo_brick_row(area, slot, false), 8 + age * 16, 0, TAU, 28, Color(color, 1.0 - age), 2.4, true)
+					c.draw_arc(demo_brick_row(area, slot, false), 8 + age * 16, 0, TAU, 28, Color(color, 1.0 - age), 2.4, smooth)
 		"mirror":
 			demo_bricks(c, area, CORAL, enemy_y, [2] if u > 0.9 else [])
 			demo_bricks(c, area, CYAN, mine_y)
@@ -1108,9 +1125,9 @@ func draw_demo(panel: Control, id: String) -> void:
 				var rock = Color("ffd76b") if i % 2 == 0 else color
 				if travel < 1:
 					demo_ball(c, start.lerp(land, travel), rock, 6.0)
-					c.draw_line(start.lerp(land, maxf(travel - 0.18, 0)), start.lerp(land, travel), Color(rock, 0.45), 3.0, true)
+					c.draw_line(start.lerp(land, maxf(travel - 0.18, 0)), start.lerp(land, travel), Color(rock, 0.45), 3.0, smooth)
 				else:
-					c.draw_arc(land, 6 + (u - i * 0.16 - 0.3) * 40, 0, TAU, 24, Color(rock, maxf(0.0, 1.0 - (u - i * 0.16 - 0.3) * 3)), 2.0, true)
+					c.draw_arc(land, 6 + (u - i * 0.16 - 0.3) * 40, 0, TAU, 24, Color(rock, maxf(0.0, 1.0 - (u - i * 0.16 - 0.3) * 3)), 2.0, smooth)
 		"thunder":
 			var struck = int(clampf(u / 0.8 * 3, 0, 3))
 			demo_bricks(c, area, CORAL, enemy_y, [2, 4, 6].slice(0, struck))
@@ -1121,8 +1138,8 @@ func draw_demo(panel: Control, id: String) -> void:
 				if age < 0 or age > 1:
 					continue
 				var bolt = PackedVector2Array([Vector2(at.x, frame.position.y + 2), Vector2(at.x - 9, at.y - 34), Vector2(at.x + 6, at.y - 30), Vector2(at.x - 4, at.y)])
-				c.draw_polyline(bolt, Color(color, 1.0 - age * 0.4), 3.0, true)
-				c.draw_arc(at, 10 + age * 18, 0, TAU, 24, Color(color, 1.0 - age), 2.0, true)
+				c.draw_polyline(bolt, Color(color, 1.0 - age * 0.4), 3.0, smooth)
+				c.draw_arc(at, 10 + age * 18, 0, TAU, 24, Color(color, 1.0 - age), 2.0, smooth)
 		"bloom":
 			demo_bricks(c, area, CORAL, enemy_y)
 			demo_bricks(c, area, CYAN, mine_y)
@@ -1133,7 +1150,7 @@ func draw_demo(panel: Control, id: String) -> void:
 					continue
 				# Grown bricks and a +2 floating away.
 				c.draw_rect(Rect2(brick - Vector2(15, 8.5), Vector2(30, 17)), Color(color, 0.5 * (1.0 - age)), true)
-				c.draw_arc(brick, 10 + age * 12, 0, TAU, 20, Color(color, 1.0 - age), 2.0, true)
+				c.draw_arc(brick, 10 + age * 12, 0, TAU, 20, Color(color, 1.0 - age), 2.0, smooth)
 				if i % 2 == 0:
 					c.draw_string(font_bold, brick + Vector2(-8, -16 - age * 18), "+2", HORIZONTAL_ALIGNMENT_LEFT, -1, 12, Color(color, 1.0 - age))
 		"singularity":
@@ -1147,13 +1164,13 @@ func draw_demo(panel: Control, id: String) -> void:
 					var span = 1.0 - fmod(draw_in * 3.0 - wave * 0.02, 1.0)
 					if span < 0 or span > 1:
 						continue
-					c.draw_arc(my_pilot, 30 + span * 150.0, 0, TAU, 44, Color(color, 0.7 * (1.0 - span * 0.5)), 2.4, true)
+					c.draw_arc(my_pilot, 30 + span * 150.0, 0, TAU, 44, Color(color, 0.7 * (1.0 - span * 0.5)), 2.4, smooth)
 				for i in range(5):
 					var from = [Vector2(-52, -34), Vector2(40, -18), Vector2(-28, 22), Vector2(48, 28), Vector2(4, -44)][i]
 					var caught = clampf((draw_in - i * 0.06) / 0.7, 0, 1)
 					demo_ball(c, my_pilot + from * (1.0 - ease(caught, 2.4)), CORAL if i % 2 == 0 else CYAN, 5.0)
-				c.draw_circle(my_pilot, 4.0 + draw_in * 6.0, Color(0.02, 0.03, 0.05, 1.0), true, -1, true)
-				c.draw_arc(my_pilot, 4.5 + draw_in * 6.0, 0, TAU, 26, color, 2.0, true)
+				c.draw_circle(my_pilot, 4.0 + draw_in * 6.0, Color(0.02, 0.03, 0.05, 1.0), true, -1, smooth)
+				c.draw_arc(my_pilot, 4.5 + draw_in * 6.0, 0, TAU, 26, color, 2.0, smooth)
 			else:
 				# The release: a wide fan of turbocharged rounds across the whole arena.
 				var out = (u - 0.62) / 0.38
@@ -1161,9 +1178,9 @@ func draw_demo(panel: Control, id: String) -> void:
 					var spread = lerpf(-1.35, 1.35, i / 12.0)
 					var course = Vector2(sin(spread), -cos(spread))
 					var flying = my_pilot + course * out * 108.0
-					c.draw_line(flying - course * 18.0, flying, Color(color, 0.45), 2.4, true)
+					c.draw_line(flying - course * 18.0, flying, Color(color, 0.45), 2.4, smooth)
 					demo_ball(c, flying, color, 5.5)
-				c.draw_arc(my_pilot, out * 70.0, 0, TAU, 36, Color(color, 1.0 - out), 2.8, true)
+				c.draw_arc(my_pilot, out * 70.0, 0, TAU, 36, Color(color, 1.0 - out), 2.8, smooth)
 		"sentries":
 			var fallen: Array = []
 			if u > 0.55:
@@ -1176,18 +1193,18 @@ func draw_demo(panel: Control, id: String) -> void:
 			for side in [-1, 1]:
 				var post = area.get_center() + Vector2(side * 46, 0)
 				var arrival = clampf(u / 0.16, 0, 1)
-				c.draw_circle(post, 11.0 * arrival, Color(color, 0.25), true, -1, true)
-				c.draw_circle(post, 7.0 * arrival, color, true, -1, true)
-				c.draw_circle(post, 3.0 * arrival, Color(INK, 0.8), true, -1, true)
+				c.draw_circle(post, 11.0 * arrival, Color(color, 0.25), true, -1, smooth)
+				c.draw_circle(post, 7.0 * arrival, color, true, -1, smooth)
+				c.draw_circle(post, 3.0 * arrival, Color(INK, 0.8), true, -1, smooth)
 				if arrival >= 1:
 					# Five pips of health, and a round on its way to the wall.
 					for pip in range(Rules.TURRET_LIVES):
 						var lost = 1 if side < 0 and u > 0.7 else 0
-						c.draw_circle(post + Vector2(-5 + pip * 6, 13), 2.0, Color(color, 0.35 if pip >= Rules.TURRET_LIVES - lost else 1.0), true, -1, true)
+						c.draw_circle(post + Vector2(-5 + pip * 6, 13), 2.0, Color(color, 0.35 if pip >= Rules.TURRET_LIVES - lost else 1.0), true, -1, smooth)
 					var travel = fmod(u * 3.4 + (0.5 if side > 0 else 0.0), 1.0)
 					var aim = demo_brick_row(area, 3 if side < 0 else 6, true)
 					demo_ball(c, post.lerp(aim, travel), color, 4.5)
-					c.draw_line(post, post.lerp(aim, 0.16), Color(color, 0.8), 3.0, true)
+					c.draw_line(post, post.lerp(aim, 0.16), Color(color, 0.8), 3.0, smooth)
 		"plunder":
 			# The two walls trade places: each side slides across to the other.
 			var slide = clampf((u - 0.15) / 0.55, 0, 1)
@@ -1196,7 +1213,7 @@ func draw_demo(panel: Control, id: String) -> void:
 			demo_bricks(c, area, CORAL, theirs_at, [1, 4, 7])
 			demo_bricks(c, area, CYAN, mine_at)
 			if slide > 0 and slide < 1:
-				c.draw_line(Vector2(area.position.x, area.get_center().y), Vector2(area.end.x, area.get_center().y), Color(color, 0.8), 2.0, true)
+				c.draw_line(Vector2(area.position.x, area.get_center().y), Vector2(area.end.x, area.get_center().y), Color(color, 0.8), 2.0, smooth)
 		"stun":
 			demo_bricks(c, area, CORAL, enemy_y)
 			demo_bricks(c, area, CYAN, mine_y)
@@ -1206,7 +1223,7 @@ func draw_demo(panel: Control, id: String) -> void:
 				demo_ball(c, my_pilot.lerp(their_pilot, 0.2 + u * 1.4), CYAN, 5.0)
 			var wave = clampf(u / 0.45, 0, 1)
 			if u < 0.5:
-				c.draw_arc(my_pilot, 8 + wave * 210, 0, TAU, 64, Color(color, 1.0 - wave), 3.4, true)
+				c.draw_arc(my_pilot, 8 + wave * 210, 0, TAU, 64, Color(color, 1.0 - wave), 3.4, smooth)
 		_:
 			demo_bricks(c, area, CORAL, enemy_y)
 			demo_bricks(c, area, CYAN, mine_y)
@@ -1360,18 +1377,18 @@ func draw_menu_level() -> void:
 	# empty band over the menu on a phone, in the gap above the panel on a wide screen.
 	var boss_at = Vector2(center_x, dots_y - 132) if vertical else Vector2(menu.position.x + menu.size.x * 0.5, maxf(menu.position.y - 128, 150.0))
 	if true:
-		draw_circle(boss_at + Vector2(0, 4), 52, Color(INK, 0.55), true, -1, true)
+		draw_circle(boss_at + Vector2(0, 4), 52, Color(INK, 0.55), true, -1, smooth)
 		portrait(boss_at, CORAL, false, level.boss, null, not beaten)
-		draw_arc(boss_at, 53, 0, TAU, 56, Color(BRASS, 0.5), 1.4, true)
-		draw_arc(boss_at, 53, -PI * 0.78, -PI * 0.22, 20, Color(CERAMIC, 0.35), 1.6, true)
+		draw_arc(boss_at, 53, 0, TAU, 56, Color(BRASS, 0.5), 1.4, smooth)
+		draw_arc(boss_at, 53, -PI * 0.78, -PI * 0.22, 20, Color(CERAMIC, 0.35), 1.6, smooth)
 		centered("BOSS", boss_at + Vector2(0, 74), 9, MUTED, true)
 		centered(Skins.CATALOG[level.boss].name, boss_at + Vector2(0, 93), 15, WHITE if beaten else CORAL, true)
 	for i in range(total):
 		var dot = Vector2(center_x + (i - (total - 1) * 0.5) * 18, dots_y)
 		if i == menu_level:
-			draw_circle(dot, 5, LIME, true, -1, true)
+			draw_circle(dot, 5, LIME, true, -1, smooth)
 		else:
-			draw_circle(dot, 3.5, Color(WHITE, 0.55) if campaign_state.is_unlocked(i) else Color(WHITE, 0.18), true, -1, true)
+			draw_circle(dot, 3.5, Color(WHITE, 0.55) if campaign_state.is_unlocked(i) else Color(WHITE, 0.18), true, -1, smooth)
 	# Chevrons at the sides hint that the stadium can be swiped.
 	var hint_y = area.get_center().y + (20 if vertical else 0)
 	var reach = minf(area.size.x * 0.5 - 22, 330) if vertical else area.size.x * 0.5 - 22
@@ -1380,7 +1397,7 @@ func draw_menu_level() -> void:
 		if target < 0 or target >= total:
 			continue
 		var tip = Vector2(center_x + step * reach, hint_y)
-		draw_polyline(PackedVector2Array([tip + Vector2(-step * 14, -22), tip, tip + Vector2(-step * 14, 22)]), Color(WHITE, 0.55), 4, true)
+		draw_polyline(PackedVector2Array([tip + Vector2(-step * 14, -22), tip, tip + Vector2(-step * 14, 22)]), Color(WHITE, 0.55), 4, smooth)
 
 func open_levels() -> void:
 	reset_touch()
@@ -1717,7 +1734,7 @@ func request_power(index: int) -> void:
 		return
 	power_request = index
 	power_flash[index] = 0.22
-	queue_redraw()
+	ask_redraw()
 
 func take_power() -> int:
 	var index = power_request
@@ -1751,7 +1768,7 @@ func _input(event: InputEvent) -> void:
 				move_center = move_home
 	if event is InputEventScreenDrag and event.index == move_id:
 		move_vector = ((event.position - move_center) / 44).limit_length()
-	queue_redraw()
+	ask_redraw()
 
 func write(text: String, pos: Vector2, font_size: int, color: Color, bold: bool = false) -> void:
 	draw_string(font_bold if bold else font, pos, text, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size, color)
@@ -1779,13 +1796,13 @@ func update_match(rules, status: String) -> void:
 	paint_button(replay, not next_button.visible)
 	levels_button.visible = finished and in_campaign
 	place_result_buttons()
-	queue_redraw()
+	ask_redraw()
 
 func portrait(center: Vector2, color: Color, stunned: bool, skin: int = 0, canvas: CanvasItem = null, tint: bool = false) -> void:
 	# `canvas` lets the skins panel draw the same avatar inside its own preview controls.
 	var c: CanvasItem = canvas if canvas != null else self
-	c.draw_circle(center, 46, Color(color, 0.055), true, -1, true)
-	c.draw_arc(center, 45, 0.2, TAU - 0.2, 64, Color(color, 0.28), 1.2, true)
+	c.draw_circle(center, 46, Color(color, 0.055), true, -1, smooth)
+	c.draw_arc(center, 45, 0.2, TAU - 0.2, 64, Color(color, 0.28), 1.2, smooth)
 	c.draw_style_box(style(color.darkened(0.3), Color.TRANSPARENT, 14), Rect2(center + Vector2(-24, 15), Vector2(48, 24)))
 	var palette = Skins.colors(skin, color, tint)
 	match skin:
@@ -1819,35 +1836,35 @@ func portrait(center: Vector2, color: Color, stunned: bool, skin: int = 0, canva
 	if skin == 5:
 		sentinel_portrait(c, center, palette, stunned)
 		return
-	c.draw_circle(center + Vector2(-31, -2), 9, Color("bda579"), true, -1, true)
-	c.draw_circle(center + Vector2(31, -2), 9, Color("bda579"), true, -1, true)
+	c.draw_circle(center + Vector2(-31, -2), 9, Color("bda579"), true, -1, smooth)
+	c.draw_circle(center + Vector2(31, -2), 9, Color("bda579"), true, -1, smooth)
 	c.draw_style_box(style(WHITE, Color.TRANSPARENT, 22), Rect2(center + Vector2(-32, -29), Vector2(64, 55)))
 	c.draw_style_box(style(INK, Color.TRANSPARENT, 12), Rect2(center + Vector2(-27, -10), Vector2(54, 24)))
 	c.draw_style_box(style(color, Color.TRANSPARENT, 3), Rect2(center + Vector2(-4, -29), Vector2(8, 13)))
 	for side in [-1, 1]:
 		var p = center + Vector2(side * 12, 1)
 		if stunned:
-			c.draw_line(p - Vector2(3, 3), p + Vector2(3, 3), LIME, 2, true)
-			c.draw_line(p - Vector2(-3, 3), p + Vector2(-3, 3), LIME, 2, true)
+			c.draw_line(p - Vector2(3, 3), p + Vector2(3, 3), LIME, 2, smooth)
+			c.draw_line(p - Vector2(-3, 3), p + Vector2(-3, 3), LIME, 2, smooth)
 		else:
 			c.draw_style_box(style(color.lightened(0.2), Color.TRANSPARENT, 2), Rect2(p - Vector2(2, 4), Vector2(4, 8)))
 
 func lighthouse_portrait(c: CanvasItem, center: Vector2, glow: Color, stunned: bool) -> void:
 	# Faroleiro: beacon gem on a brass mast, side lamps, tall dome, brass band and one visor slit.
 	var brass = Color("d2ad73")
-	c.draw_line(center + Vector2(0, -31), center + Vector2(0, -41), brass, 3, true)
+	c.draw_line(center + Vector2(0, -31), center + Vector2(0, -41), brass, 3, smooth)
 	c.draw_colored_polygon(PackedVector2Array([center + Vector2(0, -50), center + Vector2(6, -43), center + Vector2(0, -36), center + Vector2(-6, -43)]), brass.lightened(0.15))
 	for side in [-1, 1]:
-		c.draw_circle(center + Vector2(side * 31, -2), 9, brass, true, -1, true)
-		c.draw_circle(center + Vector2(side * 32, -2), 4.5, glow, true, -1, true)
+		c.draw_circle(center + Vector2(side * 31, -2), 9, brass, true, -1, smooth)
+		c.draw_circle(center + Vector2(side * 32, -2), 4.5, glow, true, -1, smooth)
 	c.draw_style_box(style(WHITE, Color.TRANSPARENT, 28), Rect2(center + Vector2(-30, -35), Vector2(60, 61)))
 	c.draw_style_box(style(brass, Color.TRANSPARENT, 2), Rect2(center + Vector2(-31, 13), Vector2(62, 5)))
 	c.draw_style_box(style(INK, Color.TRANSPARENT, 9), Rect2(center + Vector2(-26, -9), Vector2(52, 19)))
 	if stunned:
 		for side in [-1, 1]:
 			var p = center + Vector2(side * 12, 0)
-			c.draw_line(p - Vector2(3, 3), p + Vector2(3, 3), LIME, 2, true)
-			c.draw_line(p - Vector2(-3, 3), p + Vector2(-3, 3), LIME, 2, true)
+			c.draw_line(p - Vector2(3, 3), p + Vector2(3, 3), LIME, 2, smooth)
+			c.draw_line(p - Vector2(-3, 3), p + Vector2(-3, 3), LIME, 2, smooth)
 	else:
 		c.draw_style_box(style(glow, Color.TRANSPARENT, 2), Rect2(center + Vector2(-17, -2), Vector2(34, 4)))
 
@@ -1864,29 +1881,29 @@ func astronomer_portrait(c: CanvasItem, center: Vector2, team_color: Color, pale
 	var glow: Color = palette.light
 	var orbit_center = center + Vector2(0, -8)
 	c.draw_style_box(style(palette.body, Color.TRANSPARENT, 14), Rect2(center + Vector2(-24, 15), Vector2(48, 24)))
-	c.draw_polyline(orbit_points(orbit_center, PI, TAU), brass, 2, true)
+	c.draw_polyline(orbit_points(orbit_center, PI, TAU), brass, 2, smooth)
 	for side in [-1, 1]:
-		c.draw_circle(center + Vector2(side * 31, -2), 9, palette.body.lightened(0.1), true, -1, true)
+		c.draw_circle(center + Vector2(side * 31, -2), 9, palette.body.lightened(0.1), true, -1, smooth)
 	c.draw_style_box(style(WHITE, Color.TRANSPARENT, 22), Rect2(center + Vector2(-32, -29), Vector2(64, 55)))
 	c.draw_style_box(style(INK, Color.TRANSPARENT, 12), Rect2(center + Vector2(-27, -10), Vector2(54, 24)))
-	c.draw_circle(center + Vector2(13, 1), 8, brass, true, -1, true)
+	c.draw_circle(center + Vector2(13, 1), 8, brass, true, -1, smooth)
 	if stunned:
 		for p in [center + Vector2(-12, 1), center + Vector2(13, 1)]:
-			c.draw_line(p - Vector2(3, 3), p + Vector2(3, 3), LIME, 2, true)
-			c.draw_line(p - Vector2(-3, 3), p + Vector2(-3, 3), LIME, 2, true)
+			c.draw_line(p - Vector2(3, 3), p + Vector2(3, 3), LIME, 2, smooth)
+			c.draw_line(p - Vector2(-3, 3), p + Vector2(-3, 3), LIME, 2, smooth)
 	else:
 		c.draw_style_box(style(glow, Color.TRANSPARENT, 2), Rect2(center + Vector2(-14, -3), Vector2(4, 8)))
-		c.draw_circle(center + Vector2(13, 1), 4, glow, true, -1, true)
-	c.draw_polyline(orbit_points(orbit_center, 0, PI), brass, 2, true)
-	c.draw_circle(orbit_points(orbit_center, 0.55, 0.55)[0], 5, glow, true, -1, true)
-	c.draw_circle(orbit_points(orbit_center, 2.5, 2.5)[0], 3.5, team_color, true, -1, true)
+		c.draw_circle(center + Vector2(13, 1), 4, glow, true, -1, smooth)
+	c.draw_polyline(orbit_points(orbit_center, 0, PI), brass, 2, smooth)
+	c.draw_circle(orbit_points(orbit_center, 0.55, 0.55)[0], 5, glow, true, -1, smooth)
+	c.draw_circle(orbit_points(orbit_center, 2.5, 2.5)[0], 3.5, team_color, true, -1, smooth)
 
 func avatar_eyes(c: CanvasItem, center: Vector2, glow: Color, stunned: bool, spread: float = 12) -> void:
 	for side in [-1, 1]:
 		var p = center + Vector2(side * spread, 1)
 		if stunned:
-			c.draw_line(p - Vector2(3, 3), p + Vector2(3, 3), LIME, 2, true)
-			c.draw_line(p - Vector2(-3, 3), p + Vector2(-3, 3), LIME, 2, true)
+			c.draw_line(p - Vector2(3, 3), p + Vector2(3, 3), LIME, 2, smooth)
+			c.draw_line(p - Vector2(-3, 3), p + Vector2(-3, 3), LIME, 2, smooth)
 		else:
 			c.draw_style_box(style(glow, Color.TRANSPARENT, 2), Rect2(p - Vector2(2, 4), Vector2(4, 8)))
 
@@ -1898,36 +1915,36 @@ func gardener_portrait(c: CanvasItem, center: Vector2, palette: Dictionary, stun
 	c.draw_style_box(style(WHITE, Color.TRANSPARENT, 18), Rect2(center + Vector2(-26, -22), Vector2(52, 44)))
 	c.draw_style_box(style(INK, Color.TRANSPARENT, 9), Rect2(center + Vector2(-21, -8), Vector2(42, 18)))
 	avatar_eyes(c, center, palette.light, stunned, 10)
-	c.draw_line(center + Vector2(0, -22), center + Vector2(0, -32), leaf.darkened(0.2), 2, true)
-	c.draw_circle(center + Vector2(-5, -33), 4.5, leaf, true, -1, true)
-	c.draw_circle(center + Vector2(5, -35), 4.5, leaf, true, -1, true)
-	c.draw_circle(center + Vector2(0, -6), 40, Color(0.82, 0.96, 0.92, 0.16), true, -1, true)
-	c.draw_arc(center + Vector2(0, -6), 40, 0, TAU, 64, Color(0.82, 0.96, 0.92, 0.85), 2.0, true)
-	c.draw_arc(center + Vector2(0, -6), 33, PI * 1.1, PI * 1.45, 16, Color(WHITE, 0.6), 2.5, true)
+	c.draw_line(center + Vector2(0, -22), center + Vector2(0, -32), leaf.darkened(0.2), 2, smooth)
+	c.draw_circle(center + Vector2(-5, -33), 4.5, leaf, true, -1, smooth)
+	c.draw_circle(center + Vector2(5, -35), 4.5, leaf, true, -1, smooth)
+	c.draw_circle(center + Vector2(0, -6), 40, Color(0.82, 0.96, 0.92, 0.16), true, -1, smooth)
+	c.draw_arc(center + Vector2(0, -6), 40, 0, TAU, 64, Color(0.82, 0.96, 0.92, 0.85), 2.0, smooth)
+	c.draw_arc(center + Vector2(0, -6), 33, PI * 1.1, PI * 1.45, 16, Color(WHITE, 0.6), 2.5, smooth)
 
 func miner_portrait(c: CanvasItem, center: Vector2, palette: Dictionary, stunned: bool) -> void:
 	# Mineiro: hard hat with brim and headlamp over the classic helmet.
 	var steel = Color("9aa1ab")
 	c.draw_style_box(style(palette.body, Color.TRANSPARENT, 14), Rect2(center + Vector2(-24, 15), Vector2(48, 24)))
 	for side in [-1, 1]:
-		c.draw_circle(center + Vector2(side * 31, -2), 9, steel, true, -1, true)
+		c.draw_circle(center + Vector2(side * 31, -2), 9, steel, true, -1, smooth)
 	c.draw_style_box(style(WHITE, Color.TRANSPARENT, 22), Rect2(center + Vector2(-32, -29), Vector2(64, 55)))
 	c.draw_style_box(style(INK, Color.TRANSPARENT, 12), Rect2(center + Vector2(-27, -10), Vector2(54, 24)))
 	avatar_eyes(c, center, palette.light, stunned)
 	c.draw_style_box(style(palette.body, Color.TRANSPARENT, 16), Rect2(center + Vector2(-34, -44), Vector2(68, 30)))
 	c.draw_style_box(style(palette.body.darkened(0.15), Color.TRANSPARENT, 3), Rect2(center + Vector2(-40, -18), Vector2(80, 6)))
-	c.draw_circle(center + Vector2(0, -30), 7, Color("d2ad73"), true, -1, true)
-	c.draw_circle(center + Vector2(0, -30), 4, palette.light, true, -1, true)
+	c.draw_circle(center + Vector2(0, -30), 7, Color("d2ad73"), true, -1, smooth)
+	c.draw_circle(center + Vector2(0, -30), 4, palette.light, true, -1, smooth)
 
 func sentinel_portrait(c: CanvasItem, center: Vector2, palette: Dictionary, stunned: bool) -> void:
 	# Sentinela: eclipse halo behind the helmet, gold crest and a stern pair of eye slits.
 	var brass = Color("d2ad73")
-	c.draw_arc(center + Vector2(0, -6), 41, 0, TAU, 72, brass, 3, true)
-	c.draw_arc(center + Vector2(0, -6), 36, 0, TAU, 72, Color(palette.light, 0.8), 1.5, true)
+	c.draw_arc(center + Vector2(0, -6), 41, 0, TAU, 72, brass, 3, smooth)
+	c.draw_arc(center + Vector2(0, -6), 36, 0, TAU, 72, Color(palette.light, 0.8), 1.5, smooth)
 	c.draw_style_box(style(palette.body, Color.TRANSPARENT, 14), Rect2(center + Vector2(-24, 15), Vector2(48, 24)))
 	c.draw_style_box(style(brass, Color.TRANSPARENT, 2), Rect2(center + Vector2(-24, 15), Vector2(48, 4)))
 	for side in [-1, 1]:
-		c.draw_circle(center + Vector2(side * 31, -2), 9, brass, true, -1, true)
+		c.draw_circle(center + Vector2(side * 31, -2), 9, brass, true, -1, smooth)
 	c.draw_style_box(style(WHITE, Color.TRANSPARENT, 22), Rect2(center + Vector2(-32, -29), Vector2(64, 55)))
 	c.draw_style_box(style(INK, Color.TRANSPARENT, 12), Rect2(center + Vector2(-27, -10), Vector2(54, 24)))
 	c.draw_style_box(style(brass, Color.TRANSPARENT, 2), Rect2(center + Vector2(-3, -33), Vector2(6, 12)))
@@ -1935,11 +1952,11 @@ func sentinel_portrait(c: CanvasItem, center: Vector2, palette: Dictionary, stun
 		avatar_eyes(c, center, palette.light, true)
 	else:
 		for side in [-1, 1]:
-			c.draw_line(center + Vector2(side * 19, -2), center + Vector2(side * 8, 2), palette.light, 3, true)
+			c.draw_line(center + Vector2(side * 19, -2), center + Vector2(side * 8, 2), palette.light, 3, smooth)
 
 func stun_cross(c: CanvasItem, p: Vector2) -> void:
-	c.draw_line(p - Vector2(3, 3), p + Vector2(3, 3), LIME, 2, true)
-	c.draw_line(p - Vector2(-3, 3), p + Vector2(-3, 3), LIME, 2, true)
+	c.draw_line(p - Vector2(3, 3), p + Vector2(3, 3), LIME, 2, smooth)
+	c.draw_line(p - Vector2(-3, 3), p + Vector2(-3, 3), LIME, 2, smooth)
 
 func helmet(c: CanvasItem, center: Vector2) -> void:
 	c.draw_style_box(style(WHITE, Color.TRANSPARENT, 22), Rect2(center + Vector2(-32, -29), Vector2(64, 55)))
@@ -1952,31 +1969,31 @@ func clockmaker_portrait(c: CanvasItem, center: Vector2, palette: Dictionary, st
 	var gear = center + Vector2(0, -33)
 	for i in range(8):
 		var angle = i * TAU / 8
-		c.draw_circle(gear + Vector2(cos(angle), sin(angle)) * 13, 4, brass, true, -1, true)
-	c.draw_circle(gear, 13, palette.body, true, -1, true)
-	c.draw_circle(gear + Vector2(0, -5), 4, palette.light, true, -1, true)
+		c.draw_circle(gear + Vector2(cos(angle), sin(angle)) * 13, 4, brass, true, -1, smooth)
+	c.draw_circle(gear, 13, palette.body, true, -1, smooth)
+	c.draw_circle(gear + Vector2(0, -5), 4, palette.light, true, -1, smooth)
 	for side in [-1, 1]:
-		c.draw_circle(center + Vector2(side * 31, -2), 9, brass, true, -1, true)
-		c.draw_circle(center + Vector2(side * 31, -2), 3, palette.body, true, -1, true)
+		c.draw_circle(center + Vector2(side * 31, -2), 9, brass, true, -1, smooth)
+		c.draw_circle(center + Vector2(side * 31, -2), 3, palette.body, true, -1, smooth)
 	helmet(c, center)
-	c.draw_circle(center + Vector2(13, 1), 10, brass, true, -1, true)
+	c.draw_circle(center + Vector2(13, 1), 10, brass, true, -1, smooth)
 	if stunned:
 		stun_cross(c, center + Vector2(-12, 1))
 		stun_cross(c, center + Vector2(13, 1))
 	else:
 		c.draw_style_box(style(palette.light, Color.TRANSPARENT, 2), Rect2(center + Vector2(-14, -3), Vector2(4, 8)))
-		c.draw_circle(center + Vector2(13, 1), 6, palette.light, true, -1, true)
+		c.draw_circle(center + Vector2(13, 1), 6, palette.light, true, -1, smooth)
 
 func storm_portrait(c: CanvasItem, center: Vector2, palette: Dictionary, stunned: bool) -> void:
 	# Caça-Trovões: lightning rod with a glowing tip and a bolt, rain-yellow collar, wide eye bars.
 	var brass = Color("d2ad73")
 	var yellow = Color("e0b84a")
 	c.draw_style_box(style(yellow, Color.TRANSPARENT, 14), Rect2(center + Vector2(-24, 15), Vector2(48, 24)))
-	c.draw_line(center + Vector2(0, -27), center + Vector2(0, -42), brass, 3, true)
-	c.draw_circle(center + Vector2(0, -46), 5, palette.light, true, -1, true)
-	c.draw_polyline(PackedVector2Array([center + Vector2(9, -52), center + Vector2(15, -43), center + Vector2(10, -42), center + Vector2(17, -33)]), palette.light, 2, true)
+	c.draw_line(center + Vector2(0, -27), center + Vector2(0, -42), brass, 3, smooth)
+	c.draw_circle(center + Vector2(0, -46), 5, palette.light, true, -1, smooth)
+	c.draw_polyline(PackedVector2Array([center + Vector2(9, -52), center + Vector2(15, -43), center + Vector2(10, -42), center + Vector2(17, -33)]), palette.light, 2, smooth)
 	for side in [-1, 1]:
-		c.draw_circle(center + Vector2(side * 31, -2), 9, Color("9aa1ab"), true, -1, true)
+		c.draw_circle(center + Vector2(side * 31, -2), 9, Color("9aa1ab"), true, -1, smooth)
 	helmet(c, center)
 	for side in [-1, 1]:
 		if stunned:
@@ -1990,15 +2007,15 @@ func alchemist_portrait(c: CanvasItem, center: Vector2, palette: Dictionary, stu
 	c.draw_style_box(style(palette.body, Color.TRANSPARENT, 14), Rect2(center + Vector2(-24, 15), Vector2(48, 24)))
 	c.draw_style_box(style(palette.body.darkened(0.1), Color.TRANSPARENT, 26), Rect2(center + Vector2(-37, -36), Vector2(74, 60)))
 	helmet(c, center)
-	c.draw_line(center + Vector2(-32, 1), center + Vector2(32, 1), Color("3a2a20"), 4, true)
+	c.draw_line(center + Vector2(-32, 1), center + Vector2(32, 1), Color("3a2a20"), 4, smooth)
 	for side in [-1, 1]:
 		var p = center + Vector2(side * 12, 1)
-		c.draw_circle(p, 9, brass, true, -1, true)
-		c.draw_circle(p, 6, INK if stunned else palette.light, true, -1, true)
+		c.draw_circle(p, 9, brass, true, -1, smooth)
+		c.draw_circle(p, 6, INK if stunned else palette.light, true, -1, smooth)
 		if stunned:
 			stun_cross(c, p)
 	for bubble in [[Vector2(-6, -40), 4.0], [Vector2(5, -47), 3.0], [Vector2(-2, -54), 2.2]]:
-		c.draw_circle(center + bubble[0], bubble[1], Color(palette.light, 0.85), true, -1, true)
+		c.draw_circle(center + bubble[0], bubble[1], Color(palette.light, 0.85), true, -1, smooth)
 
 func corsair_portrait(c: CanvasItem, center: Vector2, palette: Dictionary, stunned: bool) -> void:
 	# Corsário: tricorn with a gem, gold ear rings, an eye patch and one glowing eye.
@@ -2006,11 +2023,11 @@ func corsair_portrait(c: CanvasItem, center: Vector2, palette: Dictionary, stunn
 	var patch = Color("141e24")
 	c.draw_style_box(style(palette.body, Color.TRANSPARENT, 14), Rect2(center + Vector2(-24, 15), Vector2(48, 24)))
 	for side in [-1, 1]:
-		c.draw_circle(center + Vector2(side * 31, -2), 9, brass, true, -1, true)
+		c.draw_circle(center + Vector2(side * 31, -2), 9, brass, true, -1, smooth)
 	helmet(c, center)
-	c.draw_line(center + Vector2(-30, 9), center + Vector2(20, -22), patch, 3, true)
-	c.draw_circle(center + Vector2(-12, 1), 7, patch, true, -1, true)
-	c.draw_arc(center + Vector2(-12, 1), 7.5, 0, TAU, 24, brass, 1.2, true)
+	c.draw_line(center + Vector2(-30, 9), center + Vector2(20, -22), patch, 3, smooth)
+	c.draw_circle(center + Vector2(-12, 1), 7, patch, true, -1, smooth)
+	c.draw_arc(center + Vector2(-12, 1), 7.5, 0, TAU, 24, brass, 1.2, smooth)
 	if stunned:
 		stun_cross(c, center + Vector2(12, 1))
 	else:
@@ -2024,8 +2041,8 @@ func corsair_portrait(c: CanvasItem, center: Vector2, palette: Dictionary, stunn
 	var trim = PackedVector2Array()
 	for point in brim:
 		trim.append(center + point)
-	c.draw_polyline(trim, brass, 2, true)
-	c.draw_circle(center + Vector2(0, -36), 3.5, palette.light, true, -1, true)
+	c.draw_polyline(trim, brass, 2, smooth)
+	c.draw_circle(center + Vector2(0, -36), 3.5, palette.light, true, -1, smooth)
 
 func archon_portrait(c: CanvasItem, center: Vector2, palette: Dictionary, stunned: bool) -> void:
 	# Arconte Solar: a crown of sun rays, gold band and ear discs over a royal collar.
@@ -2040,10 +2057,10 @@ func archon_portrait(c: CanvasItem, center: Vector2, palette: Dictionary, stunne
 	c.draw_style_box(style(palette.body, Color.TRANSPARENT, 14), Rect2(center + Vector2(-24, 15), Vector2(48, 24)))
 	c.draw_style_box(style(brass, Color.TRANSPARENT, 2), Rect2(center + Vector2(-24, 15), Vector2(48, 4)))
 	for side in [-1, 1]:
-		c.draw_circle(center + Vector2(side * 31, -2), 9, brass, true, -1, true)
+		c.draw_circle(center + Vector2(side * 31, -2), 9, brass, true, -1, smooth)
 	helmet(c, center)
 	c.draw_style_box(style(brass, Color.TRANSPARENT, 3), Rect2(center + Vector2(-27, -31), Vector2(54, 7)))
-	c.draw_circle(center + Vector2(0, -27), 4, palette.light, true, -1, true)
+	c.draw_circle(center + Vector2(0, -27), 4, palette.light, true, -1, smooth)
 	avatar_eyes(c, center, palette.light, stunned)
 
 func player_card(rect: Rect2, side: int, t: int) -> void:
@@ -2081,7 +2098,7 @@ func player_card(rect: Rect2, side: int, t: int) -> void:
 		write(pilot, at + Vector2(124, 48), 22, WHITE, true)
 		player_life_bar(Vector2(at.x + 124, at.y + 82), match_data.players[t].hp, color)
 		write(status, at + Vector2(124, 101), 10, status_color, true)
-		draw_line(at + Vector2(318, 18), at + Vector2(318, rect.size.y - 18), Color("334f51"), 1, true)
+		draw_line(at + Vector2(318, 18), at + Vector2(318, rect.size.y - 18), Color("334f51"), 1, smooth)
 		write(tips[0][0], at + Vector2(340, 46), 13, tips[0][1], tips[0][2])
 		write(tips[1][0], at + Vector2(340, 70), 12, tips[1][1], tips[1][2])
 		if side == 1:
@@ -2109,7 +2126,7 @@ func power_pips(at: Vector2, t: int) -> void:
 		var id = match_loadout(t, index)
 		var cost: int = int(Powers.entry(id).get("charge", 0))
 		var ready: bool = cost > 0 and state.charge[index] >= cost
-		draw_circle(at + Vector2(56 + index * 15, -3), 5, Rules.power_color(id) if ready else Color("284349"), true, -1, true)
+		draw_circle(at + Vector2(56 + index * 15, -3), 5, Rules.power_color(id) if ready else Color("284349"), true, -1, smooth)
 
 func player_life_bar(at: Vector2, hp: int, color: Color) -> void:
 	# Five separate cells stay legible on small displays and make every hit clear.
@@ -2123,9 +2140,9 @@ func _draw() -> void:
 		return
 	var top = Vector2(0, safe_top)
 	var bottom = size.y - safe_bottom
-	draw_circle(Vector2(49, 47) + top, 19, Color(CYAN, 0.1), true, -1, true)
+	draw_circle(Vector2(49, 47) + top, 19, Color(CYAN, 0.1), true, -1, smooth)
 	var bolt = PackedVector2Array([Vector2(54, 32) + top, Vector2(40, 49) + top, Vector2(52, 49) + top, Vector2(44, 62) + top])
-	draw_polyline(bolt, CYAN, 2.5, true)
+	draw_polyline(bolt, CYAN, 2.5, smooth)
 	write("CHARGE ARENA", Vector2(82, 44) + top, 17, WHITE, true)
 	write("C I R C U I T O   A U R O R A", Vector2(82, 62) + top, 9, MUTED)
 	write("ARENA 01   /   AURORA", Vector2(34, bottom - 24), 10, MUTED)
@@ -2141,11 +2158,11 @@ func _draw() -> void:
 	var mid = size.x * 0.5
 	var s = score_rect.position
 	panel(score_rect)
-	draw_circle(s + Vector2(23, 30), 4, CYAN, true, -1, true)
+	draw_circle(s + Vector2(23, 30), 4, CYAN, true, -1, smooth)
 	write("NOVA", s + Vector2(36, 35), 12, CYAN, true)
 	centered(str(match_data.scores[0]) + "  :  " + str(match_data.scores[1]), Vector2(score_rect.get_center().x, s.y + 41), 31, WHITE, true)
 	write("EMBER", s + Vector2(218, 35), 12, CORAL, true)
-	draw_circle(s + Vector2(284, 30), 4, CORAL, true, -1, true)
+	draw_circle(s + Vector2(284, 30), 4, CORAL, true, -1, smooth)
 	var mode_at = Vector2(24, score_rect.position.y + 24) if vertical else Vector2(38, 116)
 	var mode_name = "TREINO / PvE" if mode == "pve" else "DUELO / PvP"
 	if not level_info.is_empty():
@@ -2202,19 +2219,19 @@ func _draw() -> void:
 		centered(unlock_text, at + Vector2(0, 21), 22, WHITE, true)
 	# The stick: grabbed anywhere in the band, it slides the pilot along its arc.
 	var stick = move_center
-	draw_circle(stick + Vector2(0, 3), STICK_RADIUS, Color(0.01, 0.04, 0.05, 0.5), true, -1, true)
-	draw_circle(stick, STICK_RADIUS, Color(0.08, 0.15, 0.16, 0.9), true, -1, true)
-	draw_arc(stick, STICK_RADIUS - 1.5, 0, TAU, 72, Color(BRASS, 0.5), 1.3, true)
-	draw_arc(stick, STICK_RADIUS - 10, 0.2, PI - 0.2, 40, Color(CYAN, 0.07), 5, true)
-	draw_arc(stick, STICK_RADIUS - 10, PI + 0.2, TAU - 0.2, 40, Color(CYAN, 0.07), 5, true)
+	draw_circle(stick + Vector2(0, 3), STICK_RADIUS, Color(0.01, 0.04, 0.05, 0.5), true, -1, smooth)
+	draw_circle(stick, STICK_RADIUS, Color(0.08, 0.15, 0.16, 0.9), true, -1, smooth)
+	draw_arc(stick, STICK_RADIUS - 1.5, 0, TAU, 72, Color(BRASS, 0.5), 1.3, smooth)
+	draw_arc(stick, STICK_RADIUS - 10, 0.2, PI - 0.2, 40, Color(CYAN, 0.07), 5, smooth)
+	draw_arc(stick, STICK_RADIUS - 10, PI + 0.2, TAU - 0.2, 40, Color(CYAN, 0.07), 5, smooth)
 	for side in [-1, 1]:
 		var tip = stick + Vector2(side * (STICK_RADIUS - 15), 0)
-		draw_polyline(PackedVector2Array([tip - Vector2(side * 8, 9), tip, tip - Vector2(side * 8, -9)]), Color(CYAN, 0.45), 2.6, true)
+		draw_polyline(PackedVector2Array([tip - Vector2(side * 8, 9), tip, tip - Vector2(side * 8, -9)]), Color(CYAN, 0.45), 2.6, smooth)
 	var knob = stick + move_vector * 39
-	draw_circle(knob + Vector2(0, 3), 26, Color(0.02, 0.05, 0.06, 0.45), true, -1, true)
-	draw_circle(knob, 26, CYAN.darkened(0.2 if move_id >= 0 else 0.55), true, -1, true)
-	draw_arc(knob, 26, 0, TAU, 48, Color(CYAN, 0.65), 1.2, true)
-	draw_circle(knob, 3, INK if move_id >= 0 else CYAN, true, -1, true)
+	draw_circle(knob + Vector2(0, 3), 26, Color(0.02, 0.05, 0.06, 0.45), true, -1, smooth)
+	draw_circle(knob, 26, CYAN.darkened(0.2 if move_id >= 0 else 0.55), true, -1, smooth)
+	draw_arc(knob, 26, 0, TAU, 48, Color(CYAN, 0.65), 1.2, smooth)
+	draw_circle(knob, 3, INK if move_id >= 0 else CYAN, true, -1, smooth)
 	centered("MOVER E APONTAR", stick + Vector2(0, 99), 10, CYAN, true)
 	centered("DISPARO AUTOMÁTICO  ·  MIRA ASSISTIDA", stick + Vector2(0, 114), 9, Color(LIME, 0.75), true)
 	draw_powers()
@@ -2240,25 +2257,25 @@ func draw_powers() -> void:
 		var color: Color = Rules.power_color(id)
 		var running: bool = (id == "rapid" and state.rapid_time > 0) or (id == "laser" and state.laser_time > 0)
 		var charging: bool = Powers.is_ultimate(id) and state.get("ultimate_windup", 0.0) > 0
-		draw_circle(center + Vector2(0, 3), POWER_RADIUS, Color(0.01, 0.04, 0.05, 0.5), true, -1, true)
-		draw_circle(center, POWER_RADIUS, Color(0.08, 0.15, 0.16, 0.92), true, -1, true)
-		draw_arc(center, POWER_RADIUS - 1.5, 0, TAU, 56, Color(BRASS, 0.55 if cost > 0 else 0.25), 1.3, true)
-		draw_arc(center, POWER_RADIUS - 4, 0, TAU, 56, Color(color, 0.18), 1.2, true)
+		draw_circle(center + Vector2(0, 3), POWER_RADIUS, Color(0.01, 0.04, 0.05, 0.5), true, -1, smooth)
+		draw_circle(center, POWER_RADIUS, Color(0.08, 0.15, 0.16, 0.92), true, -1, smooth)
+		draw_arc(center, POWER_RADIUS - 1.5, 0, TAU, 56, Color(BRASS, 0.55 if cost > 0 else 0.25), 1.3, smooth)
+		draw_arc(center, POWER_RADIUS - 4, 0, TAU, 56, Color(color, 0.18), 1.2, smooth)
 		if charge > 0 and cost > 0:
 			# Fills clockwise from the top, so a glance is enough to read the progress.
-			draw_arc(center, POWER_RADIUS - 4, -PI * 0.5, -PI * 0.5 + TAU * (float(charge) / cost), 56, Color(color, 0.95 if ready else 0.5), 3.6, true)
+			draw_arc(center, POWER_RADIUS - 4, -PI * 0.5, -PI * 0.5 + TAU * (float(charge) / cost), 56, Color(color, 0.95 if ready else 0.5), 3.6, smooth)
 		var pressed: bool = power_flash[index] > 0
 		var disc = color.darkened(0.0 if pressed else (0.2 if ready else 0.62))
 		if ready or pressed:
 			# A ready power glows, so it is caught out of the corner of the eye.
-			draw_circle(center, POWER_RADIUS - 6, Color(color, 0.18), true, -1, true)
+			draw_circle(center, POWER_RADIUS - 6, Color(color, 0.18), true, -1, smooth)
 		if charging:
 			# Winding up: a ring closes on the key while the pilot glows on the field.
 			var wind = 1.0 - state.ultimate_windup / Rules.ULTIMATE_WINDUP
-			draw_circle(center, POWER_RADIUS - 6, Color(color, 0.12 + 0.3 * wind), true, -1, true)
-			draw_arc(center, POWER_RADIUS + 4 - wind * 10, 0, TAU, 48, Color(color, 0.85), 2.6, true)
-		draw_circle(center, POWER_RADIUS - 11, disc, true, -1, true)
-		draw_arc(center, POWER_RADIUS - 11, PI * 1.15, PI * 1.85, 20, Color(CERAMIC, 0.22 if ready else 0.1), 1.2, true)
+			draw_circle(center, POWER_RADIUS - 6, Color(color, 0.12 + 0.3 * wind), true, -1, smooth)
+			draw_arc(center, POWER_RADIUS + 4 - wind * 10, 0, TAU, 48, Color(color, 0.85), 2.6, smooth)
+		draw_circle(center, POWER_RADIUS - 11, disc, true, -1, smooth)
+		draw_arc(center, POWER_RADIUS - 11, PI * 1.15, PI * 1.85, 20, Color(CERAMIC, 0.22 if ready else 0.1), 1.2, smooth)
 		power_icon(id, center + Vector2(0, -11), WHITE if ready or pressed else Color(WHITE, 0.5))
 		var caption = "PRONTO" if ready else "%d/%d" % [charge, cost]
 		if cost <= 0:
@@ -2287,112 +2304,112 @@ func power_icon(id: String, center: Vector2, color: Color, canvas: CanvasItem = 
 			for step in range(6):
 				var angle = step * TAU / 6.0 + 0.26
 				var direction = Vector2(cos(angle), sin(angle))
-				c.draw_line(center + direction * 6.5, center + direction * 12.5, color, 2.0, true)
-			c.draw_circle(center, 5.0, color, true, -1, true)
-			c.draw_arc(center, 5.0, 0, TAU, 20, brass, 1.0, true)
+				c.draw_line(center + direction * 6.5, center + direction * 12.5, color, 2.0, smooth)
+			c.draw_circle(center, 5.0, color, true, -1, smooth)
+			c.draw_arc(center, 5.0, 0, TAU, 20, brass, 1.0, smooth)
 		"rapid":
 			# Machine gun: three rounds leaving a brass barrel.
-			c.draw_line(center + Vector2(-13, 9), center + Vector2(-1, 9), brass, 3.0, true)
+			c.draw_line(center + Vector2(-13, 9), center + Vector2(-1, 9), brass, 3.0, smooth)
 			for row in range(3):
 				var y = center.y - 8.0 + row * 8.0
-				c.draw_line(Vector2(center.x - 6, y), Vector2(center.x + 5, y), color, 2.0, true)
-				c.draw_circle(Vector2(center.x + 9, y), 2.2, color, true, -1, true)
+				c.draw_line(Vector2(center.x - 6, y), Vector2(center.x + 5, y), color, 2.0, smooth)
+				c.draw_circle(Vector2(center.x + 9, y), 2.2, color, true, -1, smooth)
 		"air":
 			# Air burst: a fan of pellets out of one muzzle.
 			var muzzle = center + Vector2(0, 11)
-			c.draw_circle(muzzle, 2.6, brass, true, -1, true)
+			c.draw_circle(muzzle, 2.6, brass, true, -1, smooth)
 			for spread in [-0.62, -0.21, 0.21, 0.62]:
 				var direction = Vector2(sin(spread), -cos(spread))
-				c.draw_line(muzzle + direction * 4.0, muzzle + direction * 19.0, color, 2.0, true)
+				c.draw_line(muzzle + direction * 4.0, muzzle + direction * 19.0, color, 2.0, smooth)
 		"ghost":
 			# Ghost rounds: a shot crossing a pillar it should have hit.
-			c.draw_arc(center + Vector2(1, 0), 8.5, 0, TAU, 28, brass, 1.6, true)
-			c.draw_line(center + Vector2(-13, 0), center + Vector2(9, 0), color, 2.0, true)
-			c.draw_circle(center + Vector2(12, 0), 3.2, color, true, -1, true)
+			c.draw_arc(center + Vector2(1, 0), 8.5, 0, TAU, 28, brass, 1.6, smooth)
+			c.draw_line(center + Vector2(-13, 0), center + Vector2(9, 0), color, 2.0, smooth)
+			c.draw_circle(center + Vector2(12, 0), 3.2, color, true, -1, smooth)
 		"laser":
 			# Laser: a lance with a widening muzzle.
-			c.draw_line(center + Vector2(-12, 9), center + Vector2(11, -8), color, 3.0, true)
-			c.draw_line(center + Vector2(-13, 11), center + Vector2(-8, 4), brass, 2.4, true)
-			c.draw_line(center + Vector2(5, -12), center + Vector2(12, -5), Color(color, 0.65), 1.8, true)
+			c.draw_line(center + Vector2(-12, 9), center + Vector2(11, -8), color, 3.0, smooth)
+			c.draw_line(center + Vector2(-13, 11), center + Vector2(-8, 4), brass, 2.4, smooth)
+			c.draw_line(center + Vector2(5, -12), center + Vector2(12, -5), Color(color, 0.65), 1.8, smooth)
 		"rebuild":
 			# Rebuild: a wall stacking itself back up, the top course still landing.
 			for row in range(2):
 				for column in range(3 - row):
 					var at = center + Vector2((column - (2 - row) * 0.5) * 9.0 + 4.5, 9.0 - row * 8.0)
 					c.draw_rect(Rect2(at - Vector2(3.8, 3.0), Vector2(7.6, 6.0)), color if row == 0 else Color(color, 0.8), true)
-			c.draw_line(center + Vector2(-8, -8), center + Vector2(-1, -12), brass, 1.8, true)
-			c.draw_line(center + Vector2(8, -8), center + Vector2(1, -12), brass, 1.8, true)
+			c.draw_line(center + Vector2(-8, -8), center + Vector2(-1, -12), brass, 1.8, smooth)
+			c.draw_line(center + Vector2(8, -8), center + Vector2(1, -12), brass, 1.8, smooth)
 		"mirror":
 			# Mirror cape: a shot bouncing off a curved shield.
-			c.draw_arc(center + Vector2(5, 0), 11.0, PI * 0.58, PI * 1.42, 26, color, 2.4, true)
-			c.draw_arc(center + Vector2(5, 0), 7.5, PI * 0.58, PI * 1.42, 20, Color(color, 0.4), 1.4, true)
-			c.draw_line(center + Vector2(-13, -8), center + Vector2(-5, -1), brass, 2.0, true)
-			c.draw_line(center + Vector2(-5, -1), center + Vector2(-13, 7), brass, 2.0, true)
+			c.draw_arc(center + Vector2(5, 0), 11.0, PI * 0.58, PI * 1.42, 26, color, 2.4, smooth)
+			c.draw_arc(center + Vector2(5, 0), 7.5, PI * 0.58, PI * 1.42, 20, Color(color, 0.4), 1.4, smooth)
+			c.draw_line(center + Vector2(-13, -8), center + Vector2(-5, -1), brass, 2.0, smooth)
+			c.draw_line(center + Vector2(-5, -1), center + Vector2(-13, 7), brass, 2.0, smooth)
 		"walls":
 			# Walls: four slabs rising out of the ground, with the gaps between them.
-			c.draw_line(center + Vector2(-13, 10), center + Vector2(13, 10), brass, 1.6, true)
+			c.draw_line(center + Vector2(-13, 10), center + Vector2(13, 10), brass, 1.6, smooth)
 			for slot in range(4):
 				var x = center.x - 10.5 + slot * 7.0
 				c.draw_rect(Rect2(Vector2(x - 2.1, center.y - 9.0 + slot % 2 * 2.0), Vector2(4.2, 19.0 - slot % 2 * 2.0)), color, true)
-			c.draw_line(center + Vector2(-8, -12), center + Vector2(-8, -16), Color(color, 0.6), 1.6, true)
-			c.draw_line(center + Vector2(5, -12), center + Vector2(5, -16), Color(color, 0.6), 1.6, true)
+			c.draw_line(center + Vector2(-8, -12), center + Vector2(-8, -16), Color(color, 0.6), 1.6, smooth)
+			c.draw_line(center + Vector2(5, -12), center + Vector2(5, -16), Color(color, 0.6), 1.6, smooth)
 		"stun":
 			# Shock pulse: a ring sweeping outwards with stunned stars above it.
-			c.draw_arc(center + Vector2(0, 3), 12.0, PI, TAU, 26, color, 2.2, true)
-			c.draw_arc(center + Vector2(0, 3), 6.5, PI, TAU, 18, Color(color, 0.55), 1.6, true)
-			c.draw_circle(center + Vector2(0, 3), 2.6, color, true, -1, true)
+			c.draw_arc(center + Vector2(0, 3), 12.0, PI, TAU, 26, color, 2.2, smooth)
+			c.draw_arc(center + Vector2(0, 3), 6.5, PI, TAU, 18, Color(color, 0.55), 1.6, smooth)
+			c.draw_circle(center + Vector2(0, 3), 2.6, color, true, -1, smooth)
 			for star in [Vector2(-9, -9), Vector2(0, -13), Vector2(9, -9)]:
 				var at = center + star
-				c.draw_line(at + Vector2(-3, 0), at + Vector2(3, 0), brass, 1.6, true)
-				c.draw_line(at + Vector2(0, -3), at + Vector2(0, 3), brass, 1.6, true)
+				c.draw_line(at + Vector2(-3, 0), at + Vector2(3, 0), brass, 1.6, smooth)
+				c.draw_line(at + Vector2(0, -3), at + Vector2(0, 3), brass, 1.6, smooth)
 		"sun_ray":
 			# Sun ray: a broad column out of a sun.
-			c.draw_circle(center + Vector2(0, 9), 5.0, color, true, -1, true)
+			c.draw_circle(center + Vector2(0, 9), 5.0, color, true, -1, smooth)
 			for spread in [-6.0, 0.0, 6.0]:
-				c.draw_line(center + Vector2(spread * 0.7, 6), center + Vector2(spread, -13), color, 2.6, true)
-			c.draw_arc(center + Vector2(0, 9), 9.0, PI, TAU, 18, brass, 1.6, true)
+				c.draw_line(center + Vector2(spread * 0.7, 6), center + Vector2(spread, -13), color, 2.6, smooth)
+			c.draw_arc(center + Vector2(0, 9), 9.0, PI, TAU, 18, brass, 1.6, smooth)
 		"meteors":
 			# Meteors: two rocks with trails.
 			for rock in [[Vector2(-7, 2), 4.0], [Vector2(6, 7), 3.0]]:
 				var at = center + rock[0]
-				c.draw_circle(at, rock[1], color, true, -1, true)
-				c.draw_line(at + Vector2(6, -11), at, Color(color, 0.5), 2.2, true)
-			c.draw_line(center + Vector2(13, -13), center + Vector2(3, -3), brass, 2.0, true)
+				c.draw_circle(at, rock[1], color, true, -1, smooth)
+				c.draw_line(at + Vector2(6, -11), at, Color(color, 0.5), 2.2, smooth)
+			c.draw_line(center + Vector2(13, -13), center + Vector2(3, -3), brass, 2.0, smooth)
 		"thunder":
 			# Thunder: a bolt with a flash at its foot.
-			c.draw_polyline(PackedVector2Array([center + Vector2(2, -13), center + Vector2(-6, 0), center + Vector2(1, 0), center + Vector2(-3, 13)]), color, 2.8, true)
-			c.draw_arc(center + Vector2(-2, 12), 8.0, PI, TAU, 16, brass, 1.6, true)
+			c.draw_polyline(PackedVector2Array([center + Vector2(2, -13), center + Vector2(-6, 0), center + Vector2(1, 0), center + Vector2(-3, 13)]), color, 2.8, smooth)
+			c.draw_arc(center + Vector2(-2, 12), 8.0, PI, TAU, 16, brass, 1.6, smooth)
 		"bloom":
 			# Bloom: a sprout over a brick, with the +2.
 			c.draw_rect(Rect2(center + Vector2(-11, 3), Vector2(22, 9)), color, true)
-			c.draw_line(center + Vector2(0, 3), center + Vector2(0, -6), color, 2.2, true)
-			c.draw_circle(center + Vector2(-5, -8), 4.0, color, true, -1, true)
-			c.draw_circle(center + Vector2(5, -10), 4.0, brass, true, -1, true)
+			c.draw_line(center + Vector2(0, 3), center + Vector2(0, -6), color, 2.2, smooth)
+			c.draw_circle(center + Vector2(-5, -8), 4.0, color, true, -1, smooth)
+			c.draw_circle(center + Vector2(5, -10), 4.0, brass, true, -1, smooth)
 		"singularity":
 			# Singularity: a black core with a ring of debris and shots falling in.
-			c.draw_arc(center, 12.0, 0, TAU, 28, Color(color, 0.85), 2.0, true)
-			c.draw_circle(center, 5.6, Color(0.02, 0.03, 0.05, 1.0), true, -1, true)
-			c.draw_arc(center, 5.6, 0, TAU, 20, brass, 1.6, true)
+			c.draw_arc(center, 12.0, 0, TAU, 28, Color(color, 0.85), 2.0, smooth)
+			c.draw_circle(center, 5.6, Color(0.02, 0.03, 0.05, 1.0), true, -1, smooth)
+			c.draw_arc(center, 5.6, 0, TAU, 20, brass, 1.6, smooth)
 			for way in [Vector2(-1, -1), Vector2(1, -1), Vector2(-1, 1), Vector2(1, 1)]:
-				c.draw_line(center + way * 15.0, center + way * 9.0, Color(color, 0.9), 1.8, true)
+				c.draw_line(center + way * 15.0, center + way * 9.0, Color(color, 0.9), 1.8, smooth)
 		"sentries":
 			# Sentries: two gun platforms side by side, firing upwards.
 			for side in [-1, 1]:
 				var post = center + Vector2(side * 8, 4)
-				c.draw_circle(post, 5.0, color, true, -1, true)
-				c.draw_circle(post, 2.0, Color(INK, 0.85), true, -1, true)
-				c.draw_line(post + Vector2(0, -4), post + Vector2(0, -11), brass, 2.2, true)
-			c.draw_line(center + Vector2(-13, 10), center + Vector2(13, 10), Color(color, 0.7), 2.0, true)
+				c.draw_circle(post, 5.0, color, true, -1, smooth)
+				c.draw_circle(post, 2.0, Color(INK, 0.85), true, -1, smooth)
+				c.draw_line(post + Vector2(0, -4), post + Vector2(0, -11), brass, 2.2, smooth)
+			c.draw_line(center + Vector2(-13, 10), center + Vector2(13, 10), Color(color, 0.7), 2.0, smooth)
 		"plunder":
 			# Plunder: two stacks swapping places.
 			c.draw_rect(Rect2(center + Vector2(-13, -12), Vector2(11, 7)), color, true)
 			c.draw_rect(Rect2(center + Vector2(2, 5), Vector2(11, 7)), color, true)
-			c.draw_polyline(PackedVector2Array([center + Vector2(-2, -6), center + Vector2(6, -6), center + Vector2(3, -9)]), brass, 2.0, true)
-			c.draw_polyline(PackedVector2Array([center + Vector2(2, 2), center + Vector2(-6, 2), center + Vector2(-3, 5)]), brass, 2.0, true)
+			c.draw_polyline(PackedVector2Array([center + Vector2(-2, -6), center + Vector2(6, -6), center + Vector2(3, -9)]), brass, 2.0, smooth)
+			c.draw_polyline(PackedVector2Array([center + Vector2(2, 2), center + Vector2(-6, 2), center + Vector2(-3, 5)]), brass, 2.0, smooth)
 		_:
 			# An empty slot: the skin ultimate, still to come.
 			var star = PackedVector2Array()
 			for step in range(9):
 				var angle = -PI * 0.5 + step * TAU / 8.0
 				star.append(center + Vector2(cos(angle), sin(angle)) * (11.0 if step % 2 == 0 else 4.5))
-			c.draw_polyline(star, Color(color, 0.6), 1.6, true)
+			c.draw_polyline(star, Color(color, 0.6), 1.6, smooth)

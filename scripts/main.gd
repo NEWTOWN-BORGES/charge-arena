@@ -90,6 +90,8 @@ func _ready() -> void:
 	hud.audio_changed.connect(change_audio)
 	video.load_preferences()
 	video.apply(get_viewport(), arena)
+	hud.smooth = video.smooth_hud
+	hud.queue_redraw()
 	hud.sync_video(video)
 	music = Music.new()
 	add_child(music)
@@ -254,6 +256,8 @@ func use_map(layout: Dictionary) -> void:
 	add_child(arena)
 	arena.build(layout)
 	video.apply(get_viewport(), arena)
+	hud.smooth = video.smooth_hud
+	hud.queue_redraw()
 	arena.guide_enabled = game_settings.aim_guide
 	hud.arena_view = arena
 	hud.team_skins = arena.unit_skins
@@ -587,6 +591,8 @@ func change_audio(on: bool, volume: float) -> void:
 func change_video(fps: int, quality: int, sync: bool, counter: bool) -> void:
 	video.configure(fps, quality, sync, counter)
 	video.apply(get_viewport(), arena)
+	hud.smooth = video.smooth_hud
+	hud.queue_redraw()
 	var error = video.save_preferences()
 	hud.sync_video(video)
 	if error != OK:

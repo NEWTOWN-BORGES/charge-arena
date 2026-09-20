@@ -1,6 +1,6 @@
 extends RefCounted
 ## Local display preferences; never change the authoritative 60 Hz simulation.
-const FPS_OPTIONS = [60, 90, 120]
+const FPS_OPTIONS = [30, 60, 90]
 const QUALITY_NAMES = ["Leve", "Equilibrado", "Refinado"]
 # Leve uses only FXAA (zero extra geometry cost for Mali GPUs); Equilibrado and
 # Refinado add 2X MSAA which is nearly free on tiled mobile GPUs.  FXAA cleans
@@ -20,6 +20,7 @@ var vsync = true
 var show_fps = false
 var runtime_scale = 0.72
 var runtime_fps = 60
+var smooth_hud = true
 var low_windows = 0
 var stable_windows = 0
 
@@ -35,6 +36,7 @@ func load_preferences(path: String = CONFIG_PATH) -> void:
 	configure(int(config.get_value("video", "fps", 60)), saved_quality, bool(config.get_value("video", "vsync", true)), bool(config.get_value("video", "show_fps", false)))
 
 func configure(new_fps: int, new_quality: int, sync: bool, counter: bool) -> void:
+	# A setting saved by an older build may still say 120; it lands on 60.
 	fps = new_fps if new_fps in FPS_OPTIONS else 60
 	quality = clampi(new_quality, 0, QUALITY_NAMES.size() - 1)
 	vsync = sync
@@ -65,6 +67,9 @@ func apply(viewport: Viewport, arena) -> void:
 	if DisplayServer.get_name() != "headless":
 		DisplayServer.window_set_vsync_mode(DisplayServer.VSYNC_ENABLED if vsync else DisplayServer.VSYNC_DISABLED)
 	arena.effect_limit = EFFECT_LIMITS[quality]
+	# The light profile drops per-primitive antialiasing in the HUD: on a mid-range phone
+	# those 182 soft edges were more than half of the draw calls in a frame.
+	smooth_hud = quality > 0
 	arena.trail_interval = [0.11, 0.06, 0.035][quality]
 	arena.set_quality(quality)
 
@@ -82,13 +87,14 @@ func adapt(viewport: Viewport, measured_fps: float, force_mobile: bool = false) 
 	if low_windows < required_windows:
 		return false
 	low_windows = 0
-	# Equilibrado and Refinado preserve their exact visual profile. Powerful
-	# phones reduce only the frame target: 120 -> 90 -> 60.
+	# Equilibrado and Refinado preserve their exact visual profile and give up frames
+	# instead: 90 -> 60 -> 30. With 120 gone from the options, the ladder reaches all the
+	# way down rather than stopping at 60 on a phone that cannot hold it.
 	if quality > 0:
-		if runtime_fps > 90:
-			runtime_fps = 90
-		elif runtime_fps > 60:
+		if runtime_fps > 60:
 			runtime_fps = 60
+		elif runtime_fps > 30:
+			runtime_fps = 30
 		else:
 			return false
 		Engine.max_fps = runtime_fps
