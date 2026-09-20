@@ -61,7 +61,7 @@ func _init() -> void:
 	check(r.players[0].p == before, "Vertical input cannot leave the track")
 	for i in range(120):
 		r.step(1.0 / 60, [{"move": Vector2(100, 100)}, IDLE[1]])
-	check(is_equal_approx(r.players[0].angle, Rules.TRACK_LIMIT), "Movement stops at the end of the arc")
+	check(is_equal_approx(r.players[0].angle, r.track_limit) and r.track_limit <= Rules.TRACK_LIMIT, "Movement stops at the end of this arena's arc (%.2f)" % r.track_limit)
 	r = active()
 	var b = ball(r, Vector2(Rules.HALF_WIDTH - 0.5, 1.6), Vector2(Rules.BALL_SPEED, 0))
 	r.advance_ball(b, 0.07)
@@ -146,7 +146,7 @@ func _init() -> void:
 	r = active()
 	# Start just in front of the top shield, with the defender stepped aside, so only the shield is tested.
 	var goal_shot = Rules.goal_center(1) + Vector2(0, Rules.GOAL_RADIUS + Rules.BALL_RADIUS + 0.3)
-	r.players[1].p = Rules.track_position(1, Rules.TRACK_LIMIT)
+	r.players[1].p = Rules.track_position(1, r.track_limit)
 	b = ball(r, goal_shot, Vector2(0, -Rules.BALL_SPEED))
 	r.advance_ball(b, 0.04)
 	check(r.scores == [0, 0] and b.bounces == 1 and b.v.y > 0, "Goal remains protected while its banks contain bricks")
@@ -159,7 +159,7 @@ func _init() -> void:
 	r.phase = "play"
 	r.scores[0] = Rules.WIN_SCORE - 1
 	clear_defense(r, 1)
-	r.players[1].p = Rules.track_position(1, Rules.TRACK_LIMIT)
+	r.players[1].p = Rules.track_position(1, r.track_limit)
 	b = ball(r, goal_shot, Vector2(0, -Rules.BALL_SPEED))
 	r.advance_ball(b, 0.04)
 	check(r.phase == "finished" and r.winner == 0 and r.scores[0] == Rules.WIN_SCORE, "The deciding goal finishes the match at the configured score")

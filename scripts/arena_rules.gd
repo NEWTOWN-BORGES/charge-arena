@@ -9,7 +9,13 @@ const TRACK_RADIUS = 2.6
 # cannot grow much further: at 0.95 the pilot already clips the hexagon's wall, and at 0.85
 # there is 0.51 of clearance against a pilot radius of 0.43. Walking out this far is what
 # puts the side boosters back within reach.
-const TRACK_LIMIT = 0.85
+# The longest arc any arena may give a pilot. Each map gets its own, measured against its
+# own walls in set_map: the hexagon and the pinched arena only take 0.80, but the octagon
+# and the colosseum have a flat back and take the full 1.25, which is what lets the pilot
+# walk out to the side boosters there.
+const TRACK_LIMIT = 1.25
+const TRACK_LIMIT_MIN = 0.6
+const TRACK_CLEARANCE = 0.52
 # Aim assist: how far the shot may be nudged to line up with a brick, and how finely the
 # nearby angles are sampled looking for one.
 const ASSIST_ANGLE = 0.10
@@ -177,6 +183,7 @@ var map: Dictionary = {}
 var walls: Array = WALLS.duplicate()
 var boost_centers: Array = BOOST_CENTERS.duplicate()
 var turrets: Array = []
+var track_limit: float = TRACK_LIMIT
 var barriers: Array = []
 # Where each team's defensive walls stand on this map (see team_walls).
 var wall_slabs: Array = [[], []]
@@ -214,6 +221,7 @@ func set_map(new_map: Dictionary) -> void:
 	boost_centers = booster_centers(map)
 	barriers = map.get("barriers", [])
 	wall_slabs = [team_walls(0, map.get("bricks", "banks")), team_walls(1, map.get("bricks", "banks"))]
+	track_limit = track_limit_for(map)
 	cached_firing_angles.clear()
 	reset_match()
 
@@ -243,6 +251,42 @@ static func outline_points(kind: String) -> Array:
 
 static func side_x(kind: String) -> float:
 	return {"pinch": HALF_WIDTH - 1.9, "wide": HALF_WIDTH + 1.3}.get(kind, HALF_WIDTH)
+
+static func track_limit_for(layout: Dictionary) -> float:
+	# How far this arena lets a pilot walk before it would scrape a wall, a barrier or a
+	# bumper. The arc is a circle around the goal, so a roomy outline gives a much longer
+	# walk — and that walk is the only way to reach the side boosters. Static, because the
+	# arena view draws the rail from the same number.
+	var outline: Array = outline_points(layout.get("outline", "hex"))
+	var specs: Array = layout.get("obstacles", [])
+	var fences: Array = layout.get("barriers", [])
+	var best = TRACK_LIMIT_MIN
+	var angle = TRACK_LIMIT_MIN
+	while angle <= TRACK_LIMIT:
+		var clear = true
+		for team in range(2):
+			var at = track_position(team, angle)
+			for i in range(outline.size()):
+				var a: Vector2 = outline[i]
+				var b: Vector2 = outline[(i + 1) % outline.size()]
+				var t = clampf((at - a).dot(b - a) / maxf((b - a).length_squared(), 0.0001), 0, 1)
+				if at.distance_to(a.lerp(b, t)) < TRACK_CLEARANCE:
+					clear = false
+			for spec in specs:
+				# Bumpers move, so their whole path has to stay clear of the walk.
+				for tick in range(40):
+					if at.distance_to(spec_position(spec, tick * 0.3)) < TRACK_CLEARANCE - 0.07:
+						clear = false
+						break
+			for fence in fences:
+				var t = clampf((at - fence.a).dot(fence.b - fence.a) / maxf((fence.b - fence.a).length_squared(), 0.0001), 0, 1)
+				if at.distance_to(fence.a.lerp(fence.b, t)) < TRACK_CLEARANCE:
+					clear = false
+		if not clear:
+			break
+		best = angle
+		angle += 0.02
+	return best
 
 static func booster_centers(layout: Dictionary) -> Array:
 	# A rail of bumpers down each side wall instead of a single one at mid-field. With the
@@ -478,7 +522,7 @@ func step(dt: float, commands: Array) -> void:
 		var cmd: Dictionary = commands[team]
 		var move: Vector2 = cmd.get("move", Vector2.ZERO)
 		# Horizontal input moves along a fixed arc; vertical input never leaves it.
-		p.angle = clampf(p.angle + clampf(move.x, -1, 1) * SPEED / TRACK_RADIUS * dt, -TRACK_LIMIT, TRACK_LIMIT)
+		p.angle = clampf(p.angle + clampf(move.x, -1, 1) * SPEED / TRACK_RADIUS * dt, -track_limit, track_limit)
 		p.p = track_position(team, p.angle)
 		p.aim = forward_direction(team, p.angle)
 		activate_power(team, int(cmd.get("power", -1)))
@@ -1016,14 +1060,14 @@ func direct_angle(team: int, target: Vector2) -> float:
 	var sign_y = 1.0 if team == 0 else -1.0
 	var depth = maxf((goal.y - target.y) * sign_y, 0.25)
 	var wanted = clampf(atan2(target.x, depth), -FACING_LIMIT * 0.999, FACING_LIMIT * 0.999)
-	var angle = clampf(atanh(wanted / FACING_LIMIT) * FACING_LIMIT / FACING_FACTOR, -TRACK_LIMIT, TRACK_LIMIT)
+	var angle = clampf(atanh(wanted / FACING_LIMIT) * FACING_LIMIT / FACING_FACTOR, -track_limit, track_limit)
 	for pass_index in range(4):
 		var from = track_position(team, angle)
 		# angle_difference(a, b) is b - a, so the heading goes first: this is how far the
 		# pilot still has to turn to look at the target. With the arguments the other way
 		# round every refinement walked away from the answer.
 		var error = angle_difference(forward_direction(team, angle).angle(), (target - from).angle())
-		angle = clampf(angle + error / facing_slope(angle), -TRACK_LIMIT, TRACK_LIMIT)
+		angle = clampf(angle + error / facing_slope(angle), -track_limit, track_limit)
 	return angle
 
 func firing_angles(team: int, _samples: int = 0) -> Array:
@@ -1291,7 +1335,7 @@ func ai_command() -> Dictionary:
 			ai_best_score = ai_angle_score(ai_target_angle)
 		for _candidate in range(4):
 			# The step follows the arc, so the scan always covers it end to end.
-			var angle = 0.0 if ai_scan_index == 0 else ceilf(ai_scan_index / 2.0) * (TRACK_LIMIT / 24.0) * (1 if ai_scan_index % 2 else -1)
+			var angle = 0.0 if ai_scan_index == 0 else ceilf(ai_scan_index / 2.0) * (track_limit / 24.0) * (1 if ai_scan_index % 2 else -1)
 			var score = ai_angle_score(angle)
 			if score > ai_best_score + 0.05:
 				ai_best_score = score
@@ -1314,7 +1358,7 @@ func ai_command() -> Dictionary:
 	var move = Vector2(clampf((ai_target_angle - players[1].angle) * 8, -1, 1) * level.move, 0)
 	if dodge != 0:
 		# At the track boundary, evade inward instead of getting stuck against the end.
-		if absf(players[1].angle + dodge * 0.12) > TRACK_LIMIT:
+		if absf(players[1].angle + dodge * 0.12) > track_limit:
 			dodge = -signf(players[1].angle)
 		move.x = clampf(dodge, -1, 1) * level.move
 		return {"move": move, "fire": false}
@@ -1539,7 +1583,7 @@ func apply_network_snapshot(data: Dictionary) -> bool:
 		powers[team].ultimate_windup = clampf(power_data[base + 9], 0, ULTIMATE_WINDUP)
 		powers[team].ultimate_time = clampf(power_data[base + 10], 0, maxf(THUNDER_SECONDS, SINGULARITY_PULL))
 		powers[team].ultimate_id = power_id(team, 2)
-		var angle = clampf(player_data[team * 4], -TRACK_LIMIT, TRACK_LIMIT)
+		var angle = clampf(player_data[team * 4], -track_limit, track_limit)
 		players[team].angle = angle
 		players[team].p = track_position(team, angle)
 		players[team].aim = forward_direction(team, angle)

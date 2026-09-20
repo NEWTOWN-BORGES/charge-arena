@@ -36,12 +36,13 @@ func run() -> void:
 	# The targets only cover the middle of the arc, which is why stepping is not enough.
 	var targets: Array = game.rules.firing_angles(0).map(func(o): return o.angle)
 	check(targets.size() > 20, "The wall offers plenty of targets (%d)" % targets.size())
-	check(targets.max() < Rules.TRACK_LIMIT - 0.15 and targets.min() > -Rules.TRACK_LIMIT + 0.15, "But they sit inside the arc, with room to walk past the outermost one (%.2f de %.2f)" % [targets.max(), Rules.TRACK_LIMIT])
+	var limit: float = game.rules.track_limit
+	check(targets.max() < limit - 0.15 and targets.min() > -limit + 0.15, "But they sit inside the arc, with room to walk past the outermost one (%.2f de %.2f)" % [targets.max(), limit])
 
 	push(game, -1.0, 3.0)
-	check(game.rules.players[0].angle < -Rules.TRACK_LIMIT + 0.02, "Holding the stick left walks the pilot to the left wall (%.2f de %.2f)" % [game.rules.players[0].angle, -Rules.TRACK_LIMIT])
+	check(game.rules.players[0].angle < -limit + 0.02, "Holding the stick left walks the pilot to the end of this arena's arc (%.2f de %.2f)" % [game.rules.players[0].angle, -limit])
 	push(game, 1.0, 6.0)
-	check(game.rules.players[0].angle > Rules.TRACK_LIMIT - 0.02, "And to the right wall on the way back (%.2f)" % game.rules.players[0].angle)
+	check(game.rules.players[0].angle > limit - 0.02, "And to the other end on the way back (%.2f)" % game.rules.players[0].angle)
 	# Magnetism only nudges, and only with the thumb almost still.
 	game.rules.players[0].angle = game.rules.firing_angles(0)[3].angle + 0.02
 	game.hud.move_vector = Vector2.ZERO

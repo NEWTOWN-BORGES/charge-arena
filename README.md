@@ -236,6 +236,8 @@ Teste de rede em dois processos: iniciar o anfitrião, depois o cliente (antes d
 ```text
 godot --headless --path . --script res://tests/test_network.gd -- --host
 godot --headless --path . --script res://tests/test_network.gd -- --client
+godot --headless --path . --script res://tests/test_pvp_powers.gd -- --host
+godot --headless --path . --script res://tests/test_pvp_powers.gd -- --client
 ```
 
 Os obstáculos de cada mapa vivem junto às paredes e aos cantos, nunca na rota central: servem para ricochete, não para tapar. Medido ângulo a ângulo, todos os níveis deixam agora passar tanto ou quase tanto como uma arena vazia. O arco do piloto vai até 0,85 rad — o máximo antes de o boneco roçar a parede do hexágono —, o que põe os aceleradores laterais ao alcance de 11 ângulos em vez de 5.

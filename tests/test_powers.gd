@@ -305,7 +305,17 @@ func run() -> void:
 	hud._input(touch)
 	check(hud.power_request == 2 and hud.move_id == -1, "Tapping a power button asks for that power instead of grabbing the stick")
 	check(hud.power_at(hud.power_centers[0]) == 0 and hud.power_at(hud.move_home) == -1, "Only the buttons themselves answer to a tap")
+	# The tap only travels once it is a power that can actually go off, so the slot is paid
+	# for and the match is running before the loop is asked.
+	game.rules.phase = "play"
+	game.rules.powers[game.local_team].charge[2] = game.rules.power_charge_cost(game.local_team, 2)
 	check(game.local_command().power == 2 and game.local_command().power == -1, "The match loop reads the request once")
+	# And a tap that lands a moment too early is held, not swallowed.
+	game.rules.powers[game.local_team].charge[2] = 0
+	hud._input(touch)
+	check(game.local_command().power == -1, "A power that is not ready yet does not leave on the tap")
+	game.rules.powers[game.local_team].charge[2] = game.rules.power_charge_cost(game.local_team, 2)
+	check(game.local_command().power == 2, "It leaves as soon as it is ready, within the half second it is held")
 	hud.request_power(1)
 	hud.reset_touch()
 	check(hud.power_request == -1, "Leaving the match forgets a pending power")

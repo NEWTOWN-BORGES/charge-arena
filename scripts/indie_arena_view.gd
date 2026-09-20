@@ -509,7 +509,7 @@ func build_goal(team: int) -> void:
 		box(self, endpoint + Vector3.UP * 0.32, Vector3(0.18, 0.68, 0.18), CREAM)
 		box(self, endpoint + Vector3.UP * 0.70, Vector3(0.14, 0.08, 0.14), color, true)
 	world_label("01" if team == 0 else "02", Vector3(0, 0.05, center.y * 0.89), color, 49)
-	var track = arc_points(center, Rules.TRACK_RADIUS, Rules.TRACK_LIMIT, team, 0.023)
+	var track = arc_points(center, Rules.TRACK_RADIUS, Rules.track_limit_for(map), team, 0.023)
 	arc_ribbon(self, track, 0.045, 0.015, color.darkened(0.2))
 	for p in [track.front(), track.back()]:
 		cylinder(self, p, 0.1, 0.018, color, true, 16)

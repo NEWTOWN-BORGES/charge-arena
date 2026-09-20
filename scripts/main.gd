@@ -19,6 +19,7 @@ var remote_id = 0
 var remote_command = {"move": Vector2.ZERO, "fire": false}
 # Powers arrive on their own reliable channel, so a tap is never lost in the input stream.
 var remote_power = -1
+var pending_events: Array = []
 var remote_age = 0.0
 var network_tick = 0.0
 var connection_timer = 0.0
@@ -47,6 +48,9 @@ var credited_bricks = 0
 const MAGNET_ANGLE = 0.05
 # The stick: anything under the dead zone is a resting thumb, and anything over it moves
 # the pilot at once, never below STICK_FLOOR of its speed.
+const POWER_HOLD_MS = 500
+var held_power = -1
+var held_power_until = 0
 const STICK_DEADZONE = 0.08
 const STICK_FLOOR = 0.34
 var game_settings = GameSettings.new()
@@ -138,8 +142,13 @@ func _ready() -> void:
 			capture_preview(arg.trim_prefix("--capture="))
 
 func use_loadouts(boss_kit: Array, boss_skin: int = 0) -> void:
-	# Two bought powers plus the ultimate that comes with each pilot's skin.
-	rules.loadouts = [power_shop.loadout(String(Skins.CATALOG[skins.selected].ultimate)), boss_kit + [String(Skins.CATALOG[boss_skin].ultimate)]]
+	# Two bought powers plus the ultimate that comes with each pilot's skin. The local
+	# pilot is not always team 0 — in PvP the guest plays team 1 — so the kits are placed
+	# by side. Built the other way round, the guest walked in with the host's ultimate in
+	# its keys and none of its own.
+	var mine: Array = power_shop.loadout(String(Skins.CATALOG[skins.selected].ultimate))
+	var theirs: Array = boss_kit + [String(Skins.CATALOG[boss_skin].ultimate)]
+	rules.loadouts = [mine, theirs] if local_team == 0 else [theirs, mine]
 	credited_bricks = 0
 	if PowerShop.START_WITH_ULTIMATE_FOR_TESTS:
 		# Testing build: both sides walk in with the ultimate ready.
@@ -390,6 +399,10 @@ func peer_connected(id: int) -> void:
 		connected = true
 		network_status = ""
 		rules.reset_match()
+		if PowerShop.START_WITH_ULTIMATE_FOR_TESTS:
+			# The match restarts when the guest arrives, and that wipes the charge the
+			# testing build hands out: without this, PvP begins with dead ultimate keys.
+			charge_ultimates()
 		share_skin.rpc_id(id, skins.selected)
 		share_kit.rpc_id(id, String(power_shop.kit[0]), String(power_shop.kit[1]))
 		print("HOST_PEER_CONNECTED ", id)
@@ -578,79 +591,10 @@ func change_video(fps: int, quality: int, sync: bool, counter: bool) -> void:
 	if error != OK:
 		hud.video_note.text = "Aplicado nesta sessão. Não foi possível guardar as opções."
 
-func local_command() -> Dictionary:
-	if hud.video_overlay.visible or pve_paused:
-		# Drop anything tapped while the match was on hold.
-		hud.take_power()
-		return {"move": Vector2.ZERO, "fire": false, "power": -1}
-	# Past a small dead zone the pilot leaves at once: the first sliver of the push is
-	# already worth a third of the speed, so nudging the stick never feels like nothing
-	# happened. From there it climbs almost straight to a full run.
-	var stick: float = hud.move_vector.x
-	var response = 0.0
-	if absf(stick) > STICK_DEADZONE:
-		var push = (absf(stick) - STICK_DEADZONE) / (1.0 - STICK_DEADZONE)
-		response = signf(stick) * lerpf(STICK_FLOOR, 1.0, pow(push, 1.2)) * game_settings.sensitivity_scale()
-	else:
-		# Thumb still: let the magnetism settle the pilot on the target it is beside.
-		response = magnet_pull()
-	var move = Vector2(response, 0)
-	if DisplayServer.get_name() != "headless":
-		var keys = Vector2(float(Input.is_physical_key_pressed(KEY_D) or Input.is_physical_key_pressed(KEY_RIGHT)) - float(Input.is_physical_key_pressed(KEY_A) or Input.is_physical_key_pressed(KEY_LEFT)), float(Input.is_physical_key_pressed(KEY_S) or Input.is_physical_key_pressed(KEY_DOWN)) - float(Input.is_physical_key_pressed(KEY_W) or Input.is_physical_key_pressed(KEY_UP)))
-		move += keys
-	# The pilot fires on its own as soon as the weapon is ready; the thumb only aims.
-	return {"move": Vector2(clampf(move.x, -1, 1), 0), "fire": true, "power": hud.take_power()}
-
-func magnet_pull() -> float:
-	# With the thumb nearly still, the pilot eases onto the nearest firing angle instead
-	# of hovering a hair beside it. It never fights a real push of the stick.
-	if not game_settings.aim_assist or rules.players.size() <= local_team:
-		return 0.0
-	var player: Dictionary = rules.players[local_team]
-	var best = INF
-	var best_gap = MAGNET_ANGLE
-	for option in rules.firing_angles(local_team):
-		var gap: float = absf(option.angle - player.angle)
-		if gap < best_gap:
-			best_gap = gap
-			best = option.angle
-	if best == INF:
-		return 0.0
-	return clampf((best - player.angle) * 5.0, -0.35, 0.35)
-
-func _physics_process(dt: float) -> void:
-	if mode == "menu":
-		return
-	if mode == "pve" and (hud.video_overlay.visible or pve_paused):
-		return
-	if mode == "client" and not connected:
-		connection_timer -= dt
-		if connection_timer <= 0:
-			return_to_menu("A ligação demorou demasiado. Confirma o IP e a rede Wi-Fi.")
-		return
-	if mode == "host" and not connected:
-		return
-	var command = local_command()
-	if mode == "client":
-		if command.power >= 0:
-			submit_power.rpc_id(1, command.power)
-		network_tick += dt
-		if network_tick >= 1.0 / 30:
-			network_tick = 0
-			submit_input.rpc_id(1, command.move, command.fire)
-		return
-	var other: Dictionary
-	if mode == "pve":
-		other = rules.ai_command() if not pause_ai else {"move": Vector2.ZERO, "fire": false}
-	else:
-		remote_age += dt
-		var stale = remote_age >= 0.35
-		# The rival's power is spent on this tick only, never repeated while packets are late.
-		other = {"move": Vector2.ZERO if stale else remote_command.move, "fire": false if stale else remote_command.fire, "power": remote_power}
-		remote_power = -1
-	arena.capture_motion(rules)
-	rules.step(dt, [command, other])
-	bank_bricks()
+func play_events() -> void:
+	# Sound and spectacle for whatever just happened. The host runs this off its own
+	# simulation; the client runs it off the events the host ships with each snapshot,
+	# which is the only way it sees a power go off at all.
 	for event in rules.events:
 		if event.kind == "shot" and event.team == local_team:
 			play_tone("shot_%d" % arena.unit_skins[local_team])
@@ -716,12 +660,114 @@ func _physics_process(dt: float) -> void:
 		elif event.kind == "explosion":
 			arena.explosion(event.p, event.radius)
 			play_tone("blast")
+
+func local_command() -> Dictionary:
+	if hud.video_overlay.visible or pve_paused:
+		# Drop anything tapped while the match was on hold.
+		hud.take_power()
+		return {"move": Vector2.ZERO, "fire": false, "power": -1}
+	# Past a small dead zone the pilot leaves at once: the first sliver of the push is
+	# already worth a third of the speed, so nudging the stick never feels like nothing
+	# happened. From there it climbs almost straight to a full run.
+	var stick: float = hud.move_vector.x
+	var response = 0.0
+	if absf(stick) > STICK_DEADZONE:
+		var push = (absf(stick) - STICK_DEADZONE) / (1.0 - STICK_DEADZONE)
+		response = signf(stick) * lerpf(STICK_FLOOR, 1.0, pow(push, 1.2)) * game_settings.sensitivity_scale()
+	else:
+		# Thumb still: let the magnetism settle the pilot on the target it is beside.
+		response = magnet_pull()
+	var move = Vector2(response, 0)
+	if DisplayServer.get_name() != "headless":
+		var keys = Vector2(float(Input.is_physical_key_pressed(KEY_D) or Input.is_physical_key_pressed(KEY_RIGHT)) - float(Input.is_physical_key_pressed(KEY_A) or Input.is_physical_key_pressed(KEY_LEFT)), float(Input.is_physical_key_pressed(KEY_S) or Input.is_physical_key_pressed(KEY_DOWN)) - float(Input.is_physical_key_pressed(KEY_W) or Input.is_physical_key_pressed(KEY_UP)))
+		move += keys
+	# The pilot fires on its own as soon as the weapon is ready; the thumb only aims.
+	return {"move": Vector2(clampf(move.x, -1, 1), 0), "fire": true, "power": read_power()}
+
+func read_power() -> int:
+	# A key pressed a moment too early — during the countdown, or while another power is
+	# still running — used to be swallowed without a word. It is now held for half a
+	# second and tried again, which is the difference between a power that feels broken
+	# and one that simply waited its turn.
+	var asked: int = hud.take_power()
+	if asked >= 0:
+		held_power = asked
+		held_power_until = Time.get_ticks_msec() + POWER_HOLD_MS
+	if held_power < 0:
+		return -1
+	if Time.get_ticks_msec() > held_power_until:
+		held_power = -1
+		return -1
+	if not rules.can_activate_power(local_team, held_power):
+		return -1
+	var ready = held_power
+	held_power = -1
+	return ready
+
+func magnet_pull() -> float:
+	# With the thumb nearly still, the pilot eases onto the nearest firing angle instead
+	# of hovering a hair beside it. It never fights a real push of the stick.
+	if not game_settings.aim_assist or rules.players.size() <= local_team:
+		return 0.0
+	var player: Dictionary = rules.players[local_team]
+	var best = INF
+	var best_gap = MAGNET_ANGLE
+	for option in rules.firing_angles(local_team):
+		var gap: float = absf(option.angle - player.angle)
+		if gap < best_gap:
+			best_gap = gap
+			best = option.angle
+	if best == INF:
+		return 0.0
+	return clampf((best - player.angle) * 5.0, -0.35, 0.35)
+
+func _physics_process(dt: float) -> void:
+	if mode == "menu":
+		return
+	if mode == "pve" and (hud.video_overlay.visible or pve_paused):
+		return
+	if mode == "client" and not connected:
+		connection_timer -= dt
+		if connection_timer <= 0:
+			return_to_menu("A ligação demorou demasiado. Confirma o IP e a rede Wi-Fi.")
+		return
+	if mode == "host" and not connected:
+		return
+	var command = local_command()
+	if mode == "client":
+		if command.power >= 0:
+			submit_power.rpc_id(1, command.power)
+		network_tick += dt
+		if network_tick >= 1.0 / 30:
+			network_tick = 0
+			submit_input.rpc_id(1, command.move, command.fire)
+		return
+	var other: Dictionary
+	if mode == "pve":
+		other = rules.ai_command() if not pause_ai else {"move": Vector2.ZERO, "fire": false}
+	else:
+		remote_age += dt
+		var stale = remote_age >= 0.35
+		# The rival's power is spent on this tick only, never repeated while packets are late.
+		other = {"move": Vector2.ZERO if stale else remote_command.move, "fire": false if stale else remote_command.fire, "power": remote_power}
+		remote_power = -1
+	arena.capture_motion(rules)
+	rules.step(dt, [command, other])
+	bank_bricks()
+	play_events()
 	if mode == "host":
+		# Events happen every tick but packets leave at 20 Hz, so they are kept until the
+		# next one goes out. Capped, because a meteor shower must not inflate a packet.
+		if pending_events.size() < 80:
+			pending_events.append_array(rules.events)
 		network_tick += dt
 		if network_tick >= 1.0 / 20:
 			network_tick = 0
 			# Already-packed numeric arrays avoid a synchronous DEFLATE spike every 50 ms.
-			receive_state.rpc_id(remote_id, rules.network_snapshot())
+			var packet: Dictionary = rules.network_snapshot()
+			packet["e"] = pending_events
+			pending_events = []
+			receive_state.rpc_id(remote_id, packet)
 
 @rpc("any_peer", "call_remote", "unreliable_ordered", 1)
 func submit_input(move: Vector2, firing: bool) -> void:
@@ -749,6 +795,13 @@ func receive_state(data: Dictionary) -> void:
 	arena.capture_motion(rules)
 	if not rules.apply_network_snapshot(data):
 		return
+	# The client does not simulate, so without these it never sees a shot, a power or an
+	# ultimate happen: no flash, no sound, nothing.
+	var carried = data.get("e", [])
+	# Left in place until the next packet overwrites them: they are what the arena and the
+	# HUD read to know what just happened.
+	rules.events = carried if typeof(carried) == TYPE_ARRAY else []
+	play_events()
 	visual_packet_age = 0.0
 	packets_received += 1
 
