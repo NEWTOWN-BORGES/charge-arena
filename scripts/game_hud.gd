@@ -2153,7 +2153,7 @@ func _draw() -> void:
 	if not level_info.is_empty():
 		mode_name = "CAMPANHA · NÍVEL %d" % level_info.number
 	write(mode_name, mode_at, 12, LIME, true)
-	write("PRIMEIRO A 3 GOLOS", mode_at + Vector2(0, 22 if vertical else 23), 10, MUTED)
+	write("PRIMEIRO A %d GOLOS" % Rules.WIN_SCORE, mode_at + Vector2(0, 22 if vertical else 23), 10, MUTED)
 	for side in range(2):
 		player_card(card_rects[side], side, team if side == 0 else 1 - team)
 	var p: Dictionary = match_data.players[team]
@@ -2177,7 +2177,7 @@ func _draw() -> void:
 		sub = "NOVA RONDA A SEGUIR"
 	elif match_data.phase == "finished":
 		message = "VITÓRIA" if match_data.winner == team else "O RIVAL VENCEU"
-		sub = "PRIMEIRO A 3 GOLOS"
+		sub = "PRIMEIRO A %d GOLOS" % Rules.WIN_SCORE
 		if level_result == "won":
 			sub = "NÍVEL %d CONCLUÍDO" % level_info.number
 			if not level_info.has_next:

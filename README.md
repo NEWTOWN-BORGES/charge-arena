@@ -242,6 +242,8 @@ godot --headless --path . --script res://tests/test_pvp_powers.gd -- --client
 
 O carril do piloto é uma **elipse** (4,6 de largura por 2,6 de profundidade), não um círculo: um círculo de raio 2,6 nunca deixaria o piloto afastar-se mais do que isso do centro, por mais larga que fosse a arena. Cada arena mede o seu próprio arco contra as suas paredes (`track_limit_for`), e as cinco da campanha — estádio, lente, desfiladeiro, octógono e coliseu — têm todas um fundo largo atrás das balizas, o que dá ao piloto 3,5 a 4,35 de alcance lateral (era 1,47). A mira acompanha: em vez de virar um múltiplo fixo do ângulo do carril, o piloto olha para um ponto que varre o fundo da arena, por isso aponta sempre para dentro do campo. Os obstáculos vivem junto às paredes e aos cantos, nunca na rota central: servem para ricochete, não para tapar.
 
+As muralhas crescem com a campanha. A maioria dos níveis traz 40 tijolos por lado com 3 vidas cada; os níveis de chefe trazem o **baluarte** (3 fileiras, 54 tijolos) ou a **fortaleza** (5 fileiras, 60 tijolos), e o mapa decide quantas vidas cada tijolo começa com (`lives`, até 5). A muralha final vale 240 contra os 120 da primeira, e um teste garante que dobra sem virar maratona.
+
 ## Ficheiros
 
 - `scripts/arena_rules.gd`: movimento, tiros, colisões contínuas, paralisia, tijolos, golos e IA.

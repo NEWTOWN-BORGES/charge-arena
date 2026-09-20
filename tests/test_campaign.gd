@@ -24,8 +24,13 @@ func brick_corners(brick: Dictionary) -> Array:
 
 func layout_problems(r) -> Array:
 	var problems: Array = []
-	if r.bricks.size() != 80 or r.bricks.filter(func(b): return b.team == 0).size() != 40:
-		problems.append("40 bricks per team")
+	# Boss rounds carry deeper walls, so the count is no longer fixed at forty: what has to
+	# hold is that both sides get exactly the same wall, and that it is a wall worth the
+	# name without being a marathon.
+	var mine: int = r.bricks.filter(func(b): return b.team == 0).size()
+	var theirs: int = r.bricks.filter(func(b): return b.team == 1).size()
+	if mine != theirs or mine < 40 or mine > 64:
+		problems.append("%d bricks for one side and %d for the other" % [mine, theirs])
 	for brick in r.bricks:
 		if not brick_corners(brick).all(func(c): return Rules.point_inside(r.walls, c)):
 			problems.append("brick %d outside the walls" % brick.id)
@@ -73,9 +78,11 @@ func run() -> void:
 			kinds.append(spec.kind)
 	check(kinds.has("fixed") and kinds.has("slide") and kinds.has("orbit") and levels.any(func(l): return not l.map.barriers.is_empty()), "Challenges use fixed pillars, sliders, orbits and inner barriers")
 
+	var worth: Array = []
 	for index in range(levels.size()):
 		var r = Rules.new()
 		r.set_map(levels[index].map)
+		worth.append(r.wall_health_full(1))
 		var problems = layout_problems(r)
 		check(problems.is_empty(), "Level %d layout is clean%s" % [index + 1, "" if problems.is_empty() else ": " + problems[0]])
 		# Two full-strength AIs play for a while: no ball may escape and both must reach bricks.
@@ -91,6 +98,9 @@ func run() -> void:
 			if r.phase == "goal":
 				r.phase = "play"
 		check(escaped == 0 and hits > 5, "Level %d plays: no ball escapes, %d brick hits in 12 s" % [index + 1, hits])
+
+	check(worth[worth.size() - 1] >= worth[0] * 2, "The last wall is at least twice the first (%d contra %d)" % [worth[worth.size() - 1], worth[0]])
+	check(worth.max() <= 260, "And no wall is a marathon (%d no pior caso)" % worth.max())
 
 	var default_rules = Rules.new()
 	var same_obstacles = range(40).all(func(t): return default_rules.obstacle_at(0, t * 0.1).is_equal_approx(Rules.obstacle_position(0, t * 0.1)) and default_rules.obstacle_at(1, t * 0.1).is_equal_approx(Rules.obstacle_position(1, t * 0.1)))

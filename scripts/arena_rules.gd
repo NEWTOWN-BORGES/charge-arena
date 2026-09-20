@@ -191,6 +191,8 @@ var walls: Array = WALLS.duplicate()
 var boost_centers: Array = BOOST_CENTERS.duplicate()
 var turrets: Array = []
 var track_limit: float = TRACK_LIMIT
+# How many lives each brick of this arena starts with; boss rounds ask for more.
+var brick_lives: int = BRICK_LIVES
 var barriers: Array = []
 # Where each team's defensive walls stand on this map (see team_walls).
 var wall_slabs: Array = [[], []]
@@ -229,6 +231,7 @@ func set_map(new_map: Dictionary) -> void:
 	barriers = map.get("barriers", [])
 	wall_slabs = [team_walls(0, map.get("bricks", "banks")), team_walls(1, map.get("bricks", "banks"))]
 	track_limit = track_limit_for(map)
+	brick_lives = clampi(int(map.get("lives", BRICK_LIVES)), 1, BRICK_MAX_LIVES)
 	cached_firing_angles.clear()
 	reset_match()
 
@@ -398,7 +401,7 @@ func reset_round() -> void:
 	]
 	balls.clear()
 	turrets.clear()
-	bricks = make_bricks(map.get("bricks", "banks"))
+	bricks = make_bricks(map.get("bricks", "banks"), brick_lives)
 	obstacle_time = 0.0
 	obstacles.clear()
 	var specs: Array = map.get("obstacles", [])
@@ -445,8 +448,10 @@ static func brick_scale(hp: int) -> float:
 	# Past the usual three lives a brick stands taller and wider, from the bloom ultimate.
 	return [0.0, 0.52, 0.76, 1.0, 1.1, 1.18][clampi(hp, 0, BRICK_MAX_LIVES)]
 
-static func make_bricks(layout: String = "banks") -> Array:
-	# Forty bricks per team in every layout; team 0 first, mirrored for team 1.
+static func make_bricks(layout: String = "banks", lives: int = BRICK_LIVES) -> Array:
+	# Team 0 first, mirrored for team 1. Most layouts carry forty bricks a side; the two
+	# boss walls carry more, and every brick starts with however many lives the map asks
+	# for — that is what separates an opening level from a boss round.
 	var result: Array = []
 	for team in range(2):
 		var sign_y = 1 if team == 0 else -1
@@ -478,6 +483,20 @@ static func make_bricks(layout: String = "banks") -> Array:
 						for column in range(10):
 							var pos = Vector2(side * (0.55 + column * 0.545), goal.y - sign_y * (3.6 + column * 0.197 + row * 0.36))
 							add_brick(result, team, side, pos, direction.angle())
+			"bulwark":
+				# Three long rows: a boss wall you have to chew through, not slip past.
+				for row in range(3):
+					for column in range(18):
+						add_brick(result, team, -1 if column < 9 else 1, Vector2((column - 8.5) * 0.56, goal.y - sign_y * (3.7 + row * 0.36)), 0.0, lives)
+			"fortress":
+				# Five stacked rows, narrowing as they go back: the final wall of the run.
+				var deck = [14, 13, 12, 11, 10]
+				for row in range(deck.size()):
+					var count: int = deck[row]
+					var span = 3.9 - row * 0.22
+					for column in range(count):
+						var x = lerpf(-span, span, float(column) / float(count - 1))
+						add_brick(result, team, -1 if x < 0 else 1, Vector2(x, goal.y - sign_y * (3.6 + row * 0.38)), 0.0, lives)
 			"colosseum":
 				# Dense 4-row fortress of 48 bricks per team (96 total) for massive destruction with powers.
 				for row in range(4):
@@ -498,8 +517,8 @@ static func make_bricks(layout: String = "banks") -> Array:
 							add_brick(result, team, side, pos, along.angle())
 	return result
 
-static func add_brick(result: Array, team: int, group: int, pos: Vector2, rotation: float) -> void:
-	result.append({"id": result.size(), "team": team, "group": group, "p": pos, "rotation": rotation, "hp": BRICK_LIVES, "alive": true})
+static func add_brick(result: Array, team: int, group: int, pos: Vector2, rotation: float, lives: int = BRICK_LIVES) -> void:
+	result.append({"id": result.size(), "team": team, "group": group, "p": pos, "rotation": rotation, "hp": lives, "alive": true})
 
 func step(dt: float, commands: Array) -> void:
 	events.clear()
@@ -978,7 +997,7 @@ func rebuild_bricks(team: int) -> void:
 	fallen.sort_custom(func(a, b): return absf(bricks[a].p.y) > absf(bricks[b].p.y))
 	var restored: Array = []
 	for index in fallen.slice(0, REBUILD_BRICKS):
-		bricks[index].hp = BRICK_LIVES
+		bricks[index].hp = brick_lives
 		bricks[index].alive = true
 		restored.append(index)
 	events.append({"kind": "rebuild", "team": team, "bricks": restored, "p": players[team].p})
@@ -1430,11 +1449,11 @@ func ai_ultimate(level: Dictionary, aimed: bool) -> int:
 			# They rain on the far half; anything still standing over there will do.
 			ready = brick_count(0) > 0
 		"bloom":
-			ready = team_health(1) < BRICK_COUNT * 3 * 0.7
+			ready = team_health(1) < wall_health_full(1) * 0.7
 		"plunder":
 			# Worth it when the boss would be taking a better wall than it gives, or when
 			# its own is battered enough that any trade is an improvement.
-			ready = brick_count(1) < brick_count(0) or team_health(1) < BRICK_COUNT * 3 * 0.55
+			ready = brick_count(1) < brick_count(0) or team_health(1) < wall_health_full(1) * 0.55
 		"singularity":
 			# Its whole point is a field full of shots to swallow.
 			ready = balls.size() >= 3
@@ -1446,6 +1465,14 @@ func ai_ultimate(level: Dictionary, aimed: bool) -> int:
 		return -1
 	ai_next_power = elapsed + float(level.get("power_gap", AI_POWER_GAP))
 	return POWER_SLOTS - 1
+
+func wall_health_full(team: int) -> int:
+	# What this team's wall is worth when it is whole, for the arena it is standing in.
+	var count = 0
+	for brick in bricks:
+		if brick.team == team:
+			count += 1
+	return count * brick_lives
 
 func team_health(team: int) -> int:
 	var total = 0

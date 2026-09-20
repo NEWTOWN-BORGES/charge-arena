@@ -527,7 +527,7 @@ func make_brick(parent: Node3D, data: Dictionary, skin: int, tint: bool = false)
 	parent.add_child(brick)
 	brick.position = Vector3(data.p.x, 0, data.p.y)
 	brick.rotation.y = -data.rotation
-	brick.set_meta("hp", Rules.BRICK_LIVES)
+	brick.set_meta("hp", int(map.get("lives", Rules.BRICK_LIVES)))
 	brick.set_meta("skin", skin)
 	soft_disc(brick, Vector3(0.035, 0.018, 0.06), Vector2(0.92, 0.58), Color(0.006, 0.015, 0.022, 0.70))
 	match skin:
