@@ -20,6 +20,7 @@ var remote_command = {"move": Vector2.ZERO, "fire": false}
 # Powers arrive on their own reliable channel, so a tap is never lost in the input stream.
 var remote_power = -1
 var pending_events: Array = []
+var remote_power_until = 0
 var remote_age = 0.0
 var network_tick = 0.0
 var connection_timer = 0.0
@@ -748,9 +749,17 @@ func _physics_process(dt: float) -> void:
 	else:
 		remote_age += dt
 		var stale = remote_age >= 0.35
-		# The rival's power is spent on this tick only, never repeated while packets are late.
-		other = {"move": Vector2.ZERO if stale else remote_command.move, "fire": false if stale else remote_command.fire, "power": remote_power}
-		remote_power = -1
+		# The rival's key gets the same half second of patience the local one does: pressed
+		# during the countdown, or while another power is running, it used to vanish on the
+		# host without the guest ever knowing why.
+		var remote_slot = -1
+		if remote_power >= 0:
+			if Time.get_ticks_msec() > remote_power_until:
+				remote_power = -1
+			elif rules.can_activate_power(1 - local_team, remote_power):
+				remote_slot = remote_power
+				remote_power = -1
+		other = {"move": Vector2.ZERO if stale else remote_command.move, "fire": false if stale else remote_command.fire, "power": remote_slot}
 	arena.capture_motion(rules)
 	rules.step(dt, [command, other])
 	bank_bricks()
@@ -787,6 +796,7 @@ func submit_power(power: int) -> void:
 	if power < 0 or power >= Rules.POWER_SLOTS:
 		return
 	remote_power = power
+	remote_power_until = Time.get_ticks_msec() + POWER_HOLD_MS
 
 @rpc("authority", "call_remote", "unreliable_ordered", 2)
 func receive_state(data: Dictionary) -> void:

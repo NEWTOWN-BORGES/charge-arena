@@ -30,9 +30,10 @@ func run() -> void:
 		if not game.connected:
 			continue
 		var mine: int = game.local_team
-		if role == "host" and not asked_power:
+		if role == "host" and ticks < 100:
 			# The host owns the simulation, so it is the one that hands out charge. It stops
-			# topping them up once the keys are pressed, so spending them stays visible.
+			# well before either side presses a key: topping up on the same tick a power is
+			# spent hides the very spending this test is looking for.
 			for team in range(2):
 				for slot in range(game.Rules.POWER_SLOTS):
 					game.rules.powers[team].charge[slot] = game.rules.power_charge_cost(team, slot)

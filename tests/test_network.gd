@@ -48,7 +48,7 @@ func run() -> void:
 					observed_held = true
 			var synced_health = game.rules.bricks[0].hp == 2 and game.rules.bricks[1].hp == 1
 			var synced_size = is_equal_approx(game.arena.brick_nodes[0].scale.x, 0.76) and is_equal_approx(game.arena.brick_nodes[1].scale.x, 0.52)
-			var on_arc = is_equal_approx(game.rules.players[1].p.distance_to(game.Rules.goal_center(1)), game.Rules.TRACK_RADIUS)
+			var on_arc = game.rules.players[1].p.is_equal_approx(game.Rules.track_position(1, game.rules.players[1].angle))
 			var fixed_aim = game.rules.players[1].aim.is_equal_approx(game.Rules.forward_direction(1, game.rules.players[1].angle))
 			# The colosseum carries three: two sliders and the orbiting one in the middle.
 			var synced_obstacles = game.rules.obstacles.size() == game.rules.map.obstacles.size() and game.rules.obstacles.size() >= 2 and game.rules.obstacle_time > 0.5

@@ -72,8 +72,8 @@ func run() -> void:
 	check(absf(nudge) > 0.0 and absf(nudge) < 0.4, "A still thumb beside a target is eased, gently (%.3f)" % nudge)
 	check(gap_after < gap_before, "And the easing closes the gap to the nearest target (%.4f para %.4f)" % [gap_before, gap_after])
 
-	# 3b. Too far away, the magnetism keeps quiet: the thumb decides.
-	scene.rules.players[0].angle = mark.angle + 0.4
+	# 3b. Out past the last target — where the rail now reaches — the magnetism keeps quiet.
+	scene.rules.players[0].angle = scene.rules.track_limit
 	check(is_equal_approx(scene.local_command().move.x, 0.0), "Far from every target, a still thumb means standing still")
 
 	# 3c. And it never fights a real push.

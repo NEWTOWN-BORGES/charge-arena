@@ -4,7 +4,11 @@ const MAP_SCALE = 1.24
 const HALF_WIDTH = 6.0 * MAP_SCALE
 const HALF_LENGTH = 6.93 * MAP_SCALE
 const GOAL_RADIUS = 1.65
+# The pilot's rail is an ellipse, not a circle: wide across the arena and shallow into it.
+# A circle of radius 2.6 could never put the pilot further than 2.6 from the middle, no
+# matter how roomy the arena was — the reach was capped by the rail itself, not by the map.
 const TRACK_RADIUS = 2.6
+const TRACK_WIDTH = 4.6
 # How far along its arc a pilot may walk. The arc is a circle around its own goal, so this
 # cannot grow much further: at 0.95 the pilot already clips the hexagon's wall, and at 0.85
 # there is 0.51 of clearance against a pilot radius of 0.43. Walking out this far is what
@@ -25,6 +29,9 @@ const BALL_SPEED = 15.5
 const FIRE_INTERVAL = 0.42
 const PLAYER_LIVES = 5
 const STUN_SECONDS = 0.5
+# How far across the far end of the arena the pilot's aim sweeps as it walks its rail.
+# Wider than the arena itself, so the ends of the rail still cover the far corners.
+const AIM_SPAN = 8.6
 const FACING_FACTOR = 1.35
 # The turn saturates instead of running on: the pilot never faces more than this far off
 # the arena's axis, so cornered against a wall it still fires down the field rather than
@@ -198,7 +205,7 @@ func _init() -> void:
 
 static func default_map() -> Dictionary:
 	return {
-		"id": "aurora", "outline": "hex", "boosters": true, "bricks": "banks", "barriers": [],
+		"id": "aurora", "outline": "stadium", "boosters": true, "bricks": "banks", "barriers": [],
 		"obstacles": [
 			{"kind": "slide", "center": Vector2(0, -1.25), "axis": Vector2.RIGHT, "travel": OBSTACLE_TRAVEL, "frequency": OBSTACLE_FREQUENCY, "phase": 0.0},
 			{"kind": "slide", "center": Vector2(0, 1.25), "axis": Vector2.RIGHT, "travel": OBSTACLE_TRAVEL, "frequency": OBSTACLE_FREQUENCY, "phase": PI},
@@ -237,6 +244,15 @@ static func outline_points(kind: String) -> Array:
 			return [Vector2(0, -l), Vector2(w, -l / 2), Vector2(w + 1.3, -1.5), Vector2(w + 1.3, 1.5), Vector2(w, l / 2), Vector2(0, l), Vector2(-w, l / 2), Vector2(-w - 1.3, 1.5), Vector2(-w - 1.3, -1.5), Vector2(-w, -l / 2)]
 		"octagon":
 			return [Vector2(-2.3, -l), Vector2(2.3, -l), Vector2(w, -l / 2), Vector2(w, l / 2), Vector2(2.3, l), Vector2(-2.3, l), Vector2(-w, l / 2), Vector2(-w, -l / 2)]
+		"stadium":
+			# A long hall with a broad flat end behind each goal: the roomiest rail of all.
+			return [Vector2(-5.0, -l), Vector2(5.0, -l), Vector2(w, -l + 2.6), Vector2(w, l - 2.6), Vector2(5.0, l), Vector2(-5.0, l), Vector2(-w, l - 2.6), Vector2(-w, -l + 2.6)]
+		"lens":
+			# Flat ends, sides bowed outwards: a wide rail and a belly that throws ricochets back.
+			return [Vector2(-4.0, -l), Vector2(4.0, -l), Vector2(w, -l / 2), Vector2(w + 1.0, 0), Vector2(w, l / 2), Vector2(4.0, l), Vector2(-4.0, l), Vector2(-w, l / 2), Vector2(-w - 1.0, 0), Vector2(-w, -l / 2)]
+		"gorge":
+			# Flat ends and a waist that pinches at mid-field, without closing the rail.
+			return [Vector2(-4.2, -l), Vector2(4.2, -l), Vector2(w, -l / 2), Vector2(w - 1.7, -1.4), Vector2(w - 1.7, 1.4), Vector2(w, l / 2), Vector2(4.2, l), Vector2(-4.2, l), Vector2(-w, l / 2), Vector2(-w + 1.7, 1.4), Vector2(-w + 1.7, -1.4), Vector2(-w, -l / 2)]
 		"colosseum":
 			# Wide rectangular stadium with 45-degree chamfered corners, matching the drawn sketch.
 			var cx = 4.4
@@ -250,7 +266,7 @@ static func outline_points(kind: String) -> Array:
 	return WALLS.duplicate()
 
 static func side_x(kind: String) -> float:
-	return {"pinch": HALF_WIDTH - 1.9, "wide": HALF_WIDTH + 1.3}.get(kind, HALF_WIDTH)
+	return {"pinch": HALF_WIDTH - 1.9, "wide": HALF_WIDTH + 1.3, "gorge": HALF_WIDTH - 1.7, "lens": HALF_WIDTH + 1.0}.get(kind, HALF_WIDTH)
 
 static func track_limit_for(layout: Dictionary) -> float:
 	# How far this arena lets a pilot walk before it would scrape a wall, a barrier or a
@@ -397,13 +413,16 @@ static func goal_center(team: int) -> Vector2:
 	return Vector2(0, HALF_LENGTH * (1 if team == 0 else -1))
 
 static func track_position(team: int, angle: float) -> Vector2:
-	return goal_center(team) + Vector2(sin(angle), -cos(angle) * (1 if team == 0 else -1)) * TRACK_RADIUS
+	return goal_center(team) + Vector2(sin(angle) * TRACK_WIDTH, -cos(angle) * TRACK_RADIUS * (1 if team == 0 else -1))
 
 static func forward_direction(team: int, angle: float) -> Vector2:
-	# Fixed facing for each arc position: the full turn near the middle, easing smoothly
-	# into FACING_LIMIT at the ends and never past it.
-	var facing = FACING_LIMIT * tanh(angle * FACING_FACTOR / FACING_LIMIT)
-	return Vector2(sin(facing), -cos(facing) * (1 if team == 0 else -1))
+	# The pilot looks at a point that slides across the far end of the arena as it walks,
+	# so the aim is always pointed into the field. A fixed multiple of the rail angle used
+	# to work only because the rail was tiny: on a wide rail it turned the pilot outwards,
+	# straight into the side wall.
+	var from = track_position(team, angle)
+	var mark = Vector2(sin(angle) * AIM_SPAN, goal_center(1 - team).y)
+	return (mark - from).normalized()
 
 static func obstacle_position(index: int, time: float) -> Vector2:
 	# Default arena's sliders; maps use obstacle_at.
@@ -522,7 +541,8 @@ func step(dt: float, commands: Array) -> void:
 		var cmd: Dictionary = commands[team]
 		var move: Vector2 = cmd.get("move", Vector2.ZERO)
 		# Horizontal input moves along a fixed arc; vertical input never leaves it.
-		p.angle = clampf(p.angle + clampf(move.x, -1, 1) * SPEED / TRACK_RADIUS * dt, -track_limit, track_limit)
+		# Walking speed is set along the rail, so a wider rail is not also a faster one.
+		p.angle = clampf(p.angle + clampf(move.x, -1, 1) * SPEED / TRACK_WIDTH * dt, -track_limit, track_limit)
 		p.p = track_position(team, p.angle)
 		p.aim = forward_direction(team, p.angle)
 		activate_power(team, int(cmd.get("power", -1)))
@@ -1046,29 +1066,32 @@ func explode(ball: Dictionary) -> void:
 		damage_player(enemy, EXPLOSION_DAMAGE, ball.p)
 	events.append({"kind": "explosion", "p": ball.p, "team": ball.owner, "radius": EXPLOSION_RADIUS})
 
-static func facing_slope(angle: float) -> float:
-	# How fast the facing turns at this point of the arc; it flattens towards the ends, and
-	# the solvers step by it instead of assuming the old straight ratio.
-	var shaped = tanh(angle * FACING_FACTOR / FACING_LIMIT)
-	return maxf(FACING_FACTOR * (1.0 - shaped * shaped), 0.22)
+func aim_error(team: int, angle: float, target: Vector2) -> float:
+	# How far the pilot standing at this point of the rail is turned away from the target.
+	var from = track_position(team, angle)
+	return angle_difference(forward_direction(team, angle).angle(), (target - from).angle())
 
 func direct_angle(team: int, target: Vector2) -> float:
-	# The place on the arc from which the pilot points straight at a spot. Solved by a
-	# couple of refinements instead of by simulating shots: it costs microseconds, and the
-	# whole aiming system leans on it every frame.
-	var goal = goal_center(team)
-	var sign_y = 1.0 if team == 0 else -1.0
-	var depth = maxf((goal.y - target.y) * sign_y, 0.25)
-	var wanted = clampf(atan2(target.x, depth), -FACING_LIMIT * 0.999, FACING_LIMIT * 0.999)
-	var angle = clampf(atanh(wanted / FACING_LIMIT) * FACING_LIMIT / FACING_FACTOR, -track_limit, track_limit)
-	for pass_index in range(4):
-		var from = track_position(team, angle)
-		# angle_difference(a, b) is b - a, so the heading goes first: this is how far the
-		# pilot still has to turn to look at the target. With the arguments the other way
-		# round every refinement walked away from the answer.
-		var error = angle_difference(forward_direction(team, angle).angle(), (target - from).angle())
-		angle = clampf(angle + error / facing_slope(angle), -track_limit, track_limit)
-	return angle
+	# The place on the rail from which the pilot points straight at a spot. Walking right
+	# always swings the aim right, so the error crosses zero exactly once: halve the arc
+	# until it is found. Costs microseconds and never walks away from the answer.
+	var low = -track_limit
+	var high = track_limit
+	var low_error = aim_error(team, low, target)
+	var high_error = aim_error(team, high, target)
+	if low_error * high_error > 0.0:
+		# The target lies outside what this rail can cover: the nearest end is the answer.
+		return low if absf(low_error) < absf(high_error) else high
+	for pass_index in range(22):
+		var middle = (low + high) * 0.5
+		var error = aim_error(team, middle, target)
+		if error * low_error <= 0.0:
+			high = middle
+			high_error = error
+		else:
+			low = middle
+			low_error = error
+	return (low + high) * 0.5
 
 func firing_angles(team: int, _samples: int = 0) -> Array:
 	# One entry per enemy brick still standing, sorted along the arc. No ball is simulated
@@ -1458,7 +1481,7 @@ func ai_defensive_power(level: Dictionary) -> int:
 
 func ai_angle_score(angle: float) -> float:
 	var distance = absf(angle - players[1].angle)
-	var delay = distance * TRACK_RADIUS / SPEED
+	var delay = distance * TRACK_WIDTH / SPEED
 	return shot_value(predict_shot(1, angle, delay)) - distance * 2.0
 
 func shot_value(outcome: Dictionary) -> float:

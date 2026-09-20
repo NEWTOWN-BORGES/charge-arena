@@ -240,7 +240,7 @@ godot --headless --path . --script res://tests/test_pvp_powers.gd -- --host
 godot --headless --path . --script res://tests/test_pvp_powers.gd -- --client
 ```
 
-Os obstáculos de cada mapa vivem junto às paredes e aos cantos, nunca na rota central: servem para ricochete, não para tapar. Medido ângulo a ângulo, todos os níveis deixam agora passar tanto ou quase tanto como uma arena vazia. O arco do piloto vai até 0,85 rad — o máximo antes de o boneco roçar a parede do hexágono —, o que põe os aceleradores laterais ao alcance de 11 ângulos em vez de 5.
+O carril do piloto é uma **elipse** (4,6 de largura por 2,6 de profundidade), não um círculo: um círculo de raio 2,6 nunca deixaria o piloto afastar-se mais do que isso do centro, por mais larga que fosse a arena. Cada arena mede o seu próprio arco contra as suas paredes (`track_limit_for`), e as cinco da campanha — estádio, lente, desfiladeiro, octógono e coliseu — têm todas um fundo largo atrás das balizas, o que dá ao piloto 3,5 a 4,35 de alcance lateral (era 1,47). A mira acompanha: em vez de virar um múltiplo fixo do ângulo do carril, o piloto olha para um ponto que varre o fundo da arena, por isso aponta sempre para dentro do campo. Os obstáculos vivem junto às paredes e aos cantos, nunca na rota central: servem para ricochete, não para tapar.
 
 ## Ficheiros
 

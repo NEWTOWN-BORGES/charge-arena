@@ -443,8 +443,9 @@ func capture_motion(rules) -> void:
 func arc_points(center: Vector2, radius: float, limit: float, team: int, height: float, samples: int = 64) -> Array:
 	var result: Array = []
 	for i in range(samples + 1):
+		# The rail follows the same ellipse the rules walk the pilot along.
 		var angle = lerpf(-limit, limit, float(i) / samples)
-		var p = center + Vector2(sin(angle), -cos(angle) * (1 if team == 0 else -1)) * radius
+		var p = center + Vector2(sin(angle) * Rules.TRACK_WIDTH, -cos(angle) * radius * (1 if team == 0 else -1))
 		result.append(Vector3(p.x, height, p.y))
 	return result
 

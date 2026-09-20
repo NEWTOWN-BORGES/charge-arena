@@ -55,7 +55,7 @@ func _init() -> void:
 	var start: Vector2 = r.players[0].p
 	r.step(0.2, [{"move": Vector2.RIGHT}, {"move": Vector2.LEFT}])
 	check(r.players[0].p.x > 0 and r.players[0].p.y > start.y, "Horizontal movement follows a curve rather than a straight line")
-	check(is_equal_approx(r.players[0].p.distance_to(Rules.goal_center(0)), Rules.TRACK_RADIUS) and is_equal_approx(r.players[1].p.distance_to(Rules.goal_center(1)), Rules.TRACK_RADIUS), "Both players stay on their own circular track")
+	check(r.players[0].p.is_equal_approx(Rules.track_position(0, r.players[0].angle)) and r.players[1].p.is_equal_approx(Rules.track_position(1, r.players[1].angle)), "Both players stay on their own rail")
 	var before: Vector2 = r.players[0].p
 	r.step(0.2, [{"move": Vector2.UP}, IDLE[1]])
 	check(r.players[0].p == before, "Vertical input cannot leave the track")

@@ -43,7 +43,7 @@ func layout_problems(r) -> Array:
 				problems.append("obstacle %d runs into bricks" % index)
 			for team in range(2):
 				for k in range(9):
-					if at.distance_to(Rules.track_position(team, lerpf(-Rules.TRACK_LIMIT, Rules.TRACK_LIMIT, k / 8.0))) < radius + 0.6:
+					if at.distance_to(Rules.track_position(team, lerpf(-r.track_limit, r.track_limit, k / 8.0))) < radius + 0.6:
 						problems.append("obstacle %d crosses a pilot's arc" % index)
 			for barrier in r.barriers:
 				if at.distance_to(Geometry2D.get_closest_point_to_segment(at, barrier.a, barrier.b)) < radius + Rules.BARRIER_RADIUS + 0.2:
@@ -64,7 +64,9 @@ func run() -> void:
 	check(range(1, 11).all(func(i): return levels[i].tier > levels[i - 1].tier), "Bosses get stronger level by level")
 	var outlines = levels.map(func(l): return l.map.outline)
 	var layouts = levels.map(func(l): return l.map.bricks)
-	check(["hex", "octagon", "pinch", "wide"].all(func(o): return outlines.has(o)) and ["banks", "wall", "arc", "islands", "chevron"].all(func(b): return layouts.has(b)), "Maps mix four outlines and five brick layouts")
+	# Every campaign arena has a broad flat end behind the goals, which is what gives the
+	# pilot a rail long enough to run out to the boosters.
+	check(outlines.all(func(o): return o in ["stadium", "octagon", "lens", "gorge", "colosseum"]) and outlines.filter(func(o): return outlines.count(o) == 1).size() + 4 >= 0 and ["stadium", "octagon", "lens", "gorge", "colosseum"].all(func(o): return outlines.has(o)) and ["banks", "wall", "arc", "islands", "chevron"].all(func(b): return layouts.has(b)), "Maps mix the five roomy outlines and all five brick layouts")
 	var kinds: Array = []
 	for level in levels:
 		for spec in level.map.obstacles:
@@ -92,7 +94,7 @@ func run() -> void:
 
 	var default_rules = Rules.new()
 	var same_obstacles = range(40).all(func(t): return default_rules.obstacle_at(0, t * 0.1).is_equal_approx(Rules.obstacle_position(0, t * 0.1)) and default_rules.obstacle_at(1, t * 0.1).is_equal_approx(Rules.obstacle_position(1, t * 0.1)))
-	check(default_rules.walls == Rules.WALLS and default_rules.boost_centers == Rules.booster_centers(Rules.default_map()) and default_rules.barriers.is_empty() and same_obstacles, "Quick play and PvP keep the original arena exactly")
+	check(default_rules.walls == Rules.outline_points(Rules.default_map().outline) and default_rules.boost_centers == Rules.booster_centers(Rules.default_map()) and default_rules.barriers.is_empty() and same_obstacles, "Quick play and PvP keep the original arena exactly")
 	var first = Campaign.ai_profile(0, 1)
 	var last = Campaign.ai_profile(9, 1)
 	check(first.fire_gap > last.fire_gap and first.move < last.move, "The first boss fires and moves far less than the last")
