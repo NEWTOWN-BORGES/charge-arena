@@ -15,7 +15,7 @@ const CATALOG = [
 	{"id": "ghost", "short": "FANTASMA", "name": "BALAS FANTASMA", "kind": "ataque", "charge": 4, "price": 250, "color": "c8a8ff",
 		"about": "Oito segundos com as balas a atravessar pilares, barreiras e obstáculos. As paredes continuam a reflectir."},
 	{"id": "laser", "short": "LASER", "name": "RAIO LASER", "kind": "ataque", "charge": 18, "price": 800, "color": "ff6b7a",
-		"about": "Três segundos de feixe contínuo que atravessa tudo menos as paredes e tira 2 de vida a cada tijolo."},
+		"about": "Uma lança contínua durante 3 segundos, que morde a cada meio segundo e **dobra uma vez na parede**: com o ângulo certo apanha a muralha de frente e ainda leva o resto do feixe para outro lado. Atravessa bumpers e barreiras, e enquanto está acesa a pistola cala-se."},
 	{"id": "rebuild", "short": "REPOR", "name": "RECONSTRUÇÃO", "kind": "defesa", "charge": 15, "price": 600, "color": "9fe37a",
 		"about": "Sete tijolos teus voltam inteiros ao campo, os mais próximos da baliza primeiro, cada um dentro de um anel de luz."},
 	{"id": "mirror", "short": "ESPELHO", "name": "CAPA ESPELHO", "kind": "defesa", "charge": 12, "price": 700, "color": "7fe6ff",

@@ -2330,12 +2330,22 @@ func update_power_effects(rules, dt: float) -> void:
 		if beam.visible:
 			var origin: Vector2 = rules.players[team].p
 			var heading: Vector2 = Rules.forward_direction(team, rules.players[team].angle)
-			var length: float = rules.laser_length(origin, heading)
-			# The lance is modelled from 0 to 1 along +X, so it grows out of the muzzle.
-			beam.position = Vector3(origin.x, 0.58, origin.y)
-			beam.rotation.y = -heading.angle()
+			var path: Array = rules.laser_path(origin, heading)
 			var flicker = 1.0 + sin(clock * 30.0) * 0.14
-			beam.scale = Vector3(length, flicker, flicker)
+			beam.position = Vector3.ZERO
+			beam.rotation.y = 0.0
+			beam.scale = Vector3.ONE
+			for leg in range(Rules.LASER_BOUNCES + 1):
+				var limb: Node3D = beam.get_node("Leg%d" % leg)
+				limb.visible = leg < path.size() - 1
+				if not limb.visible:
+					continue
+				var from: Vector2 = path[leg]
+				var travel: Vector2 = path[leg + 1] - from
+				# Each leg is modelled from 0 to 1 along +X, so it grows out of its corner.
+				limb.position = Vector3(from.x, 0.58, from.y)
+				limb.rotation.y = -travel.angle()
+				limb.scale = Vector3(travel.length(), flicker, flicker)
 
 
 func build_power_effects() -> void:
@@ -2424,9 +2434,13 @@ func build_power_effects() -> void:
 		var beam = Node3D.new()
 		beam.name = "Beam"
 		root.add_child(beam)
-		# Unit-long lance along +X, scaled to the measured reach every frame.
-		box(beam, Vector3(0.5, 0, 0), Vector3(1.0, 0.16, 0.16), Color(Rules.power_color("laser"), 0.85), true, 0.02)
-		box(beam, Vector3(0.5, 0, 0), Vector3(1.0, 0.34, 0.34), Color(Rules.power_color("laser"), 0.22), true, 0.02)
+		# One unit-long lance per leg of the folded beam, each placed every frame.
+		for leg in range(Rules.LASER_BOUNCES + 1):
+			var limb = Node3D.new()
+			limb.name = "Leg%d" % leg
+			beam.add_child(limb)
+			box(limb, Vector3(0.5, 0, 0), Vector3(1.0, 0.16, 0.16), Color(Rules.power_color("laser"), 0.85), true, 0.02)
+			box(limb, Vector3(0.5, 0, 0), Vector3(1.0, 0.34, 0.34), Color(Rules.power_color("laser"), 0.22), true, 0.02)
 		beam.hide()
 
 

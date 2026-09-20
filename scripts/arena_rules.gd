@@ -65,6 +65,9 @@ const LASER_SECONDS = 3.0
 const LASER_TICK = 0.5
 const LASER_DAMAGE = 2
 const LASER_WIDTH = 0.22
+# The lance folds off the walls like a shot does, so a corner of the arena can be reached
+# from the other side of it.
+const LASER_BOUNCES = 1
 const REBUILD_BRICKS = 7
 const MIRROR_SECONDS = 4.5
 # Walls rise in front of the bricks they defend: one per bank of the current layout,
@@ -1016,7 +1019,7 @@ func step_laser(team: int, dt: float) -> void:
 	fire_laser(team)
 
 func laser_length(origin: Vector2, heading: Vector2) -> float:
-	# The beam crosses bumpers and barriers and stops where it leaves the arena.
+	# How far the beam runs before it meets a wall. It crosses bumpers and barriers.
 	var limit = 2.0 * (HALF_LENGTH + HALF_WIDTH)
 	var step = 0.25
 	var travelled = step
@@ -1026,25 +1029,62 @@ func laser_length(origin: Vector2, heading: Vector2) -> float:
 		travelled += step
 	return limit
 
+func laser_path(origin: Vector2, heading: Vector2) -> Array:
+	# The whole folded beam: the corner it meets, the one after that, and so on. Reflected
+	# off the arena outline the same way a shot is, up to LASER_BOUNCES times.
+	var points: Array = [origin]
+	var at = origin
+	var way = heading
+	for fold in range(LASER_BOUNCES + 1):
+		var reach = laser_length(at, way)
+		var hit = at + way * reach
+		points.append(hit)
+		if fold == LASER_BOUNCES:
+			break
+		# Which wall it landed on decides where it goes next.
+		var normal = Vector2.ZERO
+		var closest = INF
+		for i in range(walls.size()):
+			var a: Vector2 = walls[i]
+			var b: Vector2 = walls[(i + 1) % walls.size()]
+			var edge: Vector2 = b - a
+			var t = clampf((hit - a).dot(edge) / maxf(edge.length_squared(), 0.0001), 0, 1)
+			var distance: float = hit.distance_to(a.lerp(b, t))
+			if distance < closest:
+				closest = distance
+				normal = Vector2(-edge.y, edge.x).normalized()
+		if normal == Vector2.ZERO:
+			break
+		way = way.bounce(normal).normalized()
+		# Step off the wall so the next leg does not start outside the arena.
+		at = hit + way * 0.06
+	return points
+
 func fire_laser(team: int) -> void:
 	var origin: Vector2 = players[team].p
 	var heading: Vector2 = forward_direction(team, players[team].angle)
-	var reach = laser_length(origin, heading)
+	var path: Array = laser_path(origin, heading)
 	var hit: Array = []
-	for index in range(bricks.size()):
-		var brick: Dictionary = bricks[index]
-		if not brick.alive or brick.team == team:
-			continue
-		var extent = BRICK_EXTENT * brick_scale(brick.hp) + Vector2.ONE * LASER_WIDTH
-		var t = segment_box((origin - brick.p).rotated(-brick.rotation), (heading * reach).rotated(-brick.rotation), Vector2.ZERO, extent)
-		if t >= 0:
-			hit.append(index)
+	var enemy = 1 - team
+	var caught_pilot = false
+	for leg in range(path.size() - 1):
+		var from: Vector2 = path[leg]
+		var travel: Vector2 = path[leg + 1] - from
+		for index in range(bricks.size()):
+			var brick: Dictionary = bricks[index]
+			if not brick.alive or brick.team == team or hit.has(index):
+				continue
+			var extent = BRICK_EXTENT * brick_scale(brick.hp) + Vector2.ONE * LASER_WIDTH
+			var t = segment_box((from - brick.p).rotated(-brick.rotation), travel.rotated(-brick.rotation), Vector2.ZERO, extent)
+			if t >= 0:
+				hit.append(index)
+		if segment_circle(from, travel, players[enemy].p, 0.43 + LASER_WIDTH) >= 0:
+			caught_pilot = true
 	for index in hit:
 		damage_brick(index, LASER_DAMAGE, team, bricks[index].p)
-	var enemy = 1 - team
-	if segment_circle(origin, heading * reach, players[enemy].p, 0.43 + LASER_WIDTH) >= 0:
+	if caught_pilot:
 		damage_player(enemy, 1, players[enemy].p)
-	events.append({"kind": "laser", "team": team, "p": origin, "heading": heading, "length": reach})
+	events.append({"kind": "laser", "team": team, "p": origin, "heading": heading, "length": origin.distance_to(path[1]), "path": path})
 
 func credit_destroyed_brick(team: int) -> void:
 	powers[team].destroyed += 1
