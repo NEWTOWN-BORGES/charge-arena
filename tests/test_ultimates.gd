@@ -276,6 +276,30 @@ func run() -> void:
 	check(ramps and waits[0] > waits[waits.size() - 1] * 3.0, "The later the level, the sooner the boss reaches for its ultimate (%.0f s no primeiro, %.0f s no último)" % [waits[0], waits[waits.size() - 1]])
 	check(float(Campaign.ai_profile(8, 2).ultimate_wait) < float(Campaign.ai_profile(8, 0).ultimate_wait), "And DIFÍCIL brings it out sooner than FÁCIL")
 
+	# A boss left to its own devices, with nobody handing it charge, still brings out its
+	# kit and its ultimate: the charge used to come only from the bricks it broke, and in a
+	# hundred seconds of play it never reached twenty.
+	var alone = Rules.new()
+	alone.set_map(Campaign.LEVELS[7].map)
+	alone.phase = "play"
+	alone.ai_profile = Campaign.ai_profile(7, 1)
+	alone.loadouts = [["blast", "air", ""], Campaign.boss_kit(7) + ["thunder"]]
+	var kit_uses = 0
+	var cast = 0
+	for tick in range(60 * 100):
+		alone.step(1.0 / 60, [{"move": Vector2(sin(tick * 0.011), 0), "fire": true}, alone.ai_command()])
+		for event in alone.events:
+			if int(event.get("team", -1)) != 1:
+				continue
+			if event.kind == "power":
+				kit_uses += 1
+			elif event.kind == "ultimate":
+				cast += 1
+		if alone.phase != "play":
+			alone.phase = "play"
+	check(kit_uses >= 6, "A boss winds its kit up on its own and spends it (%d poderes em 100 s)" % kit_uses)
+	check(cast >= 1 and cast <= 4, "And brings its ultimate out, without spamming it (%d vezes)" % cast)
+
 	# The last boss, played against a pilot that fights back, actually fires it.
 	var arena = playing("sun_ray")
 	arena.loadouts = [["blast", "air", ""], ["laser", "stun", "sun_ray"]]

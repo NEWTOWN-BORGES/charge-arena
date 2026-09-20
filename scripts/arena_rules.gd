@@ -182,6 +182,9 @@ var ai_scan_index = 0
 var ai_best_score = -INF
 var ai_next_fire_check = 0.0
 var ai_next_power = 0.0
+var ai_charge_time = 0.0
+var ai_charge_steps = 0
+var ai_next_ultimate = 0.0
 var ai_level = 2
 # Campaign levels pass their own AI pace; empty uses AI_LEVELS[ai_level].
 var ai_profile: Dictionary = {}
@@ -398,6 +401,9 @@ func reset_round() -> void:
 	ai_best_score = -INF
 	ai_next_fire_check = 0.0
 	ai_next_power = 0.0
+	ai_charge_time = 0.0
+	ai_charge_steps = 0
+	ai_next_ultimate = 0.0
 	players = [
 		{"p": track_position(0, 0), "angle": 0.0, "aim": Vector2.UP, "hp": PLAYER_LIVES, "stun": 0.0, "cooldown": 0.0},
 		{"p": track_position(1, 0), "angle": 0.0, "aim": Vector2.DOWN, "hp": PLAYER_LIVES, "stun": 0.0, "cooldown": 0.0}
@@ -574,6 +580,23 @@ func step(dt: float, commands: Array) -> void:
 			# While the lance is lit, the lance is the gun. The pilot used to keep firing
 			# ordinary rounds underneath it, and those are what people saw ricocheting.
 			shoot(team)
+	if not ai_profile.is_empty():
+		# A campaign boss winds its kit up with the clock as well as with the bricks it
+		# breaks. Leaning on bricks alone it almost never reached twenty: measured over a
+		# hundred seconds of play, the ultimate came out zero times.
+		ai_charge_time += dt
+		var wind: float = float(ai_profile.get("charge_tick", 1.6))
+		while ai_charge_time >= wind:
+			ai_charge_time -= wind
+			ai_charge_steps += 1
+			for index in range(POWER_SLOTS):
+				# The ultimate winds at half the pace of the bought powers: at full pace the
+				# late bosses were throwing four of them in a hundred seconds.
+				if index == POWER_SLOTS - 1 and ai_charge_steps % 2 == 1:
+					continue
+				var cost = power_charge_cost(1, index)
+				if cost > 0 and powers[1].charge[index] < cost:
+					powers[1].charge[index] += 1
 	step_turrets(dt)
 	for ball in balls.duplicate():
 		if phase != "play":
@@ -1509,7 +1532,9 @@ func ai_ultimate(level: Dictionary, aimed: bool) -> int:
 	# The boss keeps its skin ultimate for the moment that ultimate is actually good for,
 	# and only once the level says it may: the first bosses sit on it for most of a match,
 	# the last ones bring it out early.
-	if elapsed < float(level.get("ultimate_wait", 30.0)) or elapsed < ai_next_power:
+	# Its own pause on top of the shared one: with the kit winding up on the clock, the last
+	# bosses were throwing four ultimates in a hundred seconds.
+	if elapsed < float(level.get("ultimate_wait", 30.0)) or elapsed < ai_next_power or elapsed < ai_next_ultimate:
 		return -1
 	var id = power_id(1, POWER_SLOTS - 1)
 	if not Powers.is_ultimate(id) or not can_activate_power(1, POWER_SLOTS - 1):
@@ -1538,6 +1563,7 @@ func ai_ultimate(level: Dictionary, aimed: bool) -> int:
 	if not ready:
 		return -1
 	ai_next_power = elapsed + float(level.get("power_gap", AI_POWER_GAP))
+	ai_next_ultimate = elapsed + float(level.get("ultimate_gap", 30.0))
 	return POWER_SLOTS - 1
 
 func wall_health_full(team: int) -> int:

@@ -110,7 +110,8 @@ static func ai_profile(index: int, difficulty: int) -> Dictionary:
 	# The ultimate too: the first bosses only reach for it near the end of a long match,
 	# the last ones open with it.
 	var profile = {"fire_gap": lerpf(2.35, 0.55, tier), "move": lerpf(0.34, 0.76, tier), "dodge": tier >= 0.5,
-		"power_gap": lerpf(9.5, 3.0, tier), "ultimate_wait": lerpf(42.0, 7.0, tier)}
+		"power_gap": lerpf(9.5, 3.0, tier), "ultimate_wait": lerpf(42.0, 7.0, tier),
+		"charge_tick": lerpf(2.4, 0.9, tier), "ultimate_gap": lerpf(45.0, 26.0, tier)}
 	match difficulty:
 		0:
 			profile.fire_gap = profile.fire_gap * 1.55 + 0.55
@@ -118,12 +119,16 @@ static func ai_profile(index: int, difficulty: int) -> Dictionary:
 			profile.dodge = tier >= 0.7
 			profile.power_gap *= 1.5
 			profile.ultimate_wait *= 1.5
+			profile.charge_tick *= 1.4
+			profile.ultimate_gap *= 1.3
 		2:
 			profile.fire_gap *= 0.55
 			profile.move = minf(1.0, profile.move * 1.15)
 			profile.dodge = true
 			profile.power_gap *= 0.65
 			profile.ultimate_wait *= 0.6
+			profile.charge_tick *= 0.75
+			profile.ultimate_gap *= 0.8
 	return profile
 
 func is_unlocked(index: int) -> bool:
