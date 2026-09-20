@@ -111,7 +111,10 @@ func run() -> void:
 	check(Campaign.ai_profile(5, 0).fire_gap > Campaign.ai_profile(5, 1).fire_gap and Campaign.ai_profile(5, 1).fire_gap > Campaign.ai_profile(5, 2).fire_gap, "FÁCIL and DIFÍCIL shift every boss")
 
 	var testing = Campaign.new()
-	check(Campaign.UNLOCK_ALL_FOR_TESTS and range(Campaign.LEVELS.size()).all(func(i): return testing.is_unlocked(i)) and testing.suggested_level() == 0, "Testing build: every level is open and the menu starts on the first unplayed one")
+	testing.unlock_all = true
+	check(range(Campaign.LEVELS.size()).all(func(i): return testing.is_unlocked(i)) and testing.suggested_level() == 0, "A testing build can open every level at once")
+	testing.unlock_all = false
+	check(not Campaign.UNLOCK_ALL_FOR_TESTS and testing.is_unlocked(0) and not testing.is_unlocked(1), "The shipped build opens only the first, and the rest are won")
 
 	# Level-by-level unlocking, as it works once the testing switch is turned off.
 	var progress = Campaign.new()

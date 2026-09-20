@@ -39,7 +39,13 @@ func run() -> void:
 	# ---------------------------------------------------------------- the shop
 	# The testing build hands out everything; these checks use the real progression.
 	var testing = Powers.new()
-	check(Powers.UNLOCK_ALL_FOR_TESTS and Powers.CATALOG.all(func(e): return testing.is_owned(e.id)) and testing.bricks == Powers.TEST_WALLET, "Testing build: every power is bought and the wallet is full")
+	testing.unlock_all = true
+	testing.load_preferences()
+	check(Powers.CATALOG.all(func(e): return testing.is_owned(e.id)) and testing.bricks >= Powers.TEST_WALLET, "A testing build can hand over every power with a full wallet")
+	testing.unlock_all = false
+	testing.owned = Powers.STARTER_KIT.duplicate()
+	testing.bricks = 0
+	check(not Powers.UNLOCK_ALL_FOR_TESTS and testing.owned.size() == 2 and not testing.is_owned("laser"), "The shipped build starts with the two free powers and an empty wallet")
 	var shop = Powers.new()
 	shop.unlock_all = false
 	shop.owned = Powers.STARTER_KIT.duplicate()

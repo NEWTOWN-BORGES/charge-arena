@@ -34,7 +34,7 @@ const CATALOG = [
 ]
 # Testing build: every skin can be worn without beating its boss first. Set to false to
 # earn them again; the bosses you have beaten are saved either way.
-const UNLOCK_ALL_FOR_TESTS = true
+const UNLOCK_ALL_FOR_TESTS = false
 var config_path = CONFIG_PATH
 var unlock_all = UNLOCK_ALL_FOR_TESTS
 var defeated: Array = []

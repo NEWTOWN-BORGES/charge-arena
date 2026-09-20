@@ -37,7 +37,11 @@ func run() -> void:
 
 	# These checks use the real progression, not the testing build's open collection.
 	var testing = Skins.new()
-	check(Skins.UNLOCK_ALL_FOR_TESTS and testing.unlocked_count() == Skins.CATALOG.size(), "Testing build: every skin can be worn")
+	testing.unlock_all = true
+	check(testing.unlocked_count() == Skins.CATALOG.size(), "A testing build can wear every skin")
+	testing.unlock_all = false
+	testing.defeated = []
+	check(not Skins.UNLOCK_ALL_FOR_TESTS and testing.unlocked_count() == 1, "The shipped build starts with the standard pilot alone")
 	var progress = Skins.new()
 	progress.unlock_all = false
 	progress.config_path = TMP

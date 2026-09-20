@@ -20,6 +20,10 @@ func run() -> void:
 	game = load("res://scenes/main.tscn").instantiate()
 	root.add_child(game)
 	role = "host" if OS.get_cmdline_user_args().has("--host") else "client"
+	# A fresh pilot has no ultimate — it comes with a skin you have won — so this test
+	# wears one that has one.
+	game.skins.unlock_all = true
+	game.skins.selected = 3
 	if role == "host":
 		game.host_game()
 	else:

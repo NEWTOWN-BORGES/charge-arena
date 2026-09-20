@@ -5,7 +5,7 @@ extends RefCounted
 const Rules = preload("res://scripts/arena_rules.gd")
 const CONFIG_PATH = "user://campaign.cfg"
 # A single match victory unlocks the next arena. Progress is saved on device.
-const UNLOCK_ALL_FOR_TESTS = true
+const UNLOCK_ALL_FOR_TESTS = false
 # boss: skin worn by the rival (and its bricks), a different one per level; beating it
 # unlocks that skin. tier: 0 (gentle) to 9 (relentless).
 const LEVELS = [

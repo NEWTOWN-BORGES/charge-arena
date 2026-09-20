@@ -567,7 +567,9 @@ func step(dt: float, commands: Array) -> void:
 		activate_power(team, int(cmd.get("power", -1)))
 		if powers[team].rapid_time > 0 and p.cooldown <= 0:
 			shoot(team, 2)
-		elif cmd.get("fire", false) and p.cooldown <= 0:
+		elif cmd.get("fire", false) and p.cooldown <= 0 and powers[team].laser_time <= 0:
+			# While the lance is lit, the lance is the gun. The pilot used to keep firing
+			# ordinary rounds underneath it, and those are what people saw ricocheting.
 			shoot(team)
 	step_turrets(dt)
 	for ball in balls.duplicate():
