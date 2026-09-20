@@ -142,12 +142,12 @@ func run() -> void:
 	check(is_equal_approx(hud.viewer_yaw, yaw_before + 0.6), "Dragging rotates the preview turntable")
 	hud.close_skins()
 
-	# Campaign unlock flow: beating level 2 unlocks Relojoeiro (boss 6); level 1 only trains.
+	# Campaign unlock flow: the Relojoeiro now guards level 5, and level 1 only trains.
 	game.campaign.unlock_all = true
 	game.start_level(0)
 	check(game.arena.unit_skins[1] == 0, "Level 1 is a bout against a copy of the standard pilot")
-	game.start_level(1) # Level 2 (index 1) has boss 6 (Relojoeiro)
-	check(game.arena.unit_skins[1] == 6 and game.arena.unit_tints[1] == true, "Level 2 boss fights in team red before defeat")
+	game.start_level(4) # Level 5 (index 4) has boss 6 (Relojoeiro)
+	check(game.arena.unit_skins[1] == 6 and game.arena.unit_tints[1] == true, "The level 5 boss fights in team red before defeat")
 	game.rules.phase = "finished"
 	game.rules.winner = 0 # Player wins
 	game.finish_level()

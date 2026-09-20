@@ -111,7 +111,7 @@ const SINGULARITY_FAN = 2.7
 # A round whose lane passes this close to a standing brick is laid onto it instead: the
 # blast still opens right across the arena, but it stops pouring itself through the gap
 # between the two banks.
-const SINGULARITY_SNAP = 0.22
+const SINGULARITY_SNAP = 0.45
 # Three waves come in out of the sky and sweep the arena, each one reaching further in;
 # a shot is only caught once its wave has washed over it.
 const SINGULARITY_WAVES = 3
@@ -828,22 +828,54 @@ func singularity_burst(team: int) -> void:
 	# a full spread whatever it caught. They pass straight through the moving obstacles.
 	var count = clampi(eaten * 3, SINGULARITY_MIN_SHOTS, SINGULARITY_MAX_SHOTS)
 	powers[team].ultimate_shots = 0
-	# Where every standing enemy brick lies, as seen from the core.
-	var marks: Array = []
+	# Every standing enemy brick the blast can reach, split into the two sides of the pilot's
+	# line. The release alternates between them, so the wave opens left and right together
+	# instead of pouring the whole thing into whichever bank the pilot happens to face.
+	var left: Array = []
+	var right: Array = []
 	for brick in bricks:
-		if brick.alive and brick.team != team:
-			marks.append({"bearing": angle_difference(heading.angle(), (brick.p - core).angle()), "p": brick.p})
+		if not brick.alive or brick.team == team:
+			continue
+		var bearing: float = angle_difference(heading.angle(), (brick.p - core).angle())
+		if absf(bearing) >= SINGULARITY_FAN * 0.5 + SINGULARITY_SNAP:
+			continue
+		# Split by which side of the arena the brick stands on, not by which side of the
+		# pilot's nose: standing at the end of the rail, the whole wall is to one side of
+		# the pilot, and the blast would pour into a single bank again.
+		if brick.p.x < 0:
+			left.append({"bearing": bearing, "p": brick.p})
+		else:
+			right.append({"bearing": bearing, "p": brick.p})
+	# Each side is walked from the middle outwards, so the two halves open together.
+	left.sort_custom(func(a, b): return a.p.x > b.p.x)
+	right.sort_custom(func(a, b): return a.p.x < b.p.x)
+	var taken = [0, 0]
 	var impacts: Array = []
 	for shot in range(count):
 		while balls.size() >= MAX_BALLS:
 			balls.remove_at(0)
 		var spread = 0.0 if count == 1 else lerpf(-SINGULARITY_FAN * 0.5, SINGULARITY_FAN * 0.5, float(shot) / float(count - 1))
 		var aimed = Vector2.ZERO
-		var closest = SINGULARITY_SNAP
-		for mark in marks:
-			var gap: float = absf(mark.bearing - spread)
-			if gap < closest:
-				closest = gap
+		# One round in four keeps its lane and flies wide: that is what makes the release
+		# look like a wave crossing the arena rather than a volley down one corridor.
+		if shot % 4 != 3:
+			# Odd rounds go left, even rounds go right, each taking the next brick out from
+			# the middle of its own side. Letting them all snap to the nearest brick piled
+			# half the blast onto three of them and threw the rest away.
+			# Counted over the rounds that are actually aimed: keyed on the shot number, the
+			# ones that skipped out to the fan all fell on the same side and left it short.
+			var side: int = (taken[0] + taken[1]) % 2
+			var wall: Array = left if side == 0 else right
+			var other: Array = right if side == 0 else left
+			var slot: int = taken[side]
+			if slot >= wall.size():
+				# That side is spent: the round joins the other one rather than being lost.
+				side = 1 - side
+				wall = other
+				slot = taken[side]
+			if slot < wall.size():
+				var mark: Dictionary = wall[slot]
+				taken[side] = slot + 1
 				spread = mark.bearing
 				aimed = mark.p
 		impacts.append(aimed)

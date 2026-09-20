@@ -206,7 +206,15 @@ func run() -> void:
 	var out_way: Vector2 = Rules.forward_direction(0, hole.players[0].angle)
 	var forward = hole.balls.all(func(b): return b.v.normalized().dot(out_way) > cos(Rules.SINGULARITY_FAN * 0.5 + 0.02))
 	var fanned: Array = hole.balls.map(func(b): return out_way.angle_to(b.v))
-	check(forward and absf(fanned.max() - fanned.min()) > Rules.SINGULARITY_FAN * 0.8, "They leave forwards, in a fan of %.0f degrees" % rad_to_deg(absf(fanned.max() - fanned.min())))
+	# Three rounds in four are laid onto a brick and the fourth keeps its lane, so the blast
+	# still opens across the arena while most of it lands.
+	var aimed: Array = burst[0].impacts.filter(func(p): return p != Vector2.ZERO)
+	check(forward and absf(fanned.max() - fanned.min()) > Rules.SINGULARITY_FAN * 0.6, "They leave forwards, in a fan of %.0f degrees" % rad_to_deg(absf(fanned.max() - fanned.min())))
+	check(aimed.size() >= int(burst[0].count) * 0.6, "And most of them are laid onto a brick of the rival wall (%d de %d)" % [aimed.size(), int(burst[0].count)])
+	var distinct = {}
+	for spot in aimed:
+		distinct[spot] = true
+	check(distinct.size() >= aimed.size() - 2, "Each one takes its own brick instead of piling onto the nearest")
 	check(team_health(hole, 0) == mine_mid, "The draw itself never scratches the caster's own wall")
 	# On the wire, a held round keeps holding.
 	var wire = playing("singularity")

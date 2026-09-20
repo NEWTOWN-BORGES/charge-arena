@@ -58,7 +58,7 @@ func run() -> void:
 	var opened = campaign.complete(0)
 	check(opened and campaign.is_unlocked(1) and not campaign.is_unlocked(2), "Winning level 1 opens level 2, and only level 2")
 	var boss_two = Skins.boss_skin(2)
-	check(boss_two == 6, "Level 2 is the Relojoeiro's")
+	check(boss_two == 1, "Level 2 is the Faroleiro's")
 	check(skins.defeat(boss_two) and skins.is_unlocked(boss_two), "Beating a boss hands you its skin")
 	check(not skins.defeat(boss_two), "And it is only handed over once")
 	check(skins.unlocked_count() == 2, "Two pilots now")

@@ -3,6 +3,7 @@ extends SceneTree
 # level, the end-of-level flow, and a menu whose main actions sit under the thumb.
 const Rules = preload("res://scripts/arena_rules.gd")
 const Campaign = preload("res://scripts/campaign.gd")
+const Skins = preload("res://scripts/skins.gd")
 const TMP = "res://tests/campaign-progress.tmp"
 var failures = 0
 
@@ -62,9 +63,12 @@ func run() -> void:
 	var levels: Array = Campaign.LEVELS
 	var ids = levels.map(func(l): return l.map.id)
 	check(levels.size() == 11 and ids.all(func(id): return ids.count(id) == 1), "Eleven levels, each on its own arena")
-	check(levels[0].boss == 0 and levels[1].boss == 6 and levels[10].boss == 10, "Level 1 trains against a copy of the standard pilot, level 2 meets the Relojoeiro and the Arconte closes the campaign")
+	check(levels[0].boss == 0 and levels[1].boss == 1 and levels[9].boss == 5 and levels[10].boss == 10, "Level 1 trains against a copy of the standard pilot, level 2 meets the Faroleiro, the Sentinela is the one before last and the Arconte closes the campaign")
 	var bosses = levels.slice(1).map(func(l): return l.boss)
 	check(bosses.size() == 10 and bosses.all(func(b): return bosses.count(b) == 1), "Every boss skin has a level of its own")
+	var ultimates: Array = bosses.map(func(b): return String(Skins.CATALOG[b].ultimate))
+	check(ultimates.slice(0, 3).all(func(u): return u == ""), "The three pilots without an ultimate open the run")
+	check(ultimates.slice(3) == ["sentries", "bloom", "plunder", "thunder", "meteors", "singularity", "sun_ray"], "And from there the ultimates climb: sentries, bloom, plunder, thunder, meteors, singularity, sun ray")
 	check(levels.all(func(l): return l.boss >= 0 and l.boss <= 10 and l.challenge != "" and l.tag != ""), "Every level names its challenge and a valid boss skin")
 	check(range(1, 11).all(func(i): return levels[i].tier > levels[i - 1].tier), "Bosses get stronger level by level")
 	var outlines = levels.map(func(l): return l.map.outline)
@@ -175,7 +179,7 @@ func run() -> void:
 	game._process(0.1)
 	game._process(0.1)
 	await process_frame
-	check(game.arena.map.id == "oficina" and game.arena.unit_skins[1] == 6 and game.arena.brick_nodes[40].get_meta("skin") == 6, "The stadium then shows level 2's arena, boss and bricks")
+	check(game.arena.map.id == "farol" and game.arena.unit_skins[1] == 1 and game.arena.brick_nodes[40].get_meta("skin") == 1, "The stadium then shows level 2's arena, boss and bricks")
 	swipe.call(middle, middle + Vector2(30, 4))
 	check(game.menu_level == 1, "A tap or short drag does not change level")
 	swipe.call(middle + Vector2(0, -100), middle + Vector2(90, 120))
@@ -216,9 +220,9 @@ func run() -> void:
 
 	hud.next_button.pressed.emit()
 	await process_frame
-	check(game.level_index == 1 and game.arena.map.id == "oficina" and game.rules.obstacles.size() == 2, "Next level rebuilds the arena with the clockwork sliders")
-	check(game.arena.unit_skins == [game.skins.selected, 6] and game.arena.brick_nodes[40].get_meta("skin") == 6, "The Relojoeiro boss arrives with its own bricks")
-	check(game.rules.obstacles.size() == 2 and game.arena.obstacle_nodes.size() == 2 and hud.level_info.name == "Oficina do Relógio" and hud.level_info.boss_name == "RELOJOEIRO", "Its two friendly pillars, name and boss name come with it")
+	check(game.level_index == 1 and game.arena.map.id == "farol" and game.rules.obstacles.size() == 6, "Next level rebuilds the arena with the lighthouse bay")
+	check(game.arena.unit_skins == [game.skins.selected, 1] and game.arena.brick_nodes[40].get_meta("skin") == 1, "The Faroleiro boss arrives with its own bricks")
+	check(game.rules.obstacles.size() == 6 and game.arena.obstacle_nodes.size() == 6 and hud.level_info.name == "Baía do Farol" and hud.level_info.boss_name == "FAROLEIRO", "Its lighthouses, name and boss name come with it")
 	check(game.rules.ai_profile == Campaign.ai_profile(1, game.game_settings.difficulty), "The boss uses its level's pace")
 
 	game._process(0.02)
@@ -232,7 +236,7 @@ func run() -> void:
 
 	hud.levels_button.pressed.emit()
 	await process_frame
-	check(game.mode == "menu" and hud.levels_overlay.visible and game.level_index == -1 and game.menu_level == 1 and game.arena.map.id == "oficina", "NÍVEIS returns to the menu previewing the level just played")
+	check(game.mode == "menu" and hud.levels_overlay.visible and game.level_index == -1 and game.menu_level == 1 and game.arena.map.id == "farol", "NÍVEIS returns to the menu previewing the level just played")
 	hud.close_levels()
 	hud.campaign_button.pressed.emit()
 	check(game.mode == "pve" and game.level_index == 1, "JOGAR NÍVEL starts the previewed level")

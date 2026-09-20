@@ -2081,16 +2081,29 @@ func singularity_burst(at: Vector2, heading: Vector2, count: int, impacts: Array
 		effects.append({"node": shock, "v": Vector3.ZERO, "ttl": 0.75, "life": 0.75, "gravity": false, "base": Vector3(7.0, 0.5, 7.0), "grow": true, "tint": color})
 		var bubble = sphere(self, origin, Vector3.ONE * 0.9, Color(hot, 0.55), true)
 		effects.append({"node": bubble, "v": Vector3.ZERO, "ttl": 0.4, "life": 0.4, "gravity": false, "base": Vector3.ONE * 4.2, "grow": true, "tint": color})
-		# A second wave, a beat later, so the release does not end on one frame.
-		schedule(0.1, func():
-			if effects.size() >= effect_limit:
-				return
-			var echo = torus(self, origin, 0.7, 0.08, Color(color, 0.9), true)
-			echo.scale = Vector3(0.2, 0.3, 0.2)
-			effects.append({"node": echo, "v": Vector3.ZERO, "ttl": 0.6, "life": 0.6, "gravity": false, "base": Vector3(4.6, 0.4, 4.6), "grow": true, "tint": color}))
+		# A train of waves rather than one flash: two more rings leave the core after the
+		# first, each wider and fainter, so the release reads as a shock rolling outwards.
+		for wave in range(2):
+			var delay = 0.1 + wave * 0.13
+			var width = 6.0 + wave * 3.4
+			var fade = 0.9 - wave * 0.32
+			var thickness = 0.08 - wave * 0.02
+			schedule(delay, func():
+				if effects.size() >= effect_limit:
+					return
+				var echo = torus(self, origin, 0.7, thickness, Color(color, fade), true)
+				echo.scale = Vector3(0.2, 0.3, 0.2)
+				effects.append({"node": echo, "v": Vector3.ZERO, "ttl": 0.65, "life": 0.65, "gravity": false, "base": Vector3(width, 0.4, width), "grow": true, "tint": color}))
 	# One lance of light per round that left. A round laid onto a brick draws all the way
-	# to it and lights it up; the rest streak off across the arena.
+	# to it and lights it up; the rest streak off across the arena. The collapse leaves the
+	# effect list nearly full, so the oldest rings are dropped to make room: the release is
+	# the moment the whole power exists for, and it was coming out as a single lance.
 	var shown = mini(count, 22)
+	var room = shown + 6
+	while effects.size() > effect_limit - room and not effects.is_empty():
+		var oldest: Dictionary = effects[0]
+		oldest.node.queue_free()
+		effects.remove_at(0)
 	for index in range(shown):
 		if effects.size() >= effect_limit:
 			break

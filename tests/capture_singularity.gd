@@ -37,6 +37,9 @@ func run() -> void:
 	await capture("preview-fx-singularity-draw.png")
 	await create_timer(game.Rules.SINGULARITY_PULL * 0.22 + 0.07).timeout
 	await capture("preview-fx-singularity-burst.png")
+	# A beat later, with the wave train rolling out behind the rounds.
+	await create_timer(0.18).timeout
+	await capture("preview-fx-singularity-waves.png")
 	await create_timer(0.6).timeout
 	DirAccess.remove_absolute(ProjectSettings.globalize_path(TMP))
 	quit(0)
