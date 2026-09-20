@@ -815,7 +815,19 @@ func receive_state(data: Dictionary) -> void:
 	visual_packet_age = 0.0
 	packets_received += 1
 
+const IDLE_FPS = 30
+
+func idle_frame_rate() -> void:
+	# Outside a live match — menu, shop, skins, pause — the screen is nearly still, and
+	# there is no reason to paint it 120 times a second. An hour of testing spends most of
+	# its time on these screens, and on a 120 Hz phone that is most of the battery.
+	var resting: bool = mode == "menu" or pve_paused or hud.video_overlay.visible or network_status != ""
+	var wanted: int = IDLE_FPS if resting else video.runtime_fps
+	if Engine.max_fps != wanted:
+		Engine.max_fps = wanted
+
 func _process(dt: float) -> void:
+	idle_frame_rate()
 	if mode == "menu" and menu_preview_timer >= 0:
 		menu_preview_timer -= dt
 		if menu_preview_timer < 0:
