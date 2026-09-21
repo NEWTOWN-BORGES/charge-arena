@@ -17,7 +17,7 @@ const CATALOG = [
 		"body": "444f8f", "light": "cbb2ff", "shot": "b99cff"},
 	{"name": "JARDINEIRO", "ultimate": "bloom", "weapon": "Semeador", "bricks": "Estufas", "about": "Cuida dos jardins orbitais: cúpula de vidro com rebento, vaso às costas e semeador de sementes de luz.", "level": 6,
 		"body": "5f7f52", "light": "c8f08f", "shot": "9fe37a"},
-	{"name": "MINEIRO", "ultimate": "gravity", "weapon": "Perfuradora de Cristal", "bricks": "Veios de cristal", "about": "Extrai cristais dos asteroides: capacete de obra com lanterna, carga de minério às costas e broca de quartzo.", "level": 3,
+	{"name": "MINEIRO", "ultimate": "plating", "weapon": "Perfuradora de Cristal", "bricks": "Veios de cristal", "about": "Extrai cristais dos asteroides: capacete de obra com lanterna, carga de minério às costas e broca de quartzo.", "level": 3,
 		"body": "59606b", "light": "ff9ad8", "shot": "ff7ad0"},
 	{"name": "SENTINELA", "ultimate": "singularity", "weapon": "Lança Eclipse", "bricks": "Monólitos Eclipse", "about": "Guarda de elite do circuito: capa de obsidiana, halo de eclipse dourado e lança de corona.", "level": 10,
 		"body": "2e3140", "light": "f2f4ff", "shot": "eef2ff"},

@@ -1,6 +1,5 @@
 extends SceneTree
-# The three ultimates that open the campaign, on a phone held upright.
-# Needs a GPU, so run it without --headless.
+# The reworked ultimates on a phone held upright. Needs a GPU, so run it without --headless.
 const TMP = "res://tests/new-ultimates.tmp"
 
 func _initialize() -> void:
@@ -28,13 +27,12 @@ func run() -> void:
 	game.rules.phase = "play"
 	game.rules.players[0].angle = -0.34
 	game.rules.players[0].p = game.Rules.track_position(0, -0.34)
-	for pair in [["volley", 0.7], ["gravity", 2.2], ["surge", 0.5]]:
+	for pair in [["volley", 0.7], ["plating", 0.6], ["plunder", 0.7], ["singularity", 2.3]]:
 		var id: String = pair[0]
 		fire(game, id)
 		await create_timer(game.Rules.ULTIMATE_WINDUP + float(pair[1])).timeout
 		await capture("preview-ult-%s.png" % id)
-		await create_timer(2.4 if id == "gravity" else 1.4).timeout
-		await create_timer(5.0 if id == "gravity" else 0.1).timeout
+		await create_timer(3.0).timeout
 	game.return_to_menu()
 	DirAccess.remove_absolute(ProjectSettings.globalize_path(TMP))
 	quit(0)

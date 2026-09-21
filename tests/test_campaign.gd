@@ -67,7 +67,7 @@ func run() -> void:
 	var bosses = levels.slice(1).map(func(l): return l.boss)
 	check(bosses.size() == 10 and bosses.all(func(b): return bosses.count(b) == 1), "Every boss skin has a level of its own")
 	var ultimates: Array = bosses.map(func(b): return String(Skins.CATALOG[b].ultimate))
-	check(ultimates == ["volley", "gravity", "surge", "sentries", "bloom", "plunder", "thunder", "meteors", "singularity", "sun_ray"], "Every boss brings one of its own, in order: volley, gravity, surge, sentries, bloom, plunder, thunder, meteors, singularity, sun ray")
+	check(ultimates == ["volley", "plating", "surge", "sentries", "bloom", "plunder", "thunder", "meteors", "singularity", "sun_ray"], "Every boss brings one of its own, in order: volley, plating, surge, sentries, bloom, plunder, thunder, meteors, singularity, sun ray")
 	check(String(Skins.CATALOG[levels[0].boss].ultimate) == "", "And level 1 is a training match against a copy of the standard pilot, which has none")
 	check(levels.all(func(l): return l.boss >= 0 and l.boss <= 10 and l.challenge != "" and l.tag != ""), "Every level names its challenge and a valid boss skin")
 	check(range(1, 11).all(func(i): return levels[i].tier > levels[i - 1].tier), "Bosses get stronger level by level")
@@ -115,7 +115,7 @@ func run() -> void:
 	tower.set_map(Rules.tower_map())
 	var half: float = Rules.side_x("torre")
 	var tower_bricks: Array = tower.bricks.filter(func(b): return b.team == 0)
-	check(tower_bricks.size() == 40 and tower.bricks.size() == 80, "Tall arena: forty bricks a side (%d)" % tower_bricks.size())
+	check(tower_bricks.size() == 48 and tower.bricks.size() == 96, "Tall arena: forty-eight bricks a side, four rows of twelve (%d)" % tower_bricks.size())
 	check(tower.bricks.all(func(b): return Rules.point_inside(tower.walls, b.p)), "Tall arena: every brick stands inside the walls")
 	check(tower.boost_centers.size() == 6 and tower.boost_centers.all(func(c): return absf(c.x) > half), "Tall arena: the bumper rail sits outside each wall")
 	var rail_reach: float = Rules.track_limit_for(Rules.tower_map())
@@ -191,7 +191,7 @@ func run() -> void:
 	game._process(0.1)
 	game._process(0.1)
 	await process_frame
-	check(game.arena.map.id == "farol" and game.arena.unit_skins[1] == 1 and game.arena.brick_nodes[40].get_meta("skin") == 1, "The stadium then shows level 2's arena, boss and bricks")
+	check(game.arena.map.id == "farol" and game.arena.unit_skins[1] == 1 and game.arena.brick_nodes[game.rules.bricks.size() / 2].get_meta("skin") == 1, "The stadium then shows level 2's arena, boss and bricks")
 	swipe.call(middle, middle + Vector2(30, 4))
 	check(game.menu_level == 1, "A tap or short drag does not change level")
 	swipe.call(middle + Vector2(0, -100), middle + Vector2(90, 120))
@@ -233,7 +233,7 @@ func run() -> void:
 	hud.next_button.pressed.emit()
 	await process_frame
 	check(game.level_index == 1 and game.arena.map.id == "farol" and game.rules.obstacles.size() == 6, "Next level rebuilds the arena with the lighthouse bay")
-	check(game.arena.unit_skins == [game.skins.selected, 1] and game.arena.brick_nodes[40].get_meta("skin") == 1, "The Faroleiro boss arrives with its own bricks")
+	check(game.arena.unit_skins == [game.skins.selected, 1] and game.arena.brick_nodes[game.rules.bricks.size() / 2].get_meta("skin") == 1, "The Faroleiro boss arrives with its own bricks")
 	check(game.rules.obstacles.size() == 6 and game.arena.obstacle_nodes.size() == 6 and hud.level_info.name == "Baía do Farol" and hud.level_info.boss_name == "FAROLEIRO", "Its lighthouses, name and boss name come with it")
 	check(game.rules.ai_profile == Campaign.ai_profile(1, game.game_settings.difficulty), "The boss uses its level's pace")
 

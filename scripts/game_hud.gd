@@ -2539,13 +2539,12 @@ func power_icon(id: String, center: Vector2, color: Color, canvas: CanvasItem = 
 			c.draw_arc(center, 6.0, -PI * 0.5 - 0.8, -PI * 0.5 + 0.8, 16, brass, 1.4, smooth)
 			c.draw_arc(center, 10.5, -PI * 0.5 - 0.7, -PI * 0.5 + 0.7, 16, Color(color, 0.7), 1.2, smooth)
 			c.draw_circle(center + Vector2(0, 8), 3.0, brass, true, -1, smooth)
-		"gravity":
-			# Zero gravity: three bricks adrift at three heights, none of them on the floor.
-			c.draw_line(center + Vector2(-13, 12), center + Vector2(13, 12), Color(brass, 0.5), 1.4, smooth)
-			for spot in [Vector2(-8, -9), Vector2(3, -3), Vector2(-2, 6)]:
-				c.draw_rect(Rect2(center + spot, Vector2(11, 6)), color, true)
-				c.draw_line(center + spot + Vector2(5.5, 8), center + spot + Vector2(5.5, 12), Color(color, 0.35), 1.2, smooth)
-			c.draw_arc(center, 13.0, -2.6, -0.5, 18, Color(color, 0.5), 1.2, smooth)
+		"plating":
+			# Plating: a brick under a crystal shell, with the blow glancing off it.
+			c.draw_rect(Rect2(center + Vector2(-10, 0), Vector2(20, 10)), Color(color, 0.7), true)
+			c.draw_polyline(PackedVector2Array([center + Vector2(-12, 0), center + Vector2(-7, -9), center + Vector2(7, -9), center + Vector2(12, 0)]), color, 2.2, smooth)
+			c.draw_line(center + Vector2(-12, 0), center + Vector2(12, 0), brass, 1.6, smooth)
+			c.draw_polyline(PackedVector2Array([center + Vector2(9, -16), center + Vector2(4, -11), center + Vector2(11, -7)]), brass, 2.0, smooth)
 		_:
 			# An empty slot: the skin ultimate, still to come.
 			var star = PackedVector2Array()

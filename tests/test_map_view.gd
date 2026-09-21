@@ -22,7 +22,7 @@ func run() -> void:
 	game.rules.bricks[2].hp = 0
 	game.rules.bricks[2].alive = false
 	game.arena.update_state(game.rules, 0, 1.0 / 60)
-	check(game.arena.brick_nodes.size() == 80, "All four banks have matching visual bricks")
+	check(game.arena.brick_nodes.size() == game.rules.bricks.size(), "All four banks have matching visual bricks (%d)" % game.arena.brick_nodes.size())
 	check(is_equal_approx(game.arena.brick_nodes[0].scale.x, 0.76) and is_equal_approx(game.arena.brick_nodes[1].scale.x, 0.52), "Damaged brick models shrink to match the collision scale")
 	check(not game.arena.brick_nodes[2].visible, "Destroyed brick model is hidden")
 	check(not game.arena.brick_nodes[0].get_node("HP2").visible and not game.arena.brick_nodes[1].get_node("HP1").visible, "Visible health marks disappear with each lost life")

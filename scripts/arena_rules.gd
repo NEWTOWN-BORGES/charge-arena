@@ -53,7 +53,9 @@ const OBSTACLE_RADIUS = 0.46
 const OBSTACLE_TRAVEL = 2.15 * MAP_SCALE
 const OBSTACLE_FREQUENCY = 0.62
 const WIN_SCORE = 2
-const BRICK_ROWS = [6, 5, 4, 3, 2]
+# Four rows to a bank, five bricks each: every wall in the game is four deep now, so a
+# lane opened in the front of one still has three more behind it.
+const BRICK_ROWS = [5, 5, 5, 5]
 const BRICK_COUNT = 40
 const BRICK_LIVES = 3
 const BRICK_EXTENT = Vector2(0.27, 0.14)
@@ -109,17 +111,11 @@ const THUNDER_COUNT = 8
 const THUNDER_DAMAGE = 2
 const THUNDER_RADIUS = 0.42
 # Singularity: the pilot becomes the epicentre. Every shot in flight loses its course and
-# crawls into the core; what is swallowed leaves again in one fan of boosted rounds.
+# crawls into the core; when the core lets go it is one wall of force, not a fan of rounds.
 const SINGULARITY_PULL = 2.1
 const SINGULARITY_SWALLOW = 0.55
 const SINGULARITY_SLOW = 0.22
-const SINGULARITY_MIN_SHOTS = 26
-const SINGULARITY_MAX_SHOTS = 44
-const SINGULARITY_FAN = 2.7
-# A round whose lane passes this close to a standing brick is laid onto it instead: the
-# blast still opens right across the arena, but it stops pouring itself through the gap
-# between the two banks.
-const SINGULARITY_SNAP = 0.45
+const SINGULARITY_HOLD = 44
 # Three waves come in out of the sky and sweep the arena, each one reaching further in;
 # a shot is only caught once its wave has washed over it.
 const SINGULARITY_WAVES = 3
@@ -162,17 +158,20 @@ const VOLLEY_SECONDS = 1.1
 # Leque came to 44 of wall damage on the standard wall, which would put the second boss of
 # the campaign above the ninth; at one apiece it lands at 22, where a level 2 belongs.
 const VOLLEY_DAMAGE = 1
-# Gravidade: for six seconds the floor lets go. Every brick on both sides drifts off its
-# spot and hangs at its own height, the bumpers rise out of the way, and the pilot who
-# called it shoots straight and hard while the rival's rounds die in the air.
-const GRAVITY_SECONDS = 6.0
-const GRAVITY_DAMAGE = 3
-const GRAVITY_RISE = 1.2
-const GRAVITY_SPREAD = 3.4
-const GRAVITY_LIFT = 1.75
-const GRAVITY_ASSIST = 0.34
-const GRAVITY_DRAG = 2.6
-const GRAVITY_ROUND_LIFE = 1.15
+# Couraca de cristal: for seven seconds the miner's wall is plated, and every blow that
+# lands on it loses a life on the way in. An ordinary round stops doing anything at all, a
+# turbocharged one bites once instead of twice.
+const PLATING_SECONDS = 7.0
+const PLATING_SOAK = 1
+# The shock wave the vortex lets go with: it crosses the arena and keeps going past it.
+# The front row takes the worst of it and the rows behind are sheltered by the ones ahead.
+const SHOCK_FRONT = 3
+const SHOCK_SECOND = 2
+const SHOCK_REST = 1
+const SHOCK_PLAYER = 1
+const SHOCK_ROW = 0.2
+# Pilhagem: how long the two walls spend crossing over in the air before they land.
+const PLUNDER_SWAP = 1.15
 # How many numbers each side's power state takes in a network packet.
 const POWER_FIELDS = 14
 # A shot ends on a target or after MAX_BOUNCES ricochets: walls, shields, boosters,
@@ -235,6 +234,8 @@ var brick_lives: int = BRICK_LIVES
 var barriers: Array = []
 # This map's obstacle specifications, already narrowed if the map asked to be tall.
 var obstacle_specs: Array = []
+# True while the two walls are crossing over, so they are put back down exactly once.
+var carrying = false
 # How wide a brick is on this map. A tall arena pulls its sides in, and the bricks come in
 # with it: left at full width they would overlap each other and push past the new walls.
 var brick_extent: Vector2 = BRICK_EXTENT
@@ -462,7 +463,7 @@ func reset_match() -> void:
 static func new_power_state() -> Dictionary:
 	return {"charge": [0, 0, 0], "destroyed": 0, "rapid_time": 0.0, "ghost_time": 0.0,
 		"laser_time": 0.0, "laser_tick": 0.0, "mirror_time": 0.0, "walls_time": 0.0,
-		"surge_time": 0.0, "gravity_time": 0.0,
+		"surge_time": 0.0, "plating_time": 0.0, "plunder_time": 0.0,
 		"ultimate_windup": 0.0, "ultimate_time": 0.0, "ultimate_tick": 0.0, "ultimate_shots": 0, "ultimate_id": ""}
 
 static func power_color(id: String) -> Color:
@@ -498,7 +499,8 @@ func reset_round() -> void:
 		state.mirror_time = 0.0
 		state.walls_time = 0.0
 		state.surge_time = 0.0
-		state.gravity_time = 0.0
+		state.plating_time = 0.0
+		state.plunder_time = 0.0
 		state.ultimate_windup = 0.0
 		state.ultimate_time = 0.0
 		state.ultimate_tick = 0.0
@@ -576,71 +578,70 @@ static func make_bricks(layout: String = "banks", lives: int = BRICK_LIVES) -> A
 		var goal = goal_center(team)
 		match layout:
 			"wall":
-				# Two unbroken rows in front of the goal: a lane has to be carved first.
-				for row in range(2):
-					for column in range(20):
-						add_brick(result, team, -1 if column < 10 else 1, Vector2((column - 9.5) * 0.56, goal.y - sign_y * (3.75 + row * 0.36)), 0.0)
+				# Four unbroken rows in front of the goal: a lane has to be carved first,
+				# and carving one takes four bricks and not two.
+				for row in range(4):
+					for column in range(14):
+						add_brick(result, team, -1 if column < 7 else 1, Vector2((column - 6.5) * 0.72, goal.y - sign_y * (3.7 + row * 0.38)), 0.0, lives)
 			"arc":
-				# Three concentric arcs hugging the goal.
-				for ring in [[3.6, 13, 0.9], [4.2, 13, 0.88], [4.8, 14, 0.85]]:
+				# Four concentric arcs hugging the goal.
+				for ring in [[3.5, 13, 0.9], [4.0, 13, 0.89], [4.5, 13, 0.87], [5.0, 13, 0.85]]:
 					for column in range(ring[1]):
 						var angle = lerpf(-ring[2], ring[2], column / float(ring[1] - 1))
 						var tangent = Vector2(cos(angle), sin(angle) * sign_y)
-						add_brick(result, team, -1 if angle < 0 else 1, goal + Vector2(sin(angle), -cos(angle) * sign_y) * ring[0], tangent.angle())
+						add_brick(result, team, -1 if angle < 0 else 1, goal + Vector2(sin(angle), -cos(angle) * sign_y) * ring[0], tangent.angle(), lives)
 			"islands":
-				# Four separate clusters with open lanes between them.
-				for cluster in [Vector2(-4.0, 3.9), Vector2(-1.6, 4.6), Vector2(1.6, 4.6), Vector2(4.0, 3.9)]:
-					for row in range(2):
-						for column in range(5):
-							add_brick(result, team, -1 if cluster.x < 0 else 1, Vector2(cluster.x + (column - 2) * 0.56, goal.y - sign_y * (cluster.y + row * 0.36)), 0.0)
+				# Four separate clusters with open lanes between them, each four deep.
+				for cluster in [Vector2(-4.0, 3.6), Vector2(-1.6, 4.2), Vector2(1.6, 4.2), Vector2(4.0, 3.6)]:
+					for row in range(4):
+						for column in range(3):
+							add_brick(result, team, -1 if cluster.x < 0 else 1, Vector2(cluster.x + (column - 1) * 0.62, goal.y - sign_y * (cluster.y + row * 0.38)), 0.0, lives)
 			"chevron":
-				# Two diagonal lines opening towards the middle of the arena.
+				# Two diagonal lines opening towards the middle of the arena, four deep.
 				for side in [-1, 1]:
 					var direction = Vector2(side * 0.94, -sign_y * 0.34)
-					for row in range(2):
-						for column in range(10):
-							var pos = Vector2(side * (0.55 + column * 0.545), goal.y - sign_y * (3.6 + column * 0.197 + row * 0.36))
-							add_brick(result, team, side, pos, direction.angle())
+					for row in range(4):
+						for column in range(7):
+							var pos = Vector2(side * (0.6 + column * 0.68), goal.y - sign_y * (3.3 + column * 0.2 + row * 0.38))
+							add_brick(result, team, side, pos, direction.angle(), lives)
 			"torre":
-				# Four rows that reach wall to wall in the narrow arena: the same forty
-				# bricks, packed into a field barely two thirds as wide.
+				# Four rows that reach wall to wall in the narrow arena.
 				for row in range(4):
-					var count = 10
+					var count = 12
 					for column in range(count):
-						var x = lerpf(-3.5, 3.5, float(column) / float(count - 1))
+						var x = lerpf(-3.6, 3.6, float(column) / float(count - 1))
 						add_brick(result, team, -1 if x < 0 else 1, Vector2(x, goal.y - sign_y * (3.5 + row * 0.42)), 0.0, lives)
 			"bulwark":
-				# Three long rows: a boss wall you have to chew through, not slip past.
-				for row in range(3):
-					for column in range(18):
-						add_brick(result, team, -1 if column < 9 else 1, Vector2((column - 8.5) * 0.56, goal.y - sign_y * (3.7 + row * 0.36)), 0.0, lives)
+				# Four long rows: a boss wall you have to chew through, not slip past.
+				for row in range(4):
+					for column in range(16):
+						add_brick(result, team, -1 if column < 8 else 1, Vector2((column - 7.5) * 0.66, goal.y - sign_y * (3.6 + row * 0.38)), 0.0, lives)
 			"fortress":
-				# Five stacked rows, narrowing as they go back: the final wall of the run.
-				var deck = [14, 13, 12, 11, 10]
+				# Four stacked rows, narrowing as they go back: the final wall of the run.
+				var deck = [17, 16, 16, 15]
 				for row in range(deck.size()):
 					var count: int = deck[row]
-					var span = 3.9 - row * 0.22
+					var span = 4.4 - row * 0.2
 					for column in range(count):
 						var x = lerpf(-span, span, float(column) / float(count - 1))
 						add_brick(result, team, -1 if x < 0 else 1, Vector2(x, goal.y - sign_y * (3.6 + row * 0.38)), 0.0, lives)
 			"colosseum":
-				# Dense 4-row fortress of 48 bricks per team (96 total) for massive destruction with powers.
+				# Four dense rows, the widest in front: the PvP wall, built to be broken.
 				for row in range(4):
-					var count = 14 if row == 0 else (12 if row < 3 else 10)
-					var span = 3.9 if row == 0 else (3.3 if row < 3 else 2.7)
-					var y_dist = 5.2 - row * 0.70
+					var count = 14
+					var span = 4.1 - row * 0.18
+					var y_dist = 5.2 - row * 0.52
 					for column in range(count):
-						var x = lerpf(-span, span, float(column) / float(count - 1)) if count > 1 else 0.0
-						var pos = Vector2(x, goal.y - sign_y * y_dist)
-						add_brick(result, team, -1 if x < 0 else 1, pos, 0.0)
+						var x = lerpf(-span, span, float(column) / float(count - 1))
+						add_brick(result, team, -1 if x < 0 else 1, Vector2(x, goal.y - sign_y * y_dist), 0.0, lives)
 			_:
 				for side in [-1, 1]:
 					var along = Vector2(side * 0.8660254, -sign_y * 0.5)
 					var inward = Vector2(-side * 0.5, -sign_y * 0.8660254)
 					for row in range(BRICK_ROWS.size()):
 						for column in range(BRICK_ROWS[row]):
-							var pos = goal + (along * (2.6 + (row + column) * 0.6) + inward * (0.3 + row * 0.34)) * MAP_SCALE
-							add_brick(result, team, side, pos, along.angle())
+							var pos = goal + (along * (2.7 + column * 0.62) + inward * (0.3 + row * 0.32)) * MAP_SCALE
+							add_brick(result, team, side, pos, along.angle(), lives)
 	return result
 
 static func add_brick(result: Array, team: int, group: int, pos: Vector2, rotation: float, lives: int = BRICK_LIVES) -> void:
@@ -672,8 +673,15 @@ func step(dt: float, commands: Array) -> void:
 		# accumulated float residue would otherwise buy it one extra round.
 		var burst_left: float = powers[team].rapid_time - dt
 		powers[team].rapid_time = 0.0 if burst_left < dt * 0.5 else burst_left
-		for timer_name in ["ghost_time", "mirror_time", "walls_time", "surge_time", "gravity_time"]:
+		for timer_name in ["ghost_time", "mirror_time", "walls_time", "surge_time", "plating_time"]:
 			powers[team][timer_name] = maxf(0.0, powers[team][timer_name] - dt)
+		if powers[team].plunder_time > 0:
+			# The two walls land the moment the flight ends, and that is when the lives
+			# change hands: swapping them at take-off would give the theft away early.
+			powers[team].plunder_time = maxf(0.0, powers[team].plunder_time - dt)
+			if powers[team].plunder_time <= 0:
+				plunder_bricks(team)
+				events.append({"kind": "plunder_land", "team": team, "p": players[team].p})
 		step_laser(team, dt)
 		step_ultimate(team, dt)
 		p.cooldown = maxf(0, p.cooldown - dt)
@@ -715,8 +723,7 @@ func step(dt: float, commands: Array) -> void:
 				if cost > 0 and powers[1].charge[index] < cost:
 					powers[1].charge[index] += 1
 	step_turrets(dt)
-	float_bricks()
-	drag_rounds(dt)
+	carry_bricks()
 	for ball in balls.duplicate():
 		if phase != "play":
 			break
@@ -807,7 +814,7 @@ func step_ultimate(team: int, dt: float) -> void:
 					"index": wave, "seconds": SINGULARITY_PULL / float(SINGULARITY_WAVES)})
 		singularity_pull(team, dt)
 		if state.ultimate_time <= 0:
-			singularity_burst(team)
+			shock_wave(team)
 		return
 	if state.ultimate_time <= 0 and state.ultimate_shots <= 0:
 		return
@@ -861,7 +868,7 @@ func fire_ultimate(team: int) -> void:
 		"bloom":
 			bloom_bricks(team)
 		"plunder":
-			plunder_bricks(team)
+			state.plunder_time = PLUNDER_SWAP
 		"surge":
 			state.surge_time = SURGE_SECONDS
 			players[team].cooldown = 0.0
@@ -871,10 +878,9 @@ func fire_ultimate(team: int) -> void:
 			state.ultimate_tick = VOLLEY_SECONDS / VOLLEY_WAVES
 			state.ultimate_shots = VOLLEY_WAVES - 1
 			volley_wave(team)
-		"gravity":
-			state.gravity_time = GRAVITY_SECONDS
-			players[team].cooldown = 0.0
-			events.append({"kind": "gravity", "team": team, "p": players[team].p, "seconds": GRAVITY_SECONDS})
+		"plating":
+			state.plating_time = PLATING_SECONDS
+			events.append({"kind": "plating", "team": team, "p": players[team].p, "seconds": PLATING_SECONDS})
 
 func sun_ray_bite(team: int) -> void:
 	# A band as wide as four bricks, straight out of the pilot and past the wall.
@@ -941,75 +947,42 @@ func volley_wave(team: int) -> void:
 		spawn_ball(team, heading.rotated(angle), 3, VOLLEY_DAMAGE)
 	events.append({"kind": "volley", "team": team, "p": players[team].p, "heading": heading})
 
-func gravity_team() -> int:
-	# Which side let the floor go, or -1 while everything is still standing on it.
-	for team in range(2):
-		if powers[team].gravity_time > 0:
-			return team
-	return -1
-
-func gravity_progress() -> float:
-	# Nought on the floor, one fully adrift. It takes a moment to lift and the same moment
-	# to settle, so nothing snaps into place at either end.
-	var left: float = maxf(powers[0].gravity_time, powers[1].gravity_time)
-	if left <= 0:
-		return 0.0
-	return clampf(minf(GRAVITY_SECONDS - left, left) / GRAVITY_RISE, 0.0, 1.0)
+func plunder_progress() -> float:
+	# How far through the flight the two walls are, nought to one.
+	var swap: float = maxf(powers[0].plunder_time, powers[1].plunder_time)
+	return 0.0 if swap <= 0 else clampf(1.0 - swap / PLUNDER_SWAP, 0.0, 1.0)
 
 static func float_scatter(index: int, salt: float) -> float:
-	# A fixed number per brick, worked out from its index. The host and the client float
-	# the same wall without a single extra byte in the packet.
+	# A fixed number per brick, worked out from its index. The host and the client fly the
+	# same wall without a single extra byte in the packet.
 	var value: float = sin(float(index + 1) * salt) * 43758.5453
 	return value - floorf(value)
 
-func adrift_spot(index: int) -> Vector2:
-	# Where this brick hangs once the floor lets go: its own spot pushed out at its own
-	# angle, pulled back in until it is inside the walls again.
-	var brick: Dictionary = bricks[index]
-	var home: Vector2 = brick.get("home", brick.p)
-	var angle: float = float_scatter(index, 12.9898) * TAU
-	var reach: float = lerpf(GRAVITY_SPREAD * 0.35, GRAVITY_SPREAD, float_scatter(index, 78.233))
-	var wanted: Vector2 = home + Vector2(cos(angle), sin(angle)) * reach
-	for step in range(6):
-		if point_inside(walls, wanted):
-			break
-		wanted = home.lerp(wanted, 0.55)
-	return wanted
-
-func float_bricks() -> void:
-	# The wall comes apart and hangs in the air, both sides of it. Positions are what the
-	# aim, the shots and the AI all read, so this is the simulation moving, not a trick of
-	# the camera: every brick is a target wherever it has drifted to.
-	var progress: float = gravity_progress()
-	var adrift: bool = gravity_team() >= 0
+func carry_bricks() -> void:
+	# The two walls trade places in the air. Every brick crosses to its opposite number's
+	# spot, each at its own speed, and they settle mirrored - which is the shape they both
+	# already had, only now with the other side's lives in them. Positions are what the
+	# aim, the shots and the AI all read, so this is the simulation moving and not a trick
+	# of the camera: a brick in flight is a target where it is drawn.
+	var swap: float = maxf(powers[0].plunder_time, powers[1].plunder_time)
+	if swap <= 0:
+		if carrying:
+			carrying = false
+			for brick in bricks:
+				brick.p = brick.get("home", brick.p)
+				cached_firing_angles.clear()
+		return
+	carrying = true
+	var per_team: int = bricks.size() / 2
+	var progress: float = 1.0 - swap / PLUNDER_SWAP
 	for index in range(bricks.size()):
 		var brick: Dictionary = bricks[index]
-		if not brick.has("home"):
-			brick["home"] = brick.p
-		if not adrift:
-			if brick.has("spot"):
-				brick.erase("spot")
-				brick.p = brick.home
-			continue
-		if not brick.has("spot"):
-			brick["spot"] = adrift_spot(index)
-		brick.p = Vector2(brick.home).lerp(brick.spot, progress)
-	if adrift or progress > 0:
-		# Everything moved, so every aim worked out from the old places is stale.
-		cached_firing_angles.clear()
-
-func drag_rounds(dt: float) -> void:
-	# While the floor is gone, only the pilot who called it shoots straight. The other
-	# side's rounds leave fast, lose the air under them and fade: a hit is a hit, a miss
-	# never comes back around.
-	var owner: int = gravity_team()
-	if owner < 0:
-		return
-	for ball in balls:
-		if ball.owner == owner or ball.get("held", false):
-			continue
-		ball.v = ball.v * exp(-GRAVITY_DRAG * dt)
-		ball.ttl = minf(ball.ttl, GRAVITY_ROUND_LIFE)
+		var twin: Dictionary = bricks[(index + per_team) % bricks.size()]
+		# Each brick has its own pace, so the two walls cross in a spread and not as a
+		# single sheet. They all land inside the flight, whatever pace they took.
+		var pace: float = 0.62 + float_scatter(index, 12.9898) * 0.95
+		brick.p = Vector2(brick.home).lerp(Vector2(twin.get("home", twin.p)), clampf(progress * pace, 0.0, 1.0))
+	cached_firing_angles.clear()
 
 func singularity_front(team: int) -> float:
 	# Three waves come in out of the sky, and each one sweeps the whole arena: this is how
@@ -1037,7 +1010,7 @@ func singularity_pull(team: int, dt: float) -> void:
 			continue
 		if distance <= SINGULARITY_SWALLOW:
 			balls.remove_at(index)
-			powers[team].ultimate_shots = mini(powers[team].ultimate_shots + 1, SINGULARITY_MAX_SHOTS)
+			powers[team].ultimate_shots = mini(powers[team].ultimate_shots + 1, SINGULARITY_HOLD)
 			events.append({"kind": "swallow", "team": team, "p": core})
 			index -= 1
 			continue
@@ -1049,79 +1022,47 @@ func singularity_pull(team: int, dt: float) -> void:
 		ball.ttl = maxf(ball.ttl, left + 0.3)
 		index -= 1
 
-func singularity_burst(team: int) -> void:
-	# The core opens. Whatever it holds leaves at once in a fan, turbocharged and out of
-	# ricochets: the same round a booster hands back, in a dozen copies.
-	var core: Vector2 = players[team].p
-	var heading: Vector2 = forward_direction(team, players[team].angle)
-	var eaten: int = powers[team].ultimate_shots
-	var index = balls.size() - 1
-	while index >= 0:
-		# Anything still on its way in is compacted with the rest.
-		if balls[index].get("held", false):
-			balls.remove_at(index)
-			eaten += 1
-		index -= 1
-	# Every round it ate is fired back, doubled, and the blast is never thin: it opens with
-	# a full spread whatever it caught. They pass straight through the moving obstacles.
-	var count = clampi(eaten * 3, SINGULARITY_MIN_SHOTS, SINGULARITY_MAX_SHOTS)
-	powers[team].ultimate_shots = 0
-	# Every standing enemy brick the blast can reach, split into the two sides of the pilot's
-	# line. The release alternates between them, so the wave opens left and right together
-	# instead of pouring the whole thing into whichever bank the pilot happens to face.
-	var left: Array = []
-	var right: Array = []
+func brick_ranks(team: int) -> Dictionary:
+	# How far back each brick of this wall stands, counted in rows from the front: the one a
+	# wave meets first is row nought. Depths are snapped, because an arc or a chevron has no
+	# two bricks at exactly the same distance from the goal.
+	var goal_y: float = goal_center(team).y
+	var depths: Array = []
 	for brick in bricks:
-		if not brick.alive or brick.team == team:
-			continue
-		var bearing: float = angle_difference(heading.angle(), (brick.p - core).angle())
-		if absf(bearing) >= SINGULARITY_FAN * 0.5 + SINGULARITY_SNAP:
-			continue
-		# Split by which side of the arena the brick stands on, not by which side of the
-		# pilot's nose: standing at the end of the rail, the whole wall is to one side of
-		# the pilot, and the blast would pour into a single bank again.
-		if brick.p.x < 0:
-			left.append({"bearing": bearing, "p": brick.p})
-		else:
-			right.append({"bearing": bearing, "p": brick.p})
-	# Each side is walked from the middle outwards, so the two halves open together.
-	left.sort_custom(func(a, b): return a.p.x > b.p.x)
-	right.sort_custom(func(a, b): return a.p.x < b.p.x)
-	var taken = [0, 0]
-	var impacts: Array = []
-	for shot in range(count):
-		while balls.size() >= MAX_BALLS:
-			balls.remove_at(0)
-		var spread = 0.0 if count == 1 else lerpf(-SINGULARITY_FAN * 0.5, SINGULARITY_FAN * 0.5, float(shot) / float(count - 1))
-		var aimed = Vector2.ZERO
-		# One round in four keeps its lane and flies wide: that is what makes the release
-		# look like a wave crossing the arena rather than a volley down one corridor.
-		if shot % 4 != 3:
-			# Odd rounds go left, even rounds go right, each taking the next brick out from
-			# the middle of its own side. Letting them all snap to the nearest brick piled
-			# half the blast onto three of them and threw the rest away.
-			# Counted over the rounds that are actually aimed: keyed on the shot number, the
-			# ones that skipped out to the fan all fell on the same side and left it short.
-			var side: int = (taken[0] + taken[1]) % 2
-			var wall: Array = left if side == 0 else right
-			var other: Array = right if side == 0 else left
-			var slot: int = taken[side]
-			if slot >= wall.size():
-				# That side is spent: the round joins the other one rather than being lost.
-				side = 1 - side
-				wall = other
-				slot = taken[side]
-			if slot < wall.size():
-				var mark: Dictionary = wall[slot]
-				taken[side] = slot + 1
-				spread = mark.bearing
-				aimed = mark.p
-		impacts.append(aimed)
-		var course: Vector2 = heading.rotated(spread)
-		balls.append({"id": next_id, "owner": team, "p": core + course * 0.7, "v": course * BALL_SPEED * BOOST_SPEED,
-			"bounces": MAX_BOUNCES, "boosted": true, "damage": BOOST_DAMAGE, "ttl": BALL_LIFE, "power": 0, "ghost": true, "held": false})
-		next_id += 1
-	events.append({"kind": "singularity_burst", "team": team, "p": core, "heading": heading, "count": count, "impacts": impacts})
+		if brick.alive and brick.team == team:
+			var depth: float = snappedf(absf(brick.p.y - goal_y), SHOCK_ROW)
+			if not depths.has(depth):
+				depths.append(depth)
+	depths.sort()
+	depths.reverse()
+	var ranks: Dictionary = {}
+	for index in range(bricks.size()):
+		var brick: Dictionary = bricks[index]
+		if brick.alive and brick.team == team:
+			ranks[index] = depths.find(snappedf(absf(brick.p.y - goal_y), SHOCK_ROW))
+	return ranks
+
+func shock_wave(team: int) -> void:
+	# The core lets go in one blow instead of a fan of rounds: a wall of force that crosses
+	# the whole arena and keeps going past it. Everything the vortex was holding is thrown
+	# back out with it, so nobody loses the rounds they had in play.
+	var core: Vector2 = players[team].p
+	var enemy = 1 - team
+	var ranks: Dictionary = brick_ranks(enemy)
+	var struck: Array = []
+	for index in ranks.keys():
+		var rank: int = int(ranks[index])
+		var bite: int = SHOCK_FRONT if rank == 0 else (SHOCK_SECOND if rank == 1 else SHOCK_REST)
+		struck.append(index)
+		damage_brick(index, bite, team, bricks[index].p)
+	damage_player(enemy, SHOCK_PLAYER, players[enemy].p)
+	for ball in balls:
+		if ball.get("held", false):
+			ball.held = false
+			var away: Vector2 = ball.p - core
+			ball.v = (away.normalized() if away.length() > 0.001 else Vector2.UP) * BALL_SPEED
+			ball.ttl = BALL_LIFE
+	events.append({"kind": "shock_wave", "team": team, "p": core, "bricks": struck})
 
 func deploy_turrets(team: int) -> void:
 	# Two platforms in the middle of the ring, one on each side of the centre. They stand
@@ -1371,9 +1312,11 @@ func damage_brick(index: int, damage: int, owner: int, at: Vector2) -> void:
 	var brick: Dictionary = bricks[index]
 	if not brick.alive or brick.team == owner:
 		return
-	brick.hp = maxi(0, brick.hp - damage)
+	# Crystal plating soaks a life off every blow that lands, whatever threw it.
+	var bite: int = maxi(0, damage - (PLATING_SOAK if powers[brick.team].plating_time > 0 else 0))
+	brick.hp = maxi(0, brick.hp - bite)
 	brick.alive = brick.hp > 0
-	events.append({"kind": "brick" if not brick.alive else "brick_hit", "p": at, "team": brick.team})
+	events.append({"kind": "brick" if not brick.alive else "brick_hit", "p": at, "team": brick.team, "soaked": bite <= 0})
 	if not brick.alive:
 		cached_firing_angles.clear()
 		credit_destroyed_brick(owner)
@@ -1465,12 +1408,10 @@ func assist_heading(team: int) -> Vector2:
 	# Small magnetism: if a brick sits within a few hundredths of a radian of where the
 	# pilot points, the round leaves on that angle instead. Pure geometry, no prediction.
 	var player: Dictionary = players[team]
-	if team != assist_team and powers[team].gravity_time <= 0:
+	if team != assist_team:
 		return player.aim
 	var best = INF
-	# With the wall adrift the pilot who called it barely has to aim: the window opens wide
-	# so the round finds whichever brick is nearest to where it is pointing.
-	var best_gap = GRAVITY_ASSIST if powers[team].gravity_time > 0 else ASSIST_ANGLE
+	var best_gap = ASSIST_ANGLE
 	for option in firing_angles(team):
 		var gap: float = absf(option.angle - player.angle)
 		if gap < best_gap:
@@ -1481,8 +1422,7 @@ func assist_heading(team: int) -> Vector2:
 func shoot(team: int, power: int = 0) -> void:
 	# The machine gun keeps the cadence of its own stream; every other shot is single.
 	var surged: bool = powers[team].surge_time > 0
-	var precise: bool = powers[team].gravity_time > 0
-	var bite: int = GRAVITY_DAMAGE if precise else (BOOST_DAMAGE if surged else 1)
+	var bite: int = BOOST_DAMAGE if surged else 1
 	if power == 2:
 		var pilot: Dictionary = players[team]
 		pilot.cooldown = RAPID_INTERVAL
@@ -1548,9 +1488,7 @@ func advance_ball(ball: Dictionary, dt: float, sweep_obstacles: bool = false, pr
 				kind = "turret"
 				target = index
 		# Sweep against moving bumpers in their relative frame, including post-bounce time.
-		# Nothing to hit while the bumpers are floating: they are above the plane of play.
-		var solid_obstacles: Array = obstacles if not ball.get("ghost", false) and gravity_team() < 0 else []
-		for obstacle in solid_obstacles:
+		for obstacle in (obstacles if not ball.get("ghost", false) else []):
 			var obstacle_start: Vector2 = obstacle.previous + obstacle.v * (dt - remaining) if sweep_obstacles else obstacle.p
 			var movement: Vector2 = obstacle.v * remaining if sweep_obstacles else Vector2.ZERO
 			if preview:
@@ -1910,8 +1848,8 @@ func network_snapshot() -> Dictionary:
 	var power_data = PackedFloat32Array()
 	for state in powers:
 		power_data.append_array([state.charge[0], state.charge[1], state.charge[2], state.destroyed, state.rapid_time,
-			state.ghost_time, state.laser_time, state.mirror_time, state.walls_time, state.surge_time, state.gravity_time,
-			0.0, state.ultimate_windup, state.ultimate_time])
+			state.ghost_time, state.laser_time, state.mirror_time, state.walls_time, state.surge_time, state.plating_time,
+			state.plunder_time, state.ultimate_windup, state.ultimate_time])
 	# Sentries: team, place, health and reload, so the client draws and predicts the same.
 	var turret_data = PackedFloat32Array()
 	for turret in turrets:
@@ -1954,7 +1892,8 @@ func apply_network_snapshot(data: Dictionary) -> bool:
 		powers[team].mirror_time = clampf(power_data[base + 7], 0, MIRROR_SECONDS)
 		powers[team].walls_time = clampf(power_data[base + 8], 0, WALLS_SECONDS)
 		powers[team].surge_time = clampf(power_data[base + 9], 0, SURGE_SECONDS)
-		powers[team].gravity_time = clampf(power_data[base + 10], 0, GRAVITY_SECONDS)
+		powers[team].plating_time = clampf(power_data[base + 10], 0, PLATING_SECONDS)
+		powers[team].plunder_time = clampf(power_data[base + 11], 0, PLUNDER_SWAP)
 		powers[team].ultimate_windup = clampf(power_data[base + 12], 0, ULTIMATE_WINDUP)
 		powers[team].ultimate_time = clampf(power_data[base + 13], 0, maxf(THUNDER_SECONDS, SINGULARITY_PULL))
 		powers[team].ultimate_id = power_id(team, 2)

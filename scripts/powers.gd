@@ -36,19 +36,19 @@ const ULTIMATES = [
 	{"id": "thunder", "short": "TROVOADA", "name": "TROVOADA", "kind": "ultimate", "charge": ULTIMATE_CHARGE, "price": 0, "color": "7fe6ff",
 		"about": "Dois segundos de raios a cair ao acaso no campo do rival, 2 de dano cada."},
 	{"id": "singularity", "short": "VÓRTICE", "name": "SINGULARIDADE", "kind": "ultimate", "charge": ULTIMATE_CHARGE, "price": 0, "color": "f3a13c",
-		"about": "Três ondas de choque caem do céu e varrem a arena: tudo o que apanham perde o rumo e é arrastado em câmara lenta até ao Sentinela. Quando está tudo compactado, o núcleo abre-se e devolve dezenas de projéteis num leque que ocupa a arena quase toda, à velocidade de bola turbinada, 2 de dano e sem ricochete."},
+		"about": "Três ondas de choque caem do céu e varrem a arena: tudo o que apanham perde o rumo e é arrastado em câmara lenta até ao Sentinela. Quando está tudo compactado, o núcleo larga uma só onda enorme, que corre o mapa todo e sai para lá dele: 3 de dano na primeira fila da muralha do rival, 2 na de trás e 1 nas seguintes."},
 	{"id": "sentries", "short": "SENTINELAS", "name": "SENTINELAS", "kind": "ultimate", "charge": ULTIMATE_CHARGE, "price": 0, "color": "8fd3c7",
 		"about": "Duas mini-guns automáticas ficam de pé no meio do ringue. Disparam sozinhas, devagar, 2 de dano e sem ricochete, atacam a muralha do rival e metem golo se a baliza já estiver aberta. São frágeis — 2 vidas cada — e estão expostas: duas bolas em jogo bastam para abater uma."},
 	{"id": "bloom", "short": "FLORIR", "name": "FLORESCER", "kind": "ultimate", "charge": ULTIMATE_CHARGE, "price": 0, "color": "9fe37a",
 		"about": "Cura 2 de vida em cada tijolo teu; os que já estão inteiros ganham mais 2 e crescem."},
 	{"id": "plunder", "short": "PILHAGEM", "name": "PILHAGEM", "kind": "ultimate", "charge": ULTIMATE_CHARGE, "price": 0, "color": "ff5c8a",
-		"about": "Troca a tua muralha com a do rival, tijolo a tijolo e em espelho: o que ele tinha passa a ser teu."},
+		"about": "As duas muralhas cruzam-se no ar, tijolo a tijolo e cada um a sua velocidade, e assentam em espelho do lado contrario. Quando pousam, o que ele tinha passa a ser teu."},
 	{"id": "surge", "short": "SOBRECARGA", "name": "SOBRECARGA", "kind": "ultimate", "charge": ULTIMATE_CHARGE, "price": 0, "color": "7fe6c8",
 		"about": "Seis segundos com a manopla em sobrecarga: cada tiro teu sai turbinado, com 2 de dano, e a cadencia duplica."},
 	{"id": "volley", "short": "RAJADA", "name": "RAJADA DO FAROL", "kind": "ultimate", "charge": ULTIMATE_CHARGE, "price": 0, "color": "ffc978",
 		"about": "O mesmo leque da abilidade, mas cinco vezes seguidas: cinco ondas de cinco balas, 2 de dano cada. Entre uma onda e a seguinte da para andar na calha, por isso as cinco podem cobrir a muralha toda."},
-	{"id": "gravity", "short": "GRAVIDADE", "name": "GRAVIDADE ZERO", "kind": "ultimate", "charge": ULTIMATE_CHARGE, "price": 0, "color": "b9a7ff",
-		"about": "Durante seis segundos o chao larga tudo: os tijolos dos dois lados soltam-se e ficam espalhados pela arena, cada um a sua altura, e ate os obstaculos sobem e deixam de estorvar. Quem a chamou acerta com 3 de dano e com a mira quase automatica nos tijolos a flutuar; as balas do outro saem depressa, perdem o ar e desaparecem."},
+	{"id": "plating", "short": "COURACA", "name": "COURACA DE CRISTAL", "kind": "ultimate", "charge": ULTIMATE_CHARGE, "price": 0, "color": "8fd8ff",
+		"about": "Sete segundos com a tua muralha blindada a cristal: cada pancada que lhe acerta perde uma vida pelo caminho. O tiro normal deixa de lhe fazer nada, o turbinado tira 1 em vez de 2 e uma ultimate de 3 tira 2."},
 ]
 # The kit every pilot starts with, and how many bought powers it holds. The third slot is
 # always the skin's ultimate, so it is neither bought nor equipped.

@@ -651,9 +651,6 @@ func play_events() -> void:
 			play_tone("void_wave")
 		elif event.kind == "swallow":
 			arena.singularity_swallow(event.p)
-		elif event.kind == "singularity_burst":
-			arena.singularity_burst(event.p, event.heading, int(event.count), event.get("impacts", []))
-			play_tone("void_burst")
 		elif event.kind == "turret_shot":
 			# Lighter than the pilot's gun, so a wall of sentry fire stays readable.
 			play_tone("sentry")
@@ -672,9 +669,15 @@ func play_events() -> void:
 		elif event.kind == "volley":
 			arena.volley_flash(event.p, event.heading)
 			play_tone("power")
-		elif event.kind == "gravity":
-			arena.gravity_open(event.p, float(event.get("seconds", 0.0)))
-			play_tone("void_wave")
+		elif event.kind == "plating":
+			arena.plating_flash(event.team)
+			play_tone("power")
+		elif event.kind == "shock_wave":
+			arena.shock_wave(event.p)
+			play_tone("void_burst")
+		elif event.kind == "plunder_land":
+			arena.plunder_land(event.team)
+			play_tone("power")
 		elif event.kind == "power_ready" and event.team == local_team:
 			play_tone("ready")
 		elif event.kind == "explosion":

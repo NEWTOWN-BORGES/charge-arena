@@ -159,12 +159,14 @@ func run() -> void:
 			reef.bricks[i].alive = false
 	var mine_before = standing(reef, 0)
 	var theirs_before = standing(reef, 1)
-	var mirror_before: Array = reef.bricks.slice(Rules.BRICK_COUNT).map(func(b): return b.hp)
+	var mirror_before: Array = reef.bricks.slice(reef.bricks.size() / 2).map(func(b): return b.hp)
 	launch(reef)
-	var reef_events: Array = wait(reef, Rules.ULTIMATE_WINDUP + 0.05)
+	# The walls cross over in the air first, and the lives change hands when they land.
+	var reef_events: Array = wait(reef, Rules.ULTIMATE_WINDUP + Rules.PLUNDER_SWAP + 0.1)
 	check(standing(reef, 0) == theirs_before and standing(reef, 1) == mine_before and theirs_before != mine_before, "The two walls swap: %d bricks for %d" % [theirs_before, mine_before])
-	check(reef.bricks.slice(0, Rules.BRICK_COUNT).map(func(b): return b.hp) == mirror_before, "Brick for brick, in the mirrored place")
-	check(reef_events.any(func(e): return e.kind == "plunder"), "The swap is announced so the arena can flash")
+	check(reef.bricks.slice(0, reef.bricks.size() / 2).map(func(b): return b.hp) == mirror_before, "Brick for brick, in the mirrored place")
+	check(reef_events.any(func(e): return e.kind == "plunder"), "The flight is announced so the arena can flash")
+	check(reef_events.any(func(e): return e.kind == "plunder_land"), "And so is the landing, which is when they change hands")
 
 	# ---------------------------------------------------------------- singularity
 	var hole = playing("singularity")
@@ -206,28 +208,16 @@ func run() -> void:
 	check(not held.is_empty(), "The waves catch the shots they wash over (%d)" % held.size())
 	check(inward and crawling, "They crawl straight at the core instead of flying their own course")
 	var mine_mid = team_health(hole, 0)
-	# The release: the fan, turbocharged, two of damage and out of ricochets.
-	var release: Array = run_until(hole, "singularity_burst", Rules.SINGULARITY_PULL + 0.5)
-	var burst: Array = release.filter(func(e): return e.kind == "singularity_burst")
-	check(burst.size() == 1, "The core opens exactly once")
+	# The release: one wave, not a fan of rounds. Everything the core was holding is thrown
+	# back out with it, so nobody loses the shots they had in play.
+	var caught: int = hole.balls.filter(func(b): return b.get("held", false)).size()
+	var release: Array = run_until(hole, "shock_wave", Rules.SINGULARITY_PULL + 0.5)
+	var blow: Array = release.filter(func(e): return e.kind == "shock_wave")
+	check(blow.size() == 1, "The core lets go exactly once")
 	check(release.any(func(e): return e.kind == "swallow"), "Each round swallowed is announced")
-	check(hole.balls.size() == int(burst[0].count) and int(burst[0].count) >= Rules.SINGULARITY_MIN_SHOTS, "It fires back %d rounds, never fewer than %d" % [int(burst[0].count), Rules.SINGULARITY_MIN_SHOTS])
-	check(hole.balls.all(func(b): return b.owner == 0), "All of them belong to the pilot that cast it")
-	check(hole.balls.all(func(b): return b.damage == Rules.BOOST_DAMAGE and b.boosted and b.bounces >= Rules.MAX_BOUNCES), "Turbocharged, 2 of damage and out of ricochets, like a booster shot")
-	check(hole.balls.all(func(b): return b.get("ghost", false)), "And they go straight through the moving obstacles")
-	check(hole.balls.all(func(b): return not b.get("held", false)), "Nothing is left holding in the core")
-	var out_way: Vector2 = Rules.forward_direction(0, hole.players[0].angle)
-	var forward = hole.balls.all(func(b): return b.v.normalized().dot(out_way) > cos(Rules.SINGULARITY_FAN * 0.5 + 0.02))
-	var fanned: Array = hole.balls.map(func(b): return out_way.angle_to(b.v))
-	# Three rounds in four are laid onto a brick and the fourth keeps its lane, so the blast
-	# still opens across the arena while most of it lands.
-	var aimed: Array = burst[0].impacts.filter(func(p): return p != Vector2.ZERO)
-	check(forward and absf(fanned.max() - fanned.min()) > Rules.SINGULARITY_FAN * 0.6, "They leave forwards, in a fan of %.0f degrees" % rad_to_deg(absf(fanned.max() - fanned.min())))
-	check(aimed.size() >= int(burst[0].count) * 0.6, "And most of them are laid onto a brick of the rival wall (%d de %d)" % [aimed.size(), int(burst[0].count)])
-	var distinct = {}
-	for spot in aimed:
-		distinct[spot] = true
-	check(distinct.size() >= aimed.size() - 2, "Each one takes its own brick instead of piling onto the nearest")
+	check(caught > 0 and hole.balls.all(func(b): return not b.get("held", false)), "Everything it had a hold of went into the blow (%d)" % caught)
+	var core_at: Vector2 = hole.players[0].p
+	check(hole.balls.all(func(b): return (b.p - core_at).normalized().dot(b.v.normalized()) > 0.9), "Anything still in flight is thrown outwards with it")
 	check(team_health(hole, 0) == mine_mid, "The draw itself never scratches the caster's own wall")
 	# On the wire, a held round keeps holding.
 	var wire = playing("singularity")
@@ -401,35 +391,64 @@ func run() -> void:
 	wait(volley, 1.6)
 	check(fan_before - team_health(volley, 1) > 0, "Rajada: and the wall feels it (%d de vida)" % (fan_before - team_health(volley, 1)))
 
-	# Gravidade zero: the wall comes off the floor, both sides of it.
-	var zero = playing("gravity")
-	aim_at_bricks(zero)
-	var homes: Array = zero.bricks.map(func(b): return b.p)
-	launch(zero)
-	wait(zero, Rules.ULTIMATE_WINDUP + Rules.GRAVITY_RISE + 0.1)
-	check(zero.powers[0].gravity_time > 0, "Gravidade: the floor lets go once the glow ends")
-	var moved: int = 0
-	for index in range(zero.bricks.size()):
-		if zero.bricks[index].p.distance_to(homes[index]) > 0.4:
-			moved += 1
-	check(moved > zero.bricks.size() * 0.8, "Gravidade: nearly every brick is adrift (%d de %d)" % [moved, zero.bricks.size()])
-	check(zero.bricks.filter(func(b): return b.team == 0).any(func(b): return b.p.distance_to(b.home) > 0.4) and zero.bricks.filter(func(b): return b.team == 1).any(func(b): return b.p.distance_to(b.home) > 0.4), "Gravidade: both walls, not just the rival's")
-	check(zero.bricks.all(func(b): return zero.point_inside(zero.walls, b.p)), "Gravidade: and none of them drifts through a wall")
-	# The pilot who called it shoots harder, and the other side's rounds die in the air.
-	zero.balls.clear()
-	zero.shoot(0)
-	check(zero.balls.size() == 1 and zero.balls[0].damage == Rules.GRAVITY_DAMAGE, "Gravidade: its own rounds bite for three")
-	zero.balls.clear()
-	zero.balls.append({"id": 8001, "owner": 1, "p": Vector2(0.0, -2.0), "v": Vector2.DOWN * Rules.BALL_SPEED, "bounces": 0, "boosted": false, "damage": 1, "ttl": Rules.BALL_LIFE, "power": 0, "ghost": true})
-	var muzzle_speed: float = zero.balls[0].v.length()
-	wait(zero, 0.4)
-	var slowed = zero.balls.filter(func(b): return b.id == 8001)
-	check(not slowed.is_empty() and slowed[0].v.length() < muzzle_speed * 0.6, "Gravidade: the rival's round leaves fast and loses the air under it")
-	wait(zero, Rules.GRAVITY_ROUND_LIFE)
-	check(zero.balls.filter(func(b): return b.id == 8001).is_empty(), "Gravidade: and then it is simply gone")
-	wait(zero, Rules.GRAVITY_SECONDS)
-	check(zero.powers[0].gravity_time <= 0, "Gravidade: six seconds and the floor comes back")
-	check(range(zero.bricks.size()).all(func(i): return zero.bricks[i].p.is_equal_approx(homes[i])), "Gravidade: every brick lands back on its own spot")
+	# Couraca de cristal: every blow on the miner's wall loses a life on the way in.
+	var armour = playing("plating")
+	launch(armour)
+	wait(armour, Rules.ULTIMATE_WINDUP + 0.05)
+	check(armour.powers[0].plating_time > 0, "Couraca: the plating closes once the glow ends")
+	var mine_index: int = armour.bricks.find_custom(func(b): return b.team == 0 and b.alive)
+	var plated_hp: int = armour.bricks[mine_index].hp
+	armour.damage_brick(mine_index, 1, 1, armour.bricks[mine_index].p)
+	check(armour.bricks[mine_index].hp == plated_hp, "Couraca: an ordinary round stops doing anything at all")
+	armour.damage_brick(mine_index, 3, 1, armour.bricks[mine_index].p)
+	check(plated_hp - armour.bricks[mine_index].hp == 2, "Couraca: and a blow of three lands as two")
+	var theirs_index: int = armour.bricks.find_custom(func(b): return b.team == 1 and b.alive)
+	var bare_hp: int = armour.bricks[theirs_index].hp
+	armour.damage_brick(theirs_index, 1, 0, armour.bricks[theirs_index].p)
+	check(bare_hp - armour.bricks[theirs_index].hp == 1, "Couraca: the rival's wall is not plated by it")
+	wait(armour, Rules.PLATING_SECONDS)
+	check(armour.powers[0].plating_time <= 0, "Couraca: seven seconds and the crystal is gone")
+
+	# Onda de choque: the vortex lets go in one blow, worst on the front row.
+	var vortex = playing("singularity")
+	var ranks: Dictionary = vortex.brick_ranks(1)
+	var front: int = -1
+	var third: int = -1
+	for index in ranks.keys():
+		if int(ranks[index]) == 0 and front < 0:
+			front = index
+		if int(ranks[index]) >= 2 and third < 0:
+			third = index
+	check(front >= 0 and third >= 0, "Onda: the rival's wall is four rows deep, so there is a front and a back")
+	var front_hp: int = vortex.bricks[front].hp
+	var third_hp: int = vortex.bricks[third].hp
+	var vortex_before: int = team_health(vortex, 1)
+	launch(vortex)
+	var blast: Array = wait(vortex, Rules.ULTIMATE_WINDUP + Rules.SINGULARITY_PULL + 0.3)
+	check(blast.any(func(e): return e.kind == "shock_wave"), "Onda: one wave leaves the core, not a fan of rounds")
+	check(front_hp - vortex.bricks[front].hp == Rules.SHOCK_FRONT, "Onda: three off the front row")
+	check(third_hp - vortex.bricks[third].hp == Rules.SHOCK_REST, "Onda: and one off the rows further back")
+	check(vortex.players[1].hp < Rules.PLAYER_LIVES, "Onda: it runs past the wall and catches the pilot too")
+	print("ONDA: %d de vida na muralha" % (vortex_before - team_health(vortex, 1)))
+
+	# Pilhagem: the two walls cross over in the air before the lives change hands.
+	var raid = playing("plunder")
+	for brick in raid.bricks:
+		if brick.team == 1:
+			brick.hp = 1
+	var stolen: int = team_health(raid, 1)
+	var given: int = team_health(raid, 0)
+	launch(raid)
+	wait(raid, Rules.ULTIMATE_WINDUP + 0.05)
+	check(raid.powers[0].plunder_time > 0, "Pilhagem: the walls take off once the glow ends")
+	wait(raid, Rules.PLUNDER_SWAP * 0.5)
+	var homes_left: int = raid.bricks.filter(func(b): return b.p.distance_to(b.home) > 0.5).size()
+	check(homes_left > raid.bricks.size() * 0.7, "Pilhagem: half way over, the walls are in the air (%d de %d)" % [homes_left, raid.bricks.size()])
+	check(team_health(raid, 1) == stolen, "Pilhagem: and the lives have not changed hands yet")
+	var landing: Array = wait(raid, Rules.PLUNDER_SWAP)
+	check(landing.any(func(e): return e.kind == "plunder_land"), "Pilhagem: they land together")
+	check(team_health(raid, 0) == stolen and team_health(raid, 1) == given, "Pilhagem: and that is when the two walls change hands")
+	check(raid.bricks.all(func(b): return b.p.is_equal_approx(b.home)), "Pilhagem: every brick back on a spot of its own")
 
 	print("ULTIMATES_RESULT failures=", failures)
 	quit(failures)

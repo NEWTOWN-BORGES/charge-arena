@@ -38,8 +38,10 @@ var ball_previous: Dictionary = {}
 var trail_timer = 0.0
 var booster_nodes: Array = []
 var obstacle_nodes: Array = []
-# True while the wall is adrift, so it is put back on the floor exactly once.
-var floating = false
+# True while the two walls are crossing over, so they are put back down exactly once.
+var carrying = false
+# Whether each side's wall is currently showing its crystal plating.
+var plated: Array = [false, false]
 var effect_limit = 112
 var trail_interval = 0.035
 var brick_instances: Array = []
@@ -529,6 +531,11 @@ func make_brick(parent: Node3D, data: Dictionary, skin: int, tint: bool = false)
 	# A tall map pulls its sides in and the bricks come in with it, exactly as the collision
 	# box does. Left at full width a bank would read as one solid bar.
 	brick.scale = Vector3(Rules.narrow_of(map), 1.0, 1.0)
+	# A shell around the whole brick rather than a lid on top of it: at this camera angle a
+	# flat plate all but disappears, and the brick has to look encased.
+	var plate = box(brick, Vector3(0, 0.3, 0), Vector3(0.7, 0.68, 0.44), Color(Rules.power_color("plating"), 0.3), true, 0.07)
+	plate.name = "Plate"
+	plate.hide()
 	brick.set_meta("hp", int(map.get("lives", Rules.BRICK_LIVES)))
 	brick.set_meta("skin", skin)
 	soft_disc(brick, Vector3(0.035, 0.018, 0.06), Vector2(0.92, 0.58), Color(0.006, 0.015, 0.022, 0.70))
@@ -1544,20 +1551,35 @@ func update_state(rules, local_team: int, dt: float, motion_alpha: float = 1.0) 
 		dazed.visible = frozen > 0
 		if dazed.visible:
 			dazed.rotation.y = clock * 2.7
-	# Zero gravity: the wall is adrift in the simulation, so the models follow it rather
-	# than the other way round — where a brick is drawn is where a shot will find it. The
-	# bumpers only rise, which is why they stop getting in the way.
-	var adrift: float = rules.gravity_progress()
-	if adrift > 0 or floating:
-		floating = adrift > 0
+	# The plunder flight: the wall is crossing over in the simulation, so the models follow
+	# it rather than the other way round — where a brick is drawn is where a shot finds it.
+	# Each one lifts as it goes and comes back down on the far side.
+	# Crystal plating goes on every brick of the side that called it and comes off the
+	# moment it runs out. Only the change is drawn: the rest of the time it costs nothing.
+	for team in range(2):
+		var lit: bool = rules.powers[team].plating_time > 0
+		if plated[team] == lit:
+			continue
+		plated[team] = lit
+		var half: int = brick_nodes.size() / 2
+		for i in range(brick_nodes.size()):
+			if (i < half) != (team == 0):
+				continue
+			var plate: Node3D = brick_nodes[i].get_node_or_null("Plate")
+			if plate != null:
+				plate.visible = lit
+				update_brick_batch(i)
+	var crossing: float = rules.plunder_progress()
+	if crossing > 0 or carrying:
+		carrying = crossing > 0
 		for i in range(rules.bricks.size()):
 			var data: Dictionary = rules.bricks[i]
 			var node: Node3D = brick_nodes[i]
-			node.position = Vector3(data.p.x, Rules.float_scatter(i, 45.164) * Rules.GRAVITY_LIFT * adrift, data.p.y)
-			node.rotation.y = -data.rotation + adrift * (Rules.float_scatter(i, 91.7) - 0.5) * 2.6
+			# An arc, not a slide: sin gives it the whole hop in the length of the flight.
+			var hop: float = sin(clampf(crossing * (0.62 + Rules.float_scatter(i, 12.9898) * 0.95), 0.0, 1.0) * PI)
+			node.position = Vector3(data.p.x, hop * (0.5 + Rules.float_scatter(i, 45.164) * 1.1), data.p.y)
+			node.rotation.y = -data.rotation + hop * (Rules.float_scatter(i, 91.7) - 0.5) * 3.4
 			update_brick_batch(i)
-		for i in range(obstacle_nodes.size()):
-			obstacle_nodes[i].position.y = adrift * (0.7 + Rules.float_scatter(90 + i, 45.164) * 1.3)
 	for team in range(2):
 		var data: Dictionary = rules.players[team]
 		var node: Node3D = units[team]
@@ -2130,19 +2152,57 @@ func volley_flash(at: Vector2, heading: Vector2) -> void:
 		effects.append({"node": arc, "v": Vector3.ZERO, "ttl": 0.32, "life": 0.32, "gravity": false, "base": Vector3.ONE * 2.6, "grow": true, "tint": color})
 	flash(Vector3(at.x, 0.9, at.y), color, 3.2, 0.3, 8.0)
 
-func gravity_open(at: Vector2, seconds: float) -> void:
-	# The floor lets go: rings wash out from the pilot and the dust goes up with them. The
-	# lift of the wall itself is drawn every frame, from the simulation.
-	var color = Rules.power_color("gravity")
-	for step in range(3):
+func shock_wave(at: Vector2) -> void:
+	# The same blow as the stun pulse, on the scale of the whole stadium: rings that leave
+	# the core and keep going out past the walls, with the ground lit under them.
+	var color = Rules.power_color("singularity")
+	var pale = Color("fff0d2")
+	for wave in range(3):
 		if effects.size() >= effect_limit:
 			break
-		var life = 0.7 + step * 0.16
-		var ring = torus(self, Vector3(at.x, 0.2 + step * 0.3, at.y), 1.0, 0.07, Color(color, 0.85), true)
-		ring.scale = Vector3.ONE * 0.2
-		effects.append({"node": ring, "v": Vector3(0, 1.1, 0), "ttl": life, "life": life, "gravity": false, "base": Vector3.ONE * 9.0, "grow": true, "tint": color})
-	emitter(Vector3(at.x, 0.4, at.y), color, 34, 1.4, 2.2, 120.0, 0.24, 2.6, Vector3.UP)
-	flash(Vector3(at.x, 1.6, at.y), color, 5.5, 0.8, 16.0)
+		var life = 0.85 + wave * 0.18
+		var ring = torus(self, Vector3(at.x, 0.3 + wave * 0.22, at.y), 1.0, 0.13 - wave * 0.03, Color(pale if wave == 0 else color, 0.95), true)
+		ring.scale = Vector3.ONE * 0.16
+		effects.append({"node": ring, "v": Vector3.ZERO, "ttl": life, "life": life, "gravity": false, "base": Vector3.ONE * (22.0 + wave * 6.0), "grow": true, "tint": color})
+	var dome = sphere(self, Vector3(at.x, 0.6, at.y), Vector3.ONE * 1.4, Color(color, 0.5), true)
+	effects.append({"node": dome, "v": Vector3.ZERO, "ttl": 0.55, "life": 0.55, "gravity": false, "base": Vector3.ONE * 6.5, "grow": true, "tint": color})
+	emitter(Vector3(at.x, 0.6, at.y), pale, 40, 0.9, 13.0, 90.0, 0.34, -4.0, Vector3.UP)
+	flash(Vector3(at.x, 1.4, at.y), color, 8.0, 0.7, 22.0)
+	shake(0.85)
+
+func plating_flash(team: int) -> void:
+	# Crystal closes over the wall: a plate lights up on each brick and stays lit while the
+	# plating holds, so both sides can see why the rounds are bouncing.
+	var color = Rules.power_color("plating")
+	var pale = Color("e8fbff")
+	var middle = Vector2.ZERO
+	var count = 0
+	for i in range(brick_nodes.size()):
+		var node: Node3D = brick_nodes[i]
+		if not node.visible or (i < brick_nodes.size() / 2) != (team == 0):
+			continue
+		middle += Vector2(node.position.x, node.position.z)
+		count += 1
+	if count == 0:
+		return
+	middle /= count
+	var sheet = torus(self, Vector3(middle.x, 0.45, middle.y), 1.0, 0.08, Color(pale, 0.9), true)
+	effects.append({"node": sheet, "v": Vector3.ZERO, "ttl": 0.7, "life": 0.7, "gravity": false, "base": Vector3.ONE * 7.0, "grow": true, "tint": color})
+	flash(Vector3(middle.x, 1.2, middle.y), color, 5.0, 0.6, 13.0)
+
+func plunder_land(team: int) -> void:
+	# The two walls touch down on the far side: one thump per brick, and a flash across the
+	# pair of them so the trade is read as one thing and not as eighty little ones.
+	var color = Rules.power_color("plunder")
+	for i in range(brick_nodes.size()):
+		if effects.size() >= effect_limit:
+			break
+		if i % 3 != 0 or not brick_nodes[i].visible:
+			continue
+		var node: Node3D = brick_nodes[i]
+		var ring = torus(self, node.position + Vector3(0, 0.1, 0), 0.3, 0.035, Color(color, 0.8), true)
+		effects.append({"node": ring, "v": Vector3.ZERO, "ttl": 0.4, "life": 0.4, "gravity": false, "base": Vector3.ONE * 1.6, "grow": true, "tint": color})
+	flash(Vector3(0, 1.2, 0), color, 6.0, 0.55, 18.0)
 	shake(0.5)
 
 func plunder_flash(team: int) -> void:
@@ -2237,78 +2297,6 @@ func singularity_swallow(at: Vector2) -> void:
 	ring.scale = Vector3.ONE * 2.1
 	effects.append({"node": ring, "v": Vector3.ZERO, "ttl": 0.22, "life": 0.22, "gravity": false, "base": Vector3.ONE * 2.1})
 	emitter(Vector3(at.x, 0.62, at.y), Color("ffd79a"), 6, 0.25, 2.4, 120.0, 0.18, 0.0, Vector3.UP)
-
-func singularity_burst(at: Vector2, heading: Vector2, count: int, impacts: Array = []) -> void:
-	# The release: the hole snaps shut and everything it ate leaves at once, so the light
-	# goes with it — a hard flash, a flat shock ring and a cone of embers down the fan.
-	var color = Rules.power_color("singularity")
-	var hot = Color("fff6e4")
-	var direction = Vector3(heading.x, 0, heading.y)
-	var origin = Vector3(at.x, 0.62, at.y)
-	if effects.size() + 4 < effect_limit:
-		var shock = torus(self, origin, 0.9, 0.13, Color(hot, 0.95), true)
-		shock.scale = Vector3(0.2, 0.3, 0.2)
-		effects.append({"node": shock, "v": Vector3.ZERO, "ttl": 0.75, "life": 0.75, "gravity": false, "base": Vector3(7.0, 0.5, 7.0), "grow": true, "tint": color})
-		var bubble = sphere(self, origin, Vector3.ONE * 0.9, Color(hot, 0.55), true)
-		effects.append({"node": bubble, "v": Vector3.ZERO, "ttl": 0.4, "life": 0.4, "gravity": false, "base": Vector3.ONE * 4.2, "grow": true, "tint": color})
-		# A train of waves rather than one flash: two more rings leave the core after the
-		# first, each wider and fainter, so the release reads as a shock rolling outwards.
-		for wave in range(2):
-			var delay = 0.1 + wave * 0.13
-			var width = 6.0 + wave * 3.4
-			var fade = 0.9 - wave * 0.32
-			var thickness = 0.08 - wave * 0.02
-			schedule(delay, func():
-				if effects.size() >= effect_limit:
-					return
-				var echo = torus(self, origin, 0.7, thickness, Color(color, fade), true)
-				echo.scale = Vector3(0.2, 0.3, 0.2)
-				effects.append({"node": echo, "v": Vector3.ZERO, "ttl": 0.65, "life": 0.65, "gravity": false, "base": Vector3(width, 0.4, width), "grow": true, "tint": color}))
-	# One lance of light per round that left. A round laid onto a brick draws all the way
-	# to it and lights it up; the rest streak off across the arena. The collapse leaves the
-	# effect list nearly full, so the oldest rings are dropped to make room: the release is
-	# the moment the whole power exists for, and it was coming out as a single lance.
-	var shown = mini(count, 22)
-	var room = shown + 6
-	while effects.size() > effect_limit - room and not effects.is_empty():
-		var oldest: Dictionary = effects[0]
-		oldest.node.queue_free()
-		effects.remove_at(0)
-	for index in range(shown):
-		if effects.size() >= effect_limit:
-			break
-		var spread = 0.0 if shown == 1 else lerpf(-Rules.SINGULARITY_FAN * 0.5, Rules.SINGULARITY_FAN * 0.5, float(index) / float(shown - 1))
-		var course: Vector2 = heading.rotated(spread)
-		var length = 5.0
-		var mark: Vector2 = impacts[index] if index < impacts.size() and typeof(impacts[index]) == TYPE_VECTOR2 else Vector2.ZERO
-		var travelling = true
-		if mark != Vector2.ZERO:
-			# Straight to the brick it takes, and there it stops.
-			course = (mark - at).normalized()
-			length = maxf(at.distance_to(mark) - 0.3, 0.6)
-			travelling = false
-		var reach = Vector3(course.x, 0, course.y)
-		var streak = Node3D.new()
-		add_child(streak)
-		segment(streak, origin, origin + reach * length, 0.085, 0.085, Color(hot, 0.95), true)
-		segment(streak, origin, origin + reach * (length * 0.7), 0.2, 0.2, Color(color, 0.5), true)
-		effects.append({"node": streak, "v": reach * (11.0 if travelling else 0.0), "ttl": 0.45 if travelling else 0.3, "life": 0.45 if travelling else 0.3, "gravity": false, "base": Vector3.ONE, "keep": true})
-		if not travelling:
-			# The brick it reached flares where the lance lands.
-			var hit = Vector3(mark.x, 0.45, mark.y)
-			var ring = torus(self, hit, 0.4, 0.05, Color(hot, 0.9), true)
-			effects.append({"node": ring, "v": Vector3.ZERO, "ttl": 0.35, "life": 0.35, "gravity": false, "base": Vector3.ONE * 1.8, "grow": true, "tint": color})
-			if index % 2 == 0:
-				emitter(hit, hot, 10, 0.4, 5.5, 70.0, 0.24, -4.0, Vector3.UP)
-		elif index % 3 == 0:
-			# Embers thrown down every third open lane, so the fan has body, not just edges.
-			emitter(origin + reach * 1.4, hot, 12, 0.45, 13.0, 16.0, 0.26, -2.0, Vector3(course.x, 0.08, course.y))
-	emitter(origin + direction * 0.8, hot, 40, 0.55, 12.0, 92.0, 0.3, -2.0, direction)
-	emitter(origin, color, 30, 0.8, 7.0, 150.0, 0.36, -3.0, Vector3.UP)
-	dust(Vector3(at.x, 0.16, at.y), Color("d8c4a4"), 16, 1.1, 3.2, 1.1)
-	flash(origin + direction * 1.2, hot, 8.0, 0.32, 9.0)
-	scorch(at, 4.4, color, 1.4)
-	shake(0.95)
 
 func shock_pulse(at: Vector2) -> void:
 	# Two rings racing outwards, a dome of light over the pilot and a spray of sparks.
