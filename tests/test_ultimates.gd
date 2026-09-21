@@ -427,9 +427,35 @@ func run() -> void:
 	var blast: Array = wait(vortex, Rules.ULTIMATE_WINDUP + Rules.SINGULARITY_PULL + 0.3)
 	check(blast.any(func(e): return e.kind == "shock_wave"), "Onda: one wave leaves the core, not a fan of rounds")
 	check(front_hp - vortex.bricks[front].hp == Rules.SHOCK_FRONT, "Onda: three off the front row")
-	check(third_hp - vortex.bricks[third].hp == Rules.SHOCK_REST, "Onda: and one off the rows further back")
 	check(vortex.players[1].hp < Rules.PLAYER_LIVES, "Onda: it runs past the wall and catches the pilot too")
+	# The front line is taken whole; the rows behind it are caught in patches.
+	var front_row: Array = ranks.keys().filter(func(i): return int(ranks[i]) == 0)
+	check(front_row.all(func(i): return vortex.bricks[i].hp <= front_hp - Rules.SHOCK_FRONT or not vortex.bricks[i].alive), "Onda: every brick of the front row is caught, not a sample of them")
+	var wave: Dictionary = blast.filter(func(e): return e.kind == "shock_wave")[0]
+	check(wave.marks.size() > 0 and wave.marks.all(func(m): return m.has("p") and m.has("bite")), "Onda: each brick it catches is named, with what it took, so the arena can show it")
+	for rank in range(1, 3):
+		var tier: Array = ranks.keys().filter(func(i): return int(ranks[i]) == rank)
+		if tier.is_empty():
+			continue
+		var bitten: int = tier.filter(func(i): return vortex.bricks[i].hp < 3).size()
+		check(bitten >= mini(Rules.SHOCK_MIN_PER_ROW, tier.size()), "Onda: row %d gives up at least five bricks (%d de %d)" % [rank, bitten, tier.size()])
 	print("ONDA: %d de vida na muralha" % (vortex_before - team_health(vortex, 1)))
+
+	# The rows are counted over the wall still standing, which is the whole point: by the
+	# time this is charged the original front rows are usually rubble.
+	var late = playing("singularity")
+	var late_ranks: Dictionary = late.brick_ranks(1)
+	for index in late_ranks.keys():
+		if int(late_ranks[index]) < 2:
+			late.bricks[index].hp = 0
+			late.bricks[index].alive = false
+	var survivors: Dictionary = late.brick_ranks(1)
+	var new_front: Array = survivors.keys().filter(func(i): return int(survivors[i]) == 0)
+	check(not new_front.is_empty() and new_front.all(func(i): return int(late_ranks[i]) == 2), "Onda: with the first two rows already gone, the third becomes the front line")
+	var mark_hp: int = late.bricks[new_front[0]].hp
+	launch(late)
+	wait(late, Rules.ULTIMATE_WINDUP + Rules.SINGULARITY_PULL + 0.3)
+	check(mark_hp - late.bricks[new_front[0]].hp == Rules.SHOCK_FRONT, "Onda: and it takes the full three, not the one its old row would have given")
 
 	# Pilhagem: the two walls cross over in the air before the lives change hands.
 	var raid = playing("plunder")

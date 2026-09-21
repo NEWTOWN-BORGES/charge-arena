@@ -27,7 +27,7 @@ func run() -> void:
 	game.rules.phase = "play"
 	game.rules.players[0].angle = -0.34
 	game.rules.players[0].p = game.Rules.track_position(0, -0.34)
-	for pair in [["volley", 0.7], ["plating", 0.6], ["plunder", 0.7], ["singularity", 2.3]]:
+	for pair in [["volley", 0.7], ["plating", 0.6], ["plunder", 0.7], ["singularity", 2.62]]:
 		var id: String = pair[0]
 		fire(game, id)
 		await create_timer(game.Rules.ULTIMATE_WINDUP + float(pair[1])).timeout

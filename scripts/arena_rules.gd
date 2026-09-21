@@ -170,6 +170,10 @@ const SHOCK_SECOND = 2
 const SHOCK_REST = 1
 const SHOCK_PLAYER = 1
 const SHOCK_ROW = 0.2
+# The front line takes it whole; the rows sheltered behind it are caught in patches, and
+# never fewer than this many bricks apiece while there are that many left standing.
+const SHOCK_MIN_PER_ROW = 5
+const SHOCK_ODDS = 0.5
 # Pilhagem: how long the two walls spend crossing over in the air before they land.
 const PLUNDER_SWAP = 1.15
 # How many numbers each side's power state takes in a network packet.
@@ -1048,13 +1052,35 @@ func shock_wave(team: int) -> void:
 	# back out with it, so nobody loses the rounds they had in play.
 	var core: Vector2 = players[team].p
 	var enemy = 1 - team
+	# Ranked over the wall that is still standing, not the one it started as. By the time
+	# this is charged the front rows are usually gone, and the row the wave meets first is
+	# whatever is left at the front - otherwise the whole blow would land as ones.
 	var ranks: Dictionary = brick_ranks(enemy)
-	var struck: Array = []
+	var rows: Dictionary = {}
 	for index in ranks.keys():
 		var rank: int = int(ranks[index])
-		var bite: int = SHOCK_FRONT if rank == 0 else (SHOCK_SECOND if rank == 1 else SHOCK_REST)
-		struck.append(index)
-		damage_brick(index, bite, team, bricks[index].p)
+		if not rows.has(rank):
+			rows[rank] = []
+		rows[rank].append(index)
+	var marks: Array = []
+	for rank in rows.keys():
+		var row: Array = rows[rank]
+		var caught: Array = []
+		if int(rank) == 0:
+			# The front line takes the whole of it, every brick.
+			caught = row
+		else:
+			for index in row:
+				if power_rng.randf() < SHOCK_ODDS:
+					caught.append(index)
+			# Topped up at random until the row has had its share, or has none left to give.
+			var spare: Array = row.filter(func(i): return not caught.has(i))
+			while caught.size() < SHOCK_MIN_PER_ROW and not spare.is_empty():
+				caught.append(spare.pop_at(power_rng.randi_range(0, spare.size() - 1)))
+		var bite: int = SHOCK_FRONT if int(rank) == 0 else (SHOCK_SECOND if int(rank) == 1 else SHOCK_REST)
+		for index in caught:
+			marks.append({"p": bricks[index].p, "bite": bite})
+			damage_brick(index, bite, team, bricks[index].p)
 	damage_player(enemy, SHOCK_PLAYER, players[enemy].p)
 	for ball in balls:
 		if ball.get("held", false):
@@ -1062,7 +1088,7 @@ func shock_wave(team: int) -> void:
 			var away: Vector2 = ball.p - core
 			ball.v = (away.normalized() if away.length() > 0.001 else Vector2.UP) * BALL_SPEED
 			ball.ttl = BALL_LIFE
-	events.append({"kind": "shock_wave", "team": team, "p": core, "bricks": struck})
+	events.append({"kind": "shock_wave", "team": team, "p": core, "marks": marks})
 
 func deploy_turrets(team: int) -> void:
 	# Two platforms in the middle of the ring, one on each side of the centre. They stand

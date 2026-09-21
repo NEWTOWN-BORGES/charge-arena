@@ -2152,7 +2152,23 @@ func volley_flash(at: Vector2, heading: Vector2) -> void:
 		effects.append({"node": arc, "v": Vector3.ZERO, "ttl": 0.32, "life": 0.32, "gravity": false, "base": Vector3.ONE * 2.6, "grow": true, "tint": color})
 	flash(Vector3(at.x, 0.9, at.y), color, 3.2, 0.3, 8.0)
 
-func shock_wave(at: Vector2) -> void:
+# How fast the front of the wave crosses the floor, so each brick lights up as it
+# arrives instead of the whole wall flashing at once.
+const SHOCK_SPEED = 24.0
+
+func shock_mark(at: Vector2, bite: int) -> void:
+	# One brick, caught by the wave: a halo in the colour of the blow and the lives it took
+	# floating off it. Without this the ultimate is all sky and you cannot read what it did.
+	if effects.size() + 2 >= effect_limit:
+		return
+	var color: Color = [Color("ffe9c0"), Color("ffd27a"), Color("ff9f5c"), Color("ff6a5c")][clampi(bite, 0, 3)]
+	var halo = torus(self, Vector3(at.x, 0.42, at.y), 0.32, 0.05, Color(color, 0.95), true)
+	effects.append({"node": halo, "v": Vector3(0, 1.0, 0), "ttl": 0.5, "life": 0.5, "gravity": false, "base": Vector3.ONE * 2.0, "grow": true, "tint": color})
+	# The bigger the bite the bigger the number: a wall of threes has to read at a glance.
+	var label = world_label("-%d" % bite, Vector3(at.x, 1.05, at.y), color, 54 + bite * 14)
+	effects.append({"node": label, "v": Vector3(0, 1.15, 0), "ttl": 1.0, "life": 1.0, "gravity": false, "base": Vector3.ONE, "keep": true})
+
+func shock_wave(at: Vector2, marks: Array = []) -> void:
 	# The same blow as the stun pulse, on the scale of the whole stadium: rings that leave
 	# the core and keep going out past the walls, with the ground lit under them.
 	var color = Rules.power_color("singularity")
@@ -2169,6 +2185,11 @@ func shock_wave(at: Vector2) -> void:
 	emitter(Vector3(at.x, 0.6, at.y), pale, 40, 0.9, 13.0, 90.0, 0.34, -4.0, Vector3.UP)
 	flash(Vector3(at.x, 1.4, at.y), color, 8.0, 0.7, 22.0)
 	shake(0.85)
+	# Every brick the wave catches lights up as the front reaches it, and says what it took.
+	for mark in marks:
+		var spot: Vector2 = mark.p
+		var bite: int = int(mark.bite)
+		pending.append({"time": clampf(at.distance_to(spot) / SHOCK_SPEED, 0.0, 0.8), "call": func(): shock_mark(spot, bite)})
 
 func plating_flash(team: int) -> void:
 	# Crystal closes over the wall: a plate lights up on each brick and stays lit while the

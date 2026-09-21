@@ -673,7 +673,7 @@ func play_events() -> void:
 			arena.plating_flash(event.team)
 			play_tone("power")
 		elif event.kind == "shock_wave":
-			arena.shock_wave(event.p)
+			arena.shock_wave(event.p, event.get("marks", []))
 			play_tone("void_burst")
 		elif event.kind == "plunder_land":
 			arena.plunder_land(event.team)
