@@ -122,6 +122,8 @@ var skins_overlay: ColorRect
 var skins_panel: PanelContainer
 var skins_button: Button
 var powers_button: Button
+var news_text = ""
+const MENU_HINT = "Toque: arrasta para mover · o disparo é automático · PC: A/D"
 var powers_overlay: ColorRect
 var powers_panel: PanelContainer
 var powers_wallet: Label
@@ -499,6 +501,47 @@ func sync_skins(skins) -> void:
 	skins_progress = skins
 	skins_button.text = "SKINS  %d/%d" % [skins.unlocked_count(), Skins.CATALOG.size()]
 	refresh_skins()
+	refresh_news()
+
+func refresh_news() -> void:
+	# A pilot who has just won a skin, or saved enough for a power, should not have to go
+	# looking: the button that holds it says so, and a line underneath names it.
+	if menu_status == null:
+		return
+	var lines: Array = []
+	var fresh_skins: Array = []
+	if skins_progress != null:
+		fresh_skins = skins_progress.unseen()
+	var buyable: Array = []
+	if power_shop != null:
+		buyable = power_shop.affordable()
+	var cheapest: Dictionary = {}
+	for entry in buyable:
+		if cheapest.is_empty() or int(entry.price) < int(cheapest.price):
+			cheapest = entry
+	# One line has to hold this, so with news on both sides each half says less.
+	var crowded: bool = not fresh_skins.is_empty() and not buyable.is_empty()
+	if not fresh_skins.is_empty():
+		var names: Array = fresh_skins.map(func(i): return String(Skins.CATALOG[i].name))
+		if crowded:
+			lines.append("Skin nova: %s" % String(names[0]) if names.size() == 1 else "%d skins novas" % names.size())
+		else:
+			lines.append("Skin nova: %s — abre SKINS" % " · ".join(names))
+	if not buyable.is_empty():
+		if crowded:
+			lines.append("%d poderes ao teu alcance" % buyable.size() if buyable.size() > 1 else "%s ao teu alcance" % String(cheapest.name))
+		else:
+			var tail = "" if buyable.size() == 1 else " (e mais %d)" % (buyable.size() - 1)
+			lines.append("Podes comprar %s por %d tijolos%s — abre PODERES" % [String(cheapest.name), int(cheapest.price), tail])
+	news_text = "  ·  ".join(lines)
+	# Shown in the row the menu already keeps for its hint, so nothing grows and the
+	# main action stays where the thumb rests.
+	menu_status.text = news_text if news_text != "" else MENU_HINT
+	menu_status.add_theme_color_override("font_color", LIME if news_text != "" else MUTED)
+	if skins_button != null:
+		skins_button.text = "SKINS  %d/%d%s" % [skins_progress.unlocked_count() if skins_progress != null else 0, Skins.CATALOG.size(), "  •" if not fresh_skins.is_empty() else ""]
+	if powers_button != null and power_shop != null:
+		powers_button.text = "PODERES  %d/%d%s" % [power_shop.owned.size(), Powers.CATALOG.size(), "  •" if not buyable.is_empty() else ""]
 
 func viewer_palette() -> Dictionary:
 	return Skins.colors(viewer_skin, CORAL, true) if viewer_locked else Skins.colors(viewer_skin, CYAN)
@@ -591,6 +634,11 @@ func draw_thumb(canvas: Control, index: int) -> void:
 
 func open_skins() -> void:
 	reset_touch()
+	if skins_progress != null:
+		# Opening the panel is what marks them as seen; the dot goes out.
+		skins_progress.mark_seen()
+		skins_progress.save_preferences()
+		refresh_news()
 	skins_overlay.show()
 	preview_skin(skins_progress.selected if skins_progress != null else 0)
 
@@ -685,7 +733,7 @@ func build_menu() -> void:
 	list.add_child(label("✦  CIRCUITO AURORA", 13, CYAN, true))
 	list.add_child(label("CHARGE ARENA", 34, WHITE, true))
 	list.add_child(label("Destrói as defesas do rival e marca 2 golos.", 15, MUTED))
-	menu_status = label("Toque: arrasta para mover · o disparo é automático · PC: A/D", 13, MUTED)
+	menu_status = label(MENU_HINT, 13, MUTED)
 	menu_status.clip_text = true
 	menu_status.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
 	list.add_child(menu_status)
@@ -727,6 +775,7 @@ func build_menu() -> void:
 	graphics.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	extras.add_child(graphics)
 	graphics.pressed.connect(open_video)
+	# What is waiting behind those buttons, named in a line under them.
 	var modes = HBoxContainer.new()
 	modes.add_theme_constant_override("separation", 10)
 	list.add_child(modes)
@@ -889,6 +938,7 @@ func sync_powers(shop) -> void:
 	if powers_button != null:
 		powers_button.text = "PODERES  %d/%d" % [shop.owned.size(), Powers.CATALOG.size()]
 	refresh_powers()
+	refresh_news()
 
 func preview_power(index: int) -> void:
 	shop_index = clampi(index, 0, shop_entries().size() - 1)

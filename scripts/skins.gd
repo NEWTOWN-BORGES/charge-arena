@@ -42,6 +42,8 @@ const SAVE_VERSION = 2
 var config_path = CONFIG_PATH
 var unlock_all = UNLOCK_ALL_FOR_TESTS
 var defeated: Array = []
+# Skins won but not yet opened in the panel: the menu points at them until it is.
+var seen: Array = []
 var selected = 0
 
 static func colors(index: int, team_color: Color, boss_tint: bool = false) -> Dictionary:
@@ -64,6 +66,15 @@ static func boss_skin(level: int) -> int:
 
 func is_unlocked(index: int) -> bool:
 	return index >= 0 and index < CATALOG.size() and (unlock_all or CATALOG[index].level == 0 or defeated.has(index))
+
+func unseen() -> Array:
+	# Won and not yet looked at. The starter pilot is never news.
+	return range(CATALOG.size()).filter(func(i): return i > 0 and is_unlocked(i) and not seen.has(i))
+
+func mark_seen() -> void:
+	for index in range(CATALOG.size()):
+		if is_unlocked(index) and not seen.has(index):
+			seen.append(index)
 
 func unlocked_count() -> int:
 	return range(CATALOG.size()).filter(is_unlocked).size()
@@ -91,6 +102,7 @@ func load_preferences() -> void:
 	for index in Array(config.get_value("skins", "defeated", [])):
 		if index is int and index > 0 and index < CATALOG.size() and not defeated.has(index):
 			defeated.append(index)
+	seen = Array(config.get_value("skins", "seen", [])).filter(func(i): return i is int and i >= 0 and i < CATALOG.size())
 	var saved = int(config.get_value("skins", "selected", 0))
 	selected = saved if is_unlocked(saved) else 0
 
@@ -98,5 +110,6 @@ func save_preferences() -> Error:
 	var config = ConfigFile.new()
 	config.set_value("skins", "version", SAVE_VERSION)
 	config.set_value("skins", "defeated", defeated)
+	config.set_value("skins", "seen", seen)
 	config.set_value("skins", "selected", selected)
 	return config.save(config_path)
