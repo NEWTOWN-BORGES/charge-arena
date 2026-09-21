@@ -433,7 +433,10 @@ func update_brick_batch(index: int) -> void:
 	for binding in brick_instances[index]:
 		var pose: Transform3D = global_transform.affine_inverse() * binding.part.global_transform
 		if not binding.part.is_visible_in_tree():
-			pose = Transform3D(Basis.IDENTITY.scaled(Vector3.ONE * 0.000001), Vector3(0, -100, 0))
+			# Collapsed where it stands, not parked a hundred units under the floor: the
+			# batch's bounding box is what the menu camera frames the stadium by, and a
+			# single hidden piece down there shrank the whole preview to a stamp.
+			pose = Transform3D(Basis.IDENTITY.scaled(Vector3.ONE * 0.000001), pose.origin)
 		binding.batch.set_instance_transform(binding.slot, pose)
 
 func capture_motion(rules) -> void:
@@ -2165,8 +2168,11 @@ func shock_mark(at: Vector2, bite: int) -> void:
 	var halo = torus(self, Vector3(at.x, 0.42, at.y), 0.32, 0.05, Color(color, 0.95), true)
 	effects.append({"node": halo, "v": Vector3(0, 1.0, 0), "ttl": 0.5, "life": 0.5, "gravity": false, "base": Vector3.ONE * 2.0, "grow": true, "tint": color})
 	# The bigger the bite the bigger the number: a wall of threes has to read at a glance.
-	var label = world_label("-%d" % bite, Vector3(at.x, 1.05, at.y), color, 54 + bite * 14)
-	effects.append({"node": label, "v": Vector3(0, 1.15, 0), "ttl": 1.0, "life": 1.0, "gravity": false, "base": Vector3.ONE, "keep": true})
+	# Clear of the brick tops, or at this camera angle the number is read through the wall.
+	var label = world_label("-%d" % bite, Vector3(at.x, 1.45, at.y), color, 54 + bite * 14)
+	# Long enough that the far end of the wall is still lit when the near end is: the whole
+	# blow has to be readable in one look, not brick by brick as it fades.
+	effects.append({"node": label, "v": Vector3(0, 0.75, 0), "ttl": 1.9, "life": 1.9, "gravity": false, "base": Vector3.ONE, "keep": true})
 
 func shock_wave(at: Vector2, marks: Array = []) -> void:
 	# The same blow as the stun pulse, on the scale of the whole stadium: rings that leave

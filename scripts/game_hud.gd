@@ -1698,9 +1698,11 @@ func layout_vertical(menu_height: float) -> void:
 	menu.size = Vector2(minf(size.x - 48, 520), menu_height)
 	menu.position = Vector2((size.x - menu.size.x) * 0.5, maxf(safe_top + 150, bottom - menu.size.y - 56))
 	if mode == "menu":
-		# The previewed level's name sits above its stadium and the page dots below it.
+		# The previewed level's name sits above its stadium, and under it come the boss card
+		# and the page dots. The stadium stops above the boss: it used to be framed down to
+		# the panel and drew straight over the face.
 		var top = safe_top + 172
-		arena_rect = Rect2(16, top, size.x - 32, maxf(menu.position.y - 48 - top, 120))
+		arena_rect = Rect2(16, top, size.x - 32, maxf(menu.position.y - 221 - top, 120))
 	else:
 		# Top match info band sits comfortably below the header buttons (bar_y = safe_top + 48)
 		var bar_y = safe_top + 48.0

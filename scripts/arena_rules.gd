@@ -169,11 +169,8 @@ const SHOCK_FRONT = 3
 const SHOCK_SECOND = 2
 const SHOCK_REST = 1
 const SHOCK_PLAYER = 1
-const SHOCK_ROW = 0.2
-# The front line takes it whole; the rows sheltered behind it are caught in patches, and
-# never fewer than this many bricks apiece while there are that many left standing.
-const SHOCK_MIN_PER_ROW = 5
-const SHOCK_ODDS = 0.5
+# The wall is read in four bands from the front, whatever shape it was built in.
+const SHOCK_BANDS = 4
 # Pilhagem: how long the two walls spend crossing over in the air before they land.
 const PLUNDER_SWAP = 1.15
 # How many numbers each side's power state takes in a network packet.
@@ -1027,23 +1024,23 @@ func singularity_pull(team: int, dt: float) -> void:
 		index -= 1
 
 func brick_ranks(team: int) -> Dictionary:
-	# How far back each brick of this wall stands, counted in rows from the front: the one a
-	# wave meets first is row nought. Depths are snapped, because an arc or a chevron has no
-	# two bricks at exactly the same distance from the goal.
-	var goal_y: float = goal_center(team).y
-	var depths: Array = []
-	for brick in bricks:
-		if brick.alive and brick.team == team:
-			var depth: float = snappedf(absf(brick.p.y - goal_y), SHOCK_ROW)
-			if not depths.has(depth):
-				depths.append(depth)
-	depths.sort()
-	depths.reverse()
-	var ranks: Dictionary = {}
+	# Which band of the wall each brick stands in, counted from the front. Snapping depths
+	# to a grid only works on a wall built in straight rows: on the diagonal banks and the
+	# arcs it cut the wall into a dozen slivers, so almost every brick came out as a back
+	# row and the whole blow landed as ones. Sorting what is standing and cutting it into
+	# four bands gives every layout a real front line - and on a wall that really is four
+	# rows deep, the bands are those rows.
+	var live: Array = []
 	for index in range(bricks.size()):
-		var brick: Dictionary = bricks[index]
-		if brick.alive and brick.team == team:
-			ranks[index] = depths.find(snappedf(absf(brick.p.y - goal_y), SHOCK_ROW))
+		if bricks[index].alive and bricks[index].team == team:
+			live.append(index)
+	if live.is_empty():
+		return {}
+	var goal_y: float = goal_center(team).y
+	live.sort_custom(func(a, b): return absf(bricks[a].p.y - goal_y) > absf(bricks[b].p.y - goal_y))
+	var ranks: Dictionary = {}
+	for slot in range(live.size()):
+		ranks[live[slot]] = mini(slot * SHOCK_BANDS / live.size(), SHOCK_BANDS - 1)
 	return ranks
 
 func shock_wave(team: int) -> void:
@@ -1062,23 +1059,12 @@ func shock_wave(team: int) -> void:
 		if not rows.has(rank):
 			rows[rank] = []
 		rows[rank].append(index)
+	# Nothing is spared: the wave is one blow across the whole wall, and the rows behind the
+	# front are sheltered by taking less, not by being missed.
 	var marks: Array = []
 	for rank in rows.keys():
-		var row: Array = rows[rank]
-		var caught: Array = []
-		if int(rank) == 0:
-			# The front line takes the whole of it, every brick.
-			caught = row
-		else:
-			for index in row:
-				if power_rng.randf() < SHOCK_ODDS:
-					caught.append(index)
-			# Topped up at random until the row has had its share, or has none left to give.
-			var spare: Array = row.filter(func(i): return not caught.has(i))
-			while caught.size() < SHOCK_MIN_PER_ROW and not spare.is_empty():
-				caught.append(spare.pop_at(power_rng.randi_range(0, spare.size() - 1)))
 		var bite: int = SHOCK_FRONT if int(rank) == 0 else (SHOCK_SECOND if int(rank) == 1 else SHOCK_REST)
-		for index in caught:
+		for index in rows[rank]:
 			marks.append({"p": bricks[index].p, "bite": bite})
 			damage_brick(index, bite, team, bricks[index].p)
 	damage_player(enemy, SHOCK_PLAYER, players[enemy].p)
