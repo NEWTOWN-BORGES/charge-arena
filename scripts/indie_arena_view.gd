@@ -258,7 +258,7 @@ func platform(outline: Array, height: float, depth: float, color: Color) -> Mesh
 
 func build(new_map: Dictionary = {}) -> void:
 	map = new_map if not new_map.is_empty() else Rules.default_map()
-	walls = Rules.outline_points(map.get("outline", "hex"))
+	walls = Rules.map_outline(map)
 	var environment = WorldEnvironment.new()
 	environment.environment = Environment.new()
 	environment.environment.background_mode = Environment.BG_CANVAS
@@ -513,7 +513,7 @@ func build_goal(team: int) -> void:
 		cylinder(self, p, 0.1, 0.018, color, true, 16)
 
 func build_bricks() -> void:
-	for data in Rules.make_bricks(map.get("bricks", "banks")):
+	for data in Rules.map_bricks(map):
 		brick_nodes.append(make_brick(self, data, 0))
 
 func make_brick(parent: Node3D, data: Dictionary, skin: int, tint: bool = false) -> Node3D:
@@ -524,6 +524,9 @@ func make_brick(parent: Node3D, data: Dictionary, skin: int, tint: bool = false)
 	parent.add_child(brick)
 	brick.position = Vector3(data.p.x, 0, data.p.y)
 	brick.rotation.y = -data.rotation
+	# A tall map pulls its sides in and the bricks come in with it, exactly as the collision
+	# box does. Left at full width a bank would read as one solid bar.
+	brick.scale = Vector3(Rules.narrow_of(map), 1.0, 1.0)
 	brick.set_meta("hp", int(map.get("lives", Rules.BRICK_LIVES)))
 	brick.set_meta("skin", skin)
 	soft_disc(brick, Vector3(0.035, 0.018, 0.06), Vector2(0.92, 0.58), Color(0.006, 0.015, 0.022, 0.70))
@@ -636,7 +639,7 @@ func make_brick(parent: Node3D, data: Dictionary, skin: int, tint: bool = false)
 
 func set_brick_theme(team: int, skin: int, tint: bool = false) -> void:
 	# Rebuild that team's bricks, then regroup every brick part into shared draws.
-	var layout = Rules.make_bricks(map.get("bricks", "banks"))
+	var layout = Rules.map_bricks(map)
 	for i in range(layout.size()):
 		if layout[i].team == team:
 			brick_nodes[i].queue_free()
@@ -1356,7 +1359,7 @@ func stadium_marks() -> Array:
 	# Everything the camera has to keep on screen: the boundary, the rails the pilots walk
 	# — which reach outside the wall line at the goal ends on some outlines — and the top of
 	# the walls, each with a hair of margin around it.
-	var spots: Array = Rules.outline_points(map.get("outline", "hex")).duplicate()
+	var spots: Array = Rules.map_outline(map).duplicate()
 	var limit: float = Rules.track_limit_for(map)
 	for team in range(2):
 		for step in range(9):
@@ -1575,7 +1578,9 @@ func update_state(rules, local_team: int, dt: float, motion_alpha: float = 1.0) 
 			burst(data.p, CYAN if data.team == 0 else CORAL, not data.alive)
 		brick.set_meta("hp", data.hp)
 		brick.visible = data.alive
-		brick.scale = Vector3.ONE * maxf(0.001, Rules.brick_scale(data.hp))
+		# Narrowed along the arena's own axis on a tall map, so the bank reads as separate
+		# bricks instead of one bar.
+		brick.scale = Vector3(Rules.narrow_of(map), 1.0, 1.0) * maxf(0.001, Rules.brick_scale(data.hp))
 		for n in range(3):
 			brick.get_node("HP" + str(n)).visible = n < data.hp
 		update_brick_batch(i)
@@ -2082,7 +2087,7 @@ func plunder_flash(team: int) -> void:
 		var curtain = Node3D.new()
 		add_child(curtain)
 		curtain.position = Vector3(0, 0, side * Rules.HALF_LENGTH * 0.7)
-		var span: float = Rules.side_x(map.get("outline", "hex")) * 2.0
+		var span: float = Rules.side_x(map.get("outline", "hex"), Rules.narrow_of(map)) * 2.0
 		box(curtain, Vector3(0, 0.75, 0), Vector3(span, 1.5, 0.1), Color(color, 0.8), true, 0.04)
 		box(curtain, Vector3(0, 0.75, 0), Vector3(span, 1.9, 0.5), Color(color, 0.22), true, 0.04)
 		box(curtain, Vector3(0, 0.05, 0), Vector3(span, 0.04, 1.6), Color(pale, 0.5), true, 0.02)
@@ -2467,7 +2472,7 @@ func build_power_effects() -> void:
 		var cape = Node3D.new()
 		cape.name = "Cape"
 		root.add_child(cape)
-		for data in Rules.make_bricks(map.get("bricks", "banks")):
+		for data in Rules.map_bricks(map):
 			if data.team != team:
 				continue
 			var dome = box(cape, Vector3(data.p.x, 0.36, data.p.y), Vector3(0.66, 0.78, 0.4), Color(Rules.power_color("mirror"), 0.34), true, 0.1)
@@ -2480,7 +2485,7 @@ func build_power_effects() -> void:
 		walls.name = "Walls"
 		root.add_child(walls)
 		# Ceramic slabs with a brass rail, the same build as the fixed barriers.
-		for slab in Rules.team_walls(team, map.get("bricks", "banks")):
+		for slab in Rules.team_walls(team, map):
 			var a = Vector3(slab.a.x, 0.0, slab.a.y)
 			var b = Vector3(slab.b.x, 0.0, slab.b.y)
 			segment(walls, a + Vector3.UP * 0.55, b + Vector3.UP * 0.55, Rules.BARRIER_RADIUS * 2, 1.1, CREAM)

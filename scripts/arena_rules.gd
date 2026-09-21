@@ -4,6 +4,11 @@ const MAP_SCALE = 1.24
 # The tall arena's half width. Narrow enough that the field fills a phone screen held
 # upright instead of sitting in a band across the middle of it.
 const TOWER_HALF_WIDTH = 5.3
+# A map marked "tall" is the same map with its sides brought in: the walls, the bricks, the
+# bumpers and the moving obstacles all pull towards the middle by this much, so the field
+# comes out the shape of a phone held upright instead of a band across the middle of it.
+# Everything scales together, so the arena keeps its character — only its proportions change.
+const TALL_NARROW = 0.71
 const HALF_WIDTH = 6.0 * MAP_SCALE
 const HALF_LENGTH = 6.93 * MAP_SCALE
 const GOAL_RADIUS = 1.65
@@ -203,6 +208,11 @@ var track_limit: float = TRACK_LIMIT
 # How many lives each brick of this arena starts with; boss rounds ask for more.
 var brick_lives: int = BRICK_LIVES
 var barriers: Array = []
+# This map's obstacle specifications, already narrowed if the map asked to be tall.
+var obstacle_specs: Array = []
+# How wide a brick is on this map. A tall arena pulls its sides in, and the bricks come in
+# with it: left at full width they would overlap each other and push past the new walls.
+var brick_extent: Vector2 = BRICK_EXTENT
 # Where each team's defensive walls stand on this map (see team_walls).
 var wall_slabs: Array = [[], []]
 var powers: Array = []
@@ -236,7 +246,7 @@ static func tower_map() -> Dictionary:
 
 static func pvp_map() -> Dictionary:
 	return {
-		"id": "colosseum", "name": "Coliseu Retangular", "outline": "colosseum", "boosters": true, "bricks": "colosseum", "barriers": [],
+		"id": "colosseum", "name": "Coliseu Retangular", "tall": true, "lean": true, "outline": "colosseum", "boosters": true, "bricks": "colosseum", "barriers": [],
 		"obstacles": [
 			{"kind": "slide", "center": Vector2(-2.2, -1.1), "axis": Vector2.RIGHT, "travel": 1.8, "frequency": 0.55, "phase": 0.0},
 			{"kind": "slide", "center": Vector2(2.2, 1.1), "axis": Vector2.RIGHT, "travel": 1.8, "frequency": 0.55, "phase": PI},
@@ -246,16 +256,23 @@ static func pvp_map() -> Dictionary:
 
 func set_map(new_map: Dictionary) -> void:
 	map = new_map
-	walls = outline_points(map.get("outline", "hex"))
+	walls = map_outline(map)
 	boost_centers = booster_centers(map)
-	barriers = map.get("barriers", [])
-	wall_slabs = [team_walls(0, map.get("bricks", "banks")), team_walls(1, map.get("bricks", "banks"))]
+	barriers = map_barriers(map)
+	obstacle_specs = map_obstacles(map)
+	brick_extent = Vector2(BRICK_EXTENT.x * narrow_of(map), BRICK_EXTENT.y)
+	wall_slabs = [team_walls(0, map), team_walls(1, map)]
 	track_limit = track_limit_for(map)
 	brick_lives = clampi(int(map.get("lives", BRICK_LIVES)), 1, BRICK_MAX_LIVES)
 	cached_firing_angles.clear()
 	reset_match()
 
-static func outline_points(kind: String) -> Array:
+static func outline_points(kind: String, narrow: float = 1.0) -> Array:
+	if not is_equal_approx(narrow, 1.0):
+		var pulled: Array = []
+		for point in outline_points(kind):
+			pulled.append(Vector2(point.x * narrow, point.y))
+		return pulled
 	# Same winding as WALLS, so every edge normal points into the arena. The goal ends
 	# and the vertices at (±HALF_WIDTH, ±HALF_LENGTH / 2) are shared by every outline.
 	var w = HALF_WIDTH
@@ -293,17 +310,62 @@ static func outline_points(kind: String) -> Array:
 			]
 	return WALLS.duplicate()
 
-static func side_x(kind: String) -> float:
-	return {"pinch": HALF_WIDTH - 1.9, "wide": HALF_WIDTH + 1.3, "gorge": HALF_WIDTH - 1.7, "lens": HALF_WIDTH + 1.0, "torre": TOWER_HALF_WIDTH}.get(kind, HALF_WIDTH)
+static func side_x(kind: String, narrow: float = 1.0) -> float:
+	return {"pinch": HALF_WIDTH - 1.9, "wide": HALF_WIDTH + 1.3, "gorge": HALF_WIDTH - 1.7, "lens": HALF_WIDTH + 1.0, "torre": TOWER_HALF_WIDTH}.get(kind, HALF_WIDTH) * narrow
+
+static func narrow_of(layout: Dictionary) -> float:
+	return TALL_NARROW if layout.get("tall", false) else 1.0
+
+static func map_outline(layout: Dictionary) -> Array:
+	return outline_points(layout.get("outline", "hex"), narrow_of(layout))
+
+static func map_obstacles(layout: Dictionary) -> Array:
+	# A slider sweeps a narrower arena over a shorter run; an orbit keeps its circle, which
+	# would turn into an ellipse if only one axis were scaled.
+	var narrow: float = narrow_of(layout)
+	var specs: Array = layout.get("obstacles", [])
+	if is_equal_approx(narrow, 1.0):
+		return specs
+	var scaled: Array = []
+	for spec in specs:
+		var copy: Dictionary = spec.duplicate()
+		var center: Vector2 = spec.get("center", Vector2.ZERO)
+		copy["center"] = Vector2(center.x * narrow, center.y)
+		if spec.get("kind", "fixed") == "slide":
+			copy["travel"] = float(spec.get("travel", 0.0)) * narrow
+		scaled.append(copy)
+	return scaled
+
+static func map_barriers(layout: Dictionary) -> Array:
+	var narrow: float = narrow_of(layout)
+	var fences: Array = layout.get("barriers", [])
+	if is_equal_approx(narrow, 1.0):
+		return fences
+	var scaled: Array = []
+	for fence in fences:
+		var copy: Dictionary = fence.duplicate()
+		copy["a"] = Vector2(fence.a.x * narrow, fence.a.y)
+		copy["b"] = Vector2(fence.b.x * narrow, fence.b.y)
+		scaled.append(copy)
+	return scaled
+
+static func map_bricks(layout: Dictionary, lives: int = BRICK_LIVES) -> Array:
+	var bricks: Array = make_bricks(layout.get("bricks", "banks"), lives)
+	var narrow: float = narrow_of(layout)
+	if is_equal_approx(narrow, 1.0):
+		return bricks
+	for brick in bricks:
+		brick.p = Vector2(brick.p.x * narrow, brick.p.y)
+	return bricks
 
 static func track_limit_for(layout: Dictionary) -> float:
 	# How far this arena lets a pilot walk before it would scrape a wall, a barrier or a
 	# bumper. The arc is a circle around the goal, so a roomy outline gives a much longer
 	# walk — and that walk is the only way to reach the side boosters. Static, because the
 	# arena view draws the rail from the same number.
-	var outline: Array = outline_points(layout.get("outline", "hex"))
-	var specs: Array = layout.get("obstacles", [])
-	var fences: Array = layout.get("barriers", [])
+	var outline: Array = map_outline(layout)
+	var specs: Array = map_obstacles(layout)
+	var fences: Array = map_barriers(layout)
 	var best = TRACK_LIMIT_MIN
 	var angle = TRACK_LIMIT_MIN
 	while angle <= TRACK_LIMIT:
@@ -338,7 +400,7 @@ static func booster_centers(layout: Dictionary) -> Array:
 	# middle of the side wall, and one lonely bumper there was simply never reached.
 	if not layout.get("boosters", true):
 		return []
-	var outline: Array = outline_points(layout.get("outline", "hex"))
+	var outline: Array = map_outline(layout)
 	var centers: Array = []
 	for depth in [-BOOST_RAIL_SPACING, 0.0, BOOST_RAIL_SPACING]:
 		var side = outline_x_at(outline, depth)
@@ -429,10 +491,10 @@ func reset_round() -> void:
 	]
 	balls.clear()
 	turrets.clear()
-	bricks = make_bricks(map.get("bricks", "banks"), brick_lives)
+	bricks = map_bricks(map, brick_lives)
 	obstacle_time = 0.0
 	obstacles.clear()
-	var specs: Array = map.get("obstacles", [])
+	var specs: Array = obstacle_specs
 	for i in range(specs.size()):
 		var pos = obstacle_at(i, 0)
 		obstacles.append({"id": i, "p": pos, "previous": pos, "v": Vector2.ZERO, "radius": specs[i].get("radius", OBSTACLE_RADIUS)})
@@ -460,7 +522,7 @@ static func obstacle_position(index: int, time: float) -> Vector2:
 	return Vector2(sin(time * OBSTACLE_FREQUENCY + index * PI) * OBSTACLE_TRAVEL, -1.25 if index == 0 else 1.25)
 
 func obstacle_at(index: int, time: float) -> Vector2:
-	return spec_position(map.obstacles[index], time)
+	return spec_position(obstacle_specs[index], time)
 
 static func spec_position(spec: Dictionary, time: float) -> Vector2:
 	var center: Vector2 = spec.get("center", Vector2.ZERO)
@@ -782,7 +844,7 @@ func sun_ray_bite(team: int) -> void:
 		var along = offset.dot(heading)
 		if along < 0 or along > reach:
 			continue
-		if absf(offset.dot(side)) > SUN_RAY_HALF_WIDTH + BRICK_EXTENT.x:
+		if absf(offset.dot(side)) > SUN_RAY_HALF_WIDTH + brick_extent.x:
 			continue
 		damage_brick(index, SUN_RAY_DAMAGE, team, brick.p)
 	var enemy = 1 - team
@@ -817,7 +879,7 @@ func sky_hit(team: int, kind: String, damage: int, radius: float, at: Vector2) -
 	var enemy = 1 - team
 	for index in range(bricks.size()):
 		var brick: Dictionary = bricks[index]
-		if brick.alive and brick.team != team and brick.p.distance_to(at) <= radius + BRICK_EXTENT.x:
+		if brick.alive and brick.team != team and brick.p.distance_to(at) <= radius + brick_extent.x:
 			damage_brick(index, damage, team, brick.p)
 	if players[enemy].p.distance_to(at) <= radius:
 		damage_player(enemy, damage, players[enemy].p)
@@ -953,7 +1015,7 @@ func clear_line(from: Vector2, to: Vector2, team: int, watch_pilot: bool = false
 	for brick in bricks:
 		if not brick.alive or brick.team != team:
 			continue
-		var t = segment_box((from - brick.p).rotated(-brick.rotation), travel.rotated(-brick.rotation), Vector2.ZERO, BRICK_EXTENT * brick_scale(brick.hp) + Vector2.ONE * BALL_RADIUS)
+		var t = segment_box((from - brick.p).rotated(-brick.rotation), travel.rotated(-brick.rotation), Vector2.ZERO, brick_extent * brick_scale(brick.hp) + Vector2.ONE * BALL_RADIUS)
 		if t >= 0 and t <= 1:
 			return false
 	return true
@@ -1041,10 +1103,10 @@ func shock_pulse(team: int) -> void:
 	events.append({"kind": "shock", "team": team, "p": players[team].p})
 	events.append({"kind": "stun", "team": enemy, "p": players[enemy].p})
 
-static func team_walls(team: int, layout: String = "banks") -> Array:
+static func team_walls(team: int, layout: Dictionary = {}) -> Array:
 	# One slab per bank of bricks, as wide as the bank and a step in front of it.
 	var own: Array = []
-	for data in make_bricks(layout):
+	for data in map_bricks(layout):
 		if data.team == team:
 			own.append(data)
 	own.sort_custom(func(a, b): return a.p.x < b.p.x)
@@ -1064,8 +1126,8 @@ static func team_walls(team: int, layout: String = "banks") -> Array:
 		for data in bank:
 			front = minf(front, absf(data.p.y))
 		var y = sign_y * (front - WALL_CLEARANCE)
-		var left = min_x - BRICK_EXTENT.x - WALL_OVERHANG
-		var right = max_x + BRICK_EXTENT.x + WALL_OVERHANG
+		var left = min_x - BRICK_EXTENT.x * narrow_of(layout) - WALL_OVERHANG
+		var right = max_x + BRICK_EXTENT.x * narrow_of(layout) + WALL_OVERHANG
 		if right - left <= WALL_MAX_SPAN:
 			slabs.append({"a": Vector2(left, y), "b": Vector2(right, y)})
 			continue
@@ -1156,7 +1218,7 @@ func fire_laser(team: int) -> void:
 			var brick: Dictionary = bricks[index]
 			if not brick.alive or brick.team == team or hit.has(index):
 				continue
-			var extent = BRICK_EXTENT * brick_scale(brick.hp) + Vector2.ONE * LASER_WIDTH
+			var extent = brick_extent * brick_scale(brick.hp) + Vector2.ONE * LASER_WIDTH
 			var t = segment_box((from - brick.p).rotated(-brick.rotation), travel.rotated(-brick.rotation), Vector2.ZERO, extent)
 			if t >= 0:
 				hit.append(index)
@@ -1331,7 +1393,7 @@ func advance_ball(ball: Dictionary, dt: float, sweep_obstacles: bool = false, pr
 			var brick: Dictionary = bricks[i]
 			if brick.p.x < bounds_min.x or brick.p.x > bounds_max.x or brick.p.y < bounds_min.y or brick.p.y > bounds_max.y:
 				continue
-			var t = segment_box((start - brick.p).rotated(-brick.rotation), travel.rotated(-brick.rotation), Vector2.ZERO, BRICK_EXTENT * brick_scale(brick.hp) + Vector2.ONE * BALL_RADIUS)
+			var t = segment_box((start - brick.p).rotated(-brick.rotation), travel.rotated(-brick.rotation), Vector2.ZERO, brick_extent * brick_scale(brick.hp) + Vector2.ONE * BALL_RADIUS)
 			if t >= 0 and t < best:
 				best = t
 				kind = "brick"
