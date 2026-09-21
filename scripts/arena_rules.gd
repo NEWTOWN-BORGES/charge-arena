@@ -227,7 +227,7 @@ static func tower_map() -> Dictionary:
 	# Narrow and long, shaped for a phone held upright: the wide arenas leave bands of dead
 	# screen above and below, because seen from this camera they come out wider than tall.
 	return {
-		"id": "torre", "name": "Torre Aurora", "outline": "torre", "boosters": true, "bricks": "torre", "barriers": [], "low_camera": true,
+		"id": "torre", "name": "Torre Aurora", "outline": "torre", "boosters": true, "bricks": "torre", "barriers": [], "lean": true,
 		"obstacles": [
 			{"kind": "slide", "center": Vector2(0, -2.6), "axis": Vector2.RIGHT, "travel": 2.4, "frequency": 0.55, "phase": 0.0, "radius": 0.42},
 			{"kind": "slide", "center": Vector2(0, 2.6), "axis": Vector2.RIGHT, "travel": 2.4, "frequency": 0.55, "phase": PI, "radius": 0.42},

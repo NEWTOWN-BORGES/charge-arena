@@ -19,6 +19,10 @@ func settle() -> void:
 
 func drawn_arena(game) -> Rect2:
 	# Project the measured stadium bounds through the real camera, offsets included.
+	if game.arena.camera.projection == Camera3D.PROJECTION_PERSPECTIVE:
+		# A leaning arena has no single camera plane to measure on: the far end really is
+		# smaller, so the stadium is projected mark by mark instead.
+		return game.arena.projected_bounds(game.hud.size)
 	var cam: Camera3D = game.arena.camera
 	var basis = cam.global_transform.basis
 	var b: Rect2 = game.arena.view_bounds

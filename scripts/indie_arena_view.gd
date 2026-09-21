@@ -1352,30 +1352,52 @@ func glass_material() -> ShaderMaterial:
 		materials["glass"] = glass
 	return materials["glass"]
 
+func stadium_marks() -> Array:
+	# Everything the camera has to keep on screen: the boundary, the rails the pilots walk
+	# — which reach outside the wall line at the goal ends on some outlines — and the top of
+	# the walls, each with a hair of margin around it.
+	var spots: Array = Rules.outline_points(map.get("outline", "hex")).duplicate()
+	var limit: float = Rules.track_limit_for(map)
+	for team in range(2):
+		for step in range(9):
+			spots.append(Rules.track_position(team, lerpf(-limit, limit, step / 8.0)))
+	# The leaning view needs less room around the boundary: the rails are already among the
+	# marks, and out there a wide margin is a lot of screen.
+	var margin: float = 0.3 if leaning() else 0.72
+	var marks: Array = []
+	for spot in spots:
+		for corner in [Vector2(-margin, -margin), Vector2(margin, -margin), Vector2(-margin, margin), Vector2(margin, margin)]:
+			for height in [0.0, 1.35]:
+				marks.append(Vector3(spot.x + corner.x, height, spot.y + corner.y))
+	return marks
+
+func projected_bounds(screen: Vector2) -> Rect2:
+	# Where the stadium lands on screen, in HUD units, with the lean's perspective taken
+	# into account: the far end really is smaller, so a flat projection would lie about it.
+	var basis = camera.global_transform.basis
+	var half: float = screen.y * 0.5
+	var tan_half: float = tan(deg_to_rad(camera.fov) * 0.5)
+	var bounds = Rect2()
+	var first = true
+	for mark in stadium_marks():
+		var offset: Vector3 = mark - camera.global_position
+		var depth: float = maxf(-offset.dot(basis.z), 0.05)
+		var point = Vector2(offset.dot(basis.x), -offset.dot(basis.y)) * half / (depth * tan_half) + screen * 0.5
+		bounds = Rect2(point, Vector2.ZERO) if first else bounds.expand(point)
+		first = false
+	return bounds
+
 func measure_view_bounds() -> Rect2:
-	# What the camera has to show: the field, its walls and the rails the pilots walk.
+	# What the camera has to show, on the camera plane, for the orthographic seats.
 	var basis = camera.global_transform.basis
 	var bounds = Rect2()
 	var first = true
 	if camera_home != LANDSCAPE_EYE:
-		var outline: Array = Rules.outline_points(map.get("outline", "hex"))
-		var marks: Array = []
-		for point in outline:
-			marks.append(point)
-		# The pilots' rails reach outside the wall line at the goal ends on some outlines.
-		var limit: float = Rules.track_limit_for(map)
-		for team in range(2):
-			for step in range(9):
-				marks.append(Rules.track_position(team, lerpf(-limit, limit, step / 8.0)))
-		var margin: float = 0.72
-		for mark in marks:
-			for corner in [Vector2(-margin, -margin), Vector2(margin, -margin), Vector2(-margin, margin), Vector2(margin, margin)]:
-				var spot: Vector2 = mark + corner
-				for height in [0.0, 1.35]:
-					var offset = Vector3(spot.x, height, spot.y) - camera.global_position
-					var point = Vector2(offset.dot(basis.x), offset.dot(basis.y))
-					bounds = Rect2(point, Vector2.ZERO) if first else bounds.expand(point)
-					first = false
+		for mark in stadium_marks():
+			var offset: Vector3 = mark - camera.global_position
+			var point = Vector2(offset.dot(basis.x), offset.dot(basis.y))
+			bounds = Rect2(point, Vector2.ZERO) if first else bounds.expand(point)
+			first = false
 		return bounds
 	else:
 		# Menu and landscape: full stadium extent on camera plane, side beacons included.
@@ -1401,6 +1423,10 @@ const LANDSCAPE_EYE = Vector3(0, 26, 15)
 
 func frame_landscape(h_offset: float) -> void:
 	# Wide screens keep the original lean, which reads more like a stadium seen from a seat.
+	if camera.projection != Camera3D.PROJECTION_ORTHOGONAL:
+		camera.projection = Camera3D.PROJECTION_ORTHOGONAL
+		camera_home = Vector3.ZERO
+		view_bounds = Rect2()
 	if camera_home != LANDSCAPE_EYE:
 		camera_home = LANDSCAPE_EYE
 		camera.position = camera_home
@@ -1414,18 +1440,56 @@ func frame_landscape(h_offset: float) -> void:
 # A hair more lean than the landscape seat, no more: at 72 degrees the arena flattened
 # into something that read as 2D, and the depth is what gives this game its look.
 const PORTRAIT_EYE = Vector3(0, 26.6, 14.2)
-# Fifty degrees instead of sixty-two. A map asks for this seat with "low_camera": the
-# arena has to be narrow enough to take the squash that comes with the lean.
-const TOWER_EYE = Vector3(0, 21.4, 18.0)
+# A map that asks to lean is shown through a real perspective instead: the board tips
+# towards the player, the near goal comes at you and the far one falls away. The arena has
+# to be narrow for this, which is why only the tall one asks for it.
+const LEAN_DIR = Vector3(0, 0.80, 0.62)
+const LEAN_FOV = 40.0
+const LEAN_MARGIN = 1.0
 
-func portrait_eye() -> Vector3:
-	return TOWER_EYE if map.get("low_camera", false) else PORTRAIT_EYE
+func leaning() -> bool:
+	return map.get("lean", false)
+
+func frame_leaning(rect: Rect2, screen: Vector2) -> void:
+	# There is no closed form for fitting a perspective view to a rectangle — how big the
+	# stadium comes out depends on how far each corner is — so the seat is found by
+	# repeatedly projecting it, pulling back to fit and sliding sideways to centre.
+	camera.projection = Camera3D.PROJECTION_PERSPECTIVE
+	camera.fov = LEAN_FOV
+	camera.h_offset = 0.0
+	camera.v_offset = 0.0
+	var direction: Vector3 = LEAN_DIR.normalized()
+	var pivot := Vector3(0, 0.3, 0)
+	var distance := 34.0
+	for step in range(6):
+		camera.position = pivot + direction * distance
+		camera.look_at(pivot)
+		var shot: Rect2 = projected_bounds(screen)
+		distance *= maxf(shot.size.x / rect.size.x, shot.size.y / rect.size.y) * LEAN_MARGIN
+		camera.position = pivot + direction * distance
+		camera.look_at(pivot)
+		shot = projected_bounds(screen)
+		var delta: Vector2 = rect.get_center() - shot.get_center()
+		var basis = camera.global_transform.basis
+		var per_unit: float = 2.0 * distance * tan(deg_to_rad(LEAN_FOV) * 0.5) / screen.y
+		pivot += (basis.y * delta.y - basis.x * delta.x) * per_unit
+	camera.position = pivot + direction * distance
+	camera.look_at(pivot)
+	camera_home = camera.position
 
 func frame_rect(rect: Rect2, screen: Vector2, is_menu: bool = false) -> void:
 	# Fit the stadium inside the viewport band between top cards and bottom controls.
 	# In menu mode, restore the original camera seat so demo maps look as they did before.
 	# In match portrait mode, frame the arena closely without cutting off the sides.
-	var target_eye = LANDSCAPE_EYE if is_menu else portrait_eye()
+	if leaning() and not is_menu:
+		frame_leaning(rect, screen)
+		return
+	if camera.projection != Camera3D.PROJECTION_ORTHOGONAL:
+		# Coming back from a leaning arena: the flat seat has to be taken again from scratch.
+		camera.projection = Camera3D.PROJECTION_ORTHOGONAL
+		camera_home = Vector3.ZERO
+		view_bounds = Rect2()
+	var target_eye = LANDSCAPE_EYE if is_menu else PORTRAIT_EYE
 	if camera_home != target_eye:
 		camera_home = target_eye
 		camera.position = camera_home
