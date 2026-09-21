@@ -1356,31 +1356,30 @@ func glass_material() -> ShaderMaterial:
 	return materials["glass"]
 
 func build_satellites() -> void:
-	# Decorative hovering beacons sit outside the playable collision boundary.
-	for side in [-1, 1]:
-		var root = Node3D.new()
-		root.position = Vector3(side * (Rules.outline_x_at(walls, -3.6) + 1.55), 0.0, -3.6)
-		add_child(root)
-		cylinder(root, Vector3.ZERO, 0.48, 0.24, DARK, false, 8)
-		cylinder(root, Vector3(0, 0.18, 0), 0.33, 0.12, CREAM, false, 8)
-		var gem = box(root, Vector3(0, 0.55, 0), Vector3(0.29, 0.47, 0.29), GOLD, true, 0.06)
-		gem.rotation_degrees = Vector3(0, 45, 15)
-		torus(root, Vector3(0, -0.18, 0), 0.34, 0.03, CYAN)
-		satellites.append(root)
+	# The hovering beacons used to float outside the walls. They were pretty and they cost
+	# real screen: the camera framed them too, and the stadium shrank to make room.
+	pass
 
 func measure_view_bounds() -> Rect2:
-	# Stadium extent on the camera plane, side beacons included and soft shadows ignored.
+	# What the camera has to show: the field, its walls and the rails the pilots walk.
+	# Portrait mode hugs the playing field tightly to bring the action close and fill the screen.
 	var basis = camera.global_transform.basis
 	var bounds = Rect2()
 	var first = true
-	for node in find_children("*", "GeometryInstance3D", true, false):
-		if not node.is_visible_in_tree() or node.layers == 0:
-			continue
-		if node.material_override is ShaderMaterial and node.material_override.shader == SOFT_DISC:
-			continue
-		var box: AABB = node.global_transform * node.get_aabb()
-		for i in range(8):
-			var offset = box.get_endpoint(i) - camera.global_position
+	var outline: Array = Rules.outline_points(map.get("outline", "hex"))
+	var marks: Array = []
+	for point in outline:
+		marks.append(point)
+	# The pilots' rails reach outside the wall line at the goal ends on some outlines.
+	var limit: float = Rules.track_limit_for(map)
+	for team in range(2):
+		for step in range(9):
+			marks.append(Rules.track_position(team, lerpf(-limit, limit, step / 8.0)))
+	var margin: float = 0.12 if camera_home == PORTRAIT_EYE else 0.45
+	for mark in marks:
+		for corner in [Vector2(-margin, -margin), Vector2(margin, -margin), Vector2(-margin, margin), Vector2(margin, margin)]:
+			var spot: Vector2 = mark + corner
+			var offset = Vector3(spot.x, 0.6, spot.y) - camera.global_position
 			var point = Vector2(offset.dot(basis.x), offset.dot(basis.y))
 			bounds = Rect2(point, Vector2.ZERO) if first else bounds.expand(point)
 			first = false
@@ -1391,16 +1390,34 @@ func view_aspect() -> float:
 		view_bounds = measure_view_bounds()
 	return view_bounds.size.x / view_bounds.size.y
 
+const LANDSCAPE_EYE = Vector3(0, 26, 15)
+
 func frame_landscape(h_offset: float) -> void:
+	# Wide screens keep the original lean, which reads more like a stadium seen from a seat.
+	if camera_home != LANDSCAPE_EYE:
+		camera_home = LANDSCAPE_EYE
+		camera.position = camera_home
+		camera.look_at(Vector3(0, -0.15, 0))
+		view_bounds = Rect2()
 	camera.size = LANDSCAPE_SIZE
 	camera.h_offset = h_offset
 	# Keep the enlarged upper wall clear of the scoreboard.
 	camera.v_offset = 0.52
 
+# A hair more lean than the landscape seat, no more: at 72 degrees the arena flattened
+# into something that read as 2D, and the depth is what gives this game its look.
+const PORTRAIT_EYE = Vector3(0, 26.6, 14.2)
+
 func frame_rect(rect: Rect2, screen: Vector2) -> void:
-	# Fit the whole stadium inside a screen rectangle, e.g. the band between portrait HUD cards.
+	# Fit the stadium inside the viewport band between top cards and bottom controls.
+	# On tall phone displays, this fills the screen width and centers dynamically.
+	if camera_home != PORTRAIT_EYE:
+		camera_home = PORTRAIT_EYE
+		camera.position = camera_home
+		camera.look_at(Vector3(0, -0.15, 0))
+		view_bounds = Rect2()
 	view_aspect()
-	var units_per_pixel = maxf(view_bounds.size.x / rect.size.x, view_bounds.size.y / rect.size.y) * 1.015
+	var units_per_pixel = maxf(view_bounds.size.x / rect.size.x, view_bounds.size.y / rect.size.y) * 1.005
 	var center = view_bounds.get_center()
 	camera.size = units_per_pixel * screen.y
 	camera.h_offset = center.x - (rect.get_center().x - screen.x * 0.5) * units_per_pixel
