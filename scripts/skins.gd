@@ -9,15 +9,15 @@ const SHOT_SOUND = "res://audio/sfx/shot_%d.wav"
 # Empty colours fall back to the team colour, so each side stays readable.
 # Each skin also restyles its team's bricks ("bricks" names that theme).
 const CATALOG = [
-	{"name": "PILOTO AURORA", "ultimate": "surge", "weapon": "Manopla de energia", "bricks": "Baterias Aurora", "about": "O equipamento de série do circuito.", "level": 0,
+	{"name": "PILOTO AURORA", "ultimate": "", "weapon": "Manopla de energia", "bricks": "Baterias Aurora", "about": "O equipamento de série do circuito.", "level": 0,
 		"body": "", "light": "", "shot": ""},
-	{"name": "FAROLEIRO", "ultimate": "beacon", "weapon": "Lança-Farol", "bricks": "Farolins", "about": "Guarda dos faróis flutuantes: cúpula de latão, lanterna às costas e lança de cristal.", "level": 2,
+	{"name": "FAROLEIRO", "ultimate": "volley", "weapon": "Lança-Farol", "bricks": "Farolins", "about": "Guarda dos faróis flutuantes: cúpula de latão, lanterna às costas e lança de cristal.", "level": 2,
 		"body": "", "light": "9cc2ff", "shot": "9cc2ff"},
 	{"name": "ASTRÓNOMO", "ultimate": "meteors", "weapon": "Sextante Estelar", "bricks": "Observatórios", "about": "Cartógrafo das órbitas do circuito: anéis planetários, luneta no olho e sextante de cristal.", "level": 9,
 		"body": "444f8f", "light": "cbb2ff", "shot": "b99cff"},
 	{"name": "JARDINEIRO", "ultimate": "bloom", "weapon": "Semeador", "bricks": "Estufas", "about": "Cuida dos jardins orbitais: cúpula de vidro com rebento, vaso às costas e semeador de sementes de luz.", "level": 6,
 		"body": "5f7f52", "light": "c8f08f", "shot": "9fe37a"},
-	{"name": "MINEIRO", "ultimate": "charges", "weapon": "Perfuradora de Cristal", "bricks": "Veios de cristal", "about": "Extrai cristais dos asteroides: capacete de obra com lanterna, carga de minério às costas e broca de quartzo.", "level": 3,
+	{"name": "MINEIRO", "ultimate": "gravity", "weapon": "Perfuradora de Cristal", "bricks": "Veios de cristal", "about": "Extrai cristais dos asteroides: capacete de obra com lanterna, carga de minério às costas e broca de quartzo.", "level": 3,
 		"body": "59606b", "light": "ff9ad8", "shot": "ff7ad0"},
 	{"name": "SENTINELA", "ultimate": "singularity", "weapon": "Lança Eclipse", "bricks": "Monólitos Eclipse", "about": "Guarda de elite do circuito: capa de obsidiana, halo de eclipse dourado e lança de corona.", "level": 10,
 		"body": "2e3140", "light": "f2f4ff", "shot": "eef2ff"},
@@ -25,7 +25,7 @@ const CATALOG = [
 		"body": "7a5236", "light": "ffb14e", "shot": "ffa640"},
 	{"name": "CAÇA-TROVÕES", "ultimate": "thunder", "weapon": "Bobina de Tesla", "bricks": "Para-raios", "about": "Persegue tempestades de plasma: capacete com para-raios, bateria às costas e bobina de Tesla.", "level": 8,
 		"body": "36445e", "light": "7fe6ff", "shot": "8aeeff"},
-	{"name": "ALQUIMISTA", "ultimate": "glass", "weapon": "Frasco de Plasma", "bricks": "Alambiques", "about": "Destila plasma das nebulosas: óculos de latão, alambique às costas e frascos borbulhantes.", "level": 4,
+	{"name": "ALQUIMISTA", "ultimate": "surge", "weapon": "Frasco de Plasma", "bricks": "Alambiques", "about": "Destila plasma das nebulosas: óculos de latão, alambique às costas e frascos borbulhantes.", "level": 4,
 		"body": "5b4030", "light": "c6ff4d", "shot": "b8ff3d"},
 	{"name": "CORSÁRIO", "ultimate": "plunder", "weapon": "Bacamarte Estelar", "bricks": "Arcas do tesouro", "about": "Pirata das rotas estelares: tricórnio, pala luminosa e bacamarte de boca larga.", "level": 7,
 		"body": "2c3a4d", "light": "ff5c8a", "shot": "ff4f7e"},

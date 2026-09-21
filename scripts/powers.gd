@@ -45,12 +45,10 @@ const ULTIMATES = [
 		"about": "Troca a tua muralha com a do rival, tijolo a tijolo e em espelho: o que ele tinha passa a ser teu."},
 	{"id": "surge", "short": "SOBRECARGA", "name": "SOBRECARGA", "kind": "ultimate", "charge": ULTIMATE_CHARGE, "price": 0, "color": "7fe6c8",
 		"about": "Seis segundos com a manopla em sobrecarga: cada tiro teu sai turbinado, com 2 de dano, e a cadencia duplica."},
-	{"id": "beacon", "short": "FAROL", "name": "FAROL GUIA", "kind": "ultimate", "charge": ULTIMATE_CHARGE, "price": 0, "color": "ffc978",
-		"about": "Planta um farol no meio do ringue durante oito segundos: todas as tuas bolas que lhe passem perto sao curvadas na direccao da baliza do rival, com mais forca quanto mais perto do nucleo."},
-	{"id": "charges", "short": "CARGAS", "name": "DETONACAO", "kind": "ultimate", "charge": ULTIMATE_CHARGE, "price": 0, "color": "e8935c",
-		"about": "Tres cargas rebentam por baixo da parte mais densa da muralha do rival, 2 de dano num raio largo. Nao cai do ceu ao acaso: cada carga escolhe o sitio onde ha mais tijolos juntos."},
-	{"id": "glass", "short": "VIDRO", "name": "TRANSMUTACAO", "kind": "ultimate", "charge": ULTIMATE_CHARGE, "price": 0, "color": "a9e7ff",
-		"about": "A muralha do rival passa a vidro: perde uma vida em cada tijolo no momento, e durante oito segundos sofre o dobro do dano de tudo o que lhe acertar."},
+	{"id": "volley", "short": "RAJADA", "name": "RAJADA DO FAROL", "kind": "ultimate", "charge": ULTIMATE_CHARGE, "price": 0, "color": "ffc978",
+		"about": "O mesmo leque da abilidade, mas cinco vezes seguidas: cinco ondas de cinco balas, 2 de dano cada. Entre uma onda e a seguinte da para andar na calha, por isso as cinco podem cobrir a muralha toda."},
+	{"id": "gravity", "short": "GRAVIDADE", "name": "GRAVIDADE ZERO", "kind": "ultimate", "charge": ULTIMATE_CHARGE, "price": 0, "color": "b9a7ff",
+		"about": "Durante seis segundos o chao larga tudo: os tijolos dos dois lados soltam-se e ficam espalhados pela arena, cada um a sua altura, e ate os obstaculos sobem e deixam de estorvar. Quem a chamou acerta com 3 de dano e com a mira quase automatica nos tijolos a flutuar; as balas do outro saem depressa, perdem o ar e desaparecem."},
 ]
 # The kit every pilot starts with, and how many bought powers it holds. The third slot is
 # always the skin's ultimate, so it is neither bought nor equipped.

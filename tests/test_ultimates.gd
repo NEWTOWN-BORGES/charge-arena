@@ -71,13 +71,14 @@ func _initialize() -> void:
 
 func run() -> void:
 	# ---------------------------------------------------------------- the catalogue
-	check(Powers.ULTIMATES.size() == 11 and Powers.ULTIMATES.all(func(u): return u.charge == Powers.ULTIMATE_CHARGE and u.price == 0), "Eleven ultimates, none of them for sale and all charging the same")
+	check(Powers.ULTIMATES.size() == 10 and Powers.ULTIMATES.all(func(u): return u.charge == Powers.ULTIMATE_CHARGE and u.price == 0), "Ten ultimates, none of them for sale and all charging the same")
 	check(Powers.ULTIMATES.all(func(u): return Powers.is_ultimate(u.id) and not Powers.entry(u.id).is_empty()), "Each one is found by id, like any other power")
 	var carriers = Skins.CATALOG.filter(func(s): return s.ultimate != "")
-	check(carriers.size() == Skins.CATALOG.size() and carriers.all(func(s): return Powers.is_ultimate(s.ultimate)), "Every skin carries one of its own, the starter included")
-	var ids: Array = Skins.CATALOG.map(func(s): return String(s.ultimate))
+	check(carriers.size() == Skins.CATALOG.size() - 1 and carriers.all(func(s): return Powers.is_ultimate(s.ultimate)), "Every skin but one carries an ultimate of its own")
+	check(String(Skins.CATALOG[0].ultimate) == "", "The standard pilot is the one without: it is the training opponent, not a boss")
+	var ids: Array = carriers.map(func(s): return String(s.ultimate))
 	ids.sort()
-	check(range(1, ids.size()).all(func(i): return ids[i] != ids[i - 1]), "And no two skins share the same one")
+	check(ids.size() == Powers.ULTIMATES.size() and range(1, ids.size()).all(func(i): return ids[i] != ids[i - 1]), "Every ultimate in the catalogue belongs to exactly one skin")
 	check(Skins.CATALOG[10].ultimate == "sun_ray" and Skins.CATALOG[2].ultimate == "meteors" and Skins.CATALOG[7].ultimate == "thunder" and Skins.CATALOG[3].ultimate == "bloom" and Skins.CATALOG[9].ultimate == "plunder", "Arconte, Astrónomo, Caça-Trovões, Jardineiro and Corsário, each with its own")
 
 	# ---------------------------------------------------------------- every ultimate glows first
@@ -364,8 +365,8 @@ func run() -> void:
 	launch(spent)
 	check(spent.powers[0].charge[2] == 0 and spent.power_charge_cost(0, 2) == Powers.ULTIMATE_CHARGE, "It costs %d bricks of charge, and spends them" % Powers.ULTIMATE_CHARGE)
 
-	# ------------------------------------------- the four that open the campaign
-	# Sobrecarga: turbocharged rounds, twice as fast, and only while it lasts.
+	# --------------------------------------- the three that open the campaign
+	# Sobrecarga, now the Alquimista's: turbocharged rounds, twice as fast, while it lasts.
 	var surge = playing("surge")
 	aim_at_bricks(surge)
 	var plain_health: int = team_health(surge, 1)
@@ -385,49 +386,50 @@ func run() -> void:
 	hold_fire(surge, Rules.SURGE_SECONDS)
 	check(surge.powers[0].surge_time <= 0, "Sobrecarga: it runs out on its own")
 
-	# Farol guia: the beacon bends its owner's shots, and nobody else's.
-	var beacon = playing("beacon")
-	launch(beacon)
-	wait(beacon, Rules.ULTIMATE_WINDUP + 0.05)
-	check(beacon.powers[0].beacon_time > 0, "Farol: the beacon is lit when the glow ends")
-	var away: Vector2 = Vector2(1, 0).rotated(0.5)
-	beacon.balls.clear()
-	beacon.balls.append({"id": 9001, "owner": 0, "p": Vector2(0.4, 0.2), "v": away * Rules.BALL_SPEED, "bounces": 0, "boosted": false, "damage": 1, "ttl": 4.0, "power": 0, "ghost": true})
-	beacon.balls.append({"id": 9002, "owner": 1, "p": Vector2(-0.4, 0.2), "v": away * Rules.BALL_SPEED, "bounces": 0, "boosted": false, "damage": 1, "ttl": 4.0, "power": 0, "ghost": true})
-	var target: float = (Rules.goal_center(1) - Vector2(0.4, 0.2)).angle()
-	var before_gap: float = absf(angle_difference(away.angle(), target))
-	beacon.step(1.0 / 60, [idle, idle])
-	beacon.step(1.0 / 60, [idle, idle])
-	var mine = beacon.balls.filter(func(b): return b.id == 9001)
-	var theirs = beacon.balls.filter(func(b): return b.id == 9002)
-	check(not mine.is_empty() and absf(angle_difference(mine[0].v.angle(), target)) < before_gap, "Farol: it curves the owner's shot towards the far goal")
-	check(not theirs.is_empty() and is_equal_approx(theirs[0].v.angle(), away.angle()), "Farol: and leaves the rival's shots alone")
+	# Rajada do Farol: the fan of the Leque, five times over.
+	var volley = playing("volley")
+	aim_at_bricks(volley)
+	var fan_before: int = team_health(volley, 1)
+	var first_id: int = volley.next_id
+	launch(volley)
+	var fired: Array = wait(volley, Rules.ULTIMATE_WINDUP + Rules.VOLLEY_SECONDS + 0.2)
+	var fans: Array = fired.filter(func(e): return e.kind == "volley")
+	check(fans.size() == Rules.VOLLEY_WAVES, "Rajada: five waves leave the lantern (%d)" % fans.size())
+	check(volley.next_id - first_id == Rules.VOLLEY_WAVES * Rules.AIR_PELLETS, "Rajada: five balls a wave, twenty-five in all (%d)" % (volley.next_id - first_id))
+	# A pellet that has met a bumper on the way is a boosted round and bites like one.
+	check(volley.balls.filter(func(b): return b.owner == 0 and not b.boosted).all(func(b): return b.damage == Rules.VOLLEY_DAMAGE), "Rajada: each pellet bites for one")
+	wait(volley, 1.6)
+	check(fan_before - team_health(volley, 1) > 0, "Rajada: and the wall feels it (%d de vida)" % (fan_before - team_health(volley, 1)))
 
-	# Detonacao: three charges, each under the thickest part of the wall still standing.
-	var charges = playing("charges")
-	var dug_before: int = team_health(charges, 1)
-	launch(charges)
-	var dug: Array = wait(charges, Rules.ULTIMATE_WINDUP + Rules.CHARGE_SECONDS + 0.3)
-	var blasts: Array = dug.filter(func(e): return e.kind == "charge")
-	check(blasts.size() == Rules.CHARGE_COUNT, "Detonacao: three charges go off (%d)" % blasts.size())
-	check(blasts.all(func(e): return charges.point_inside(charges.walls, e.p)), "Detonacao: all of them inside the arena")
-	check(blasts.all(func(e): return (e.p.y > 0) == (Rules.goal_center(1).y > 0)), "Detonacao: and all of them on the rival's half")
-	check(dug_before - team_health(charges, 1) >= Rules.CHARGE_DAMAGE * 3, "Detonacao: the wall pays for it (%d de vida)" % (dug_before - team_health(charges, 1)))
-
-	# Transmutacao: a life from every brick, then double damage while it holds.
-	var glass = playing("glass")
-	var whole: int = team_health(glass, 1)
-	var count: int = standing(glass, 1)
-	launch(glass)
-	wait(glass, Rules.ULTIMATE_WINDUP + 0.05)
-	check(whole - team_health(glass, 1) == count * Rules.GLASS_BITE, "Transmutacao: one life from every brick standing (%d)" % (whole - team_health(glass, 1)))
-	check(glass.powers[1].brittle_time > 0 and glass.powers[0].brittle_time <= 0, "Transmutacao: it is the rival's wall that turns to glass, not yours")
-	var brittle_index: int = glass.bricks.find_custom(func(b): return b.team == 1 and b.alive)
-	var brittle_hp: int = glass.bricks[brittle_index].hp
-	glass.damage_brick(brittle_index, 1, 0, glass.bricks[brittle_index].p)
-	check(brittle_hp - glass.bricks[brittle_index].hp == Rules.GLASS_FACTOR, "Transmutacao: while it holds, every hit counts double")
-	wait(glass, Rules.GLASS_SECONDS)
-	check(glass.powers[1].brittle_time <= 0, "Transmutacao: and the wall sets again")
+	# Gravidade zero: the wall comes off the floor, both sides of it.
+	var zero = playing("gravity")
+	aim_at_bricks(zero)
+	var homes: Array = zero.bricks.map(func(b): return b.p)
+	launch(zero)
+	wait(zero, Rules.ULTIMATE_WINDUP + Rules.GRAVITY_RISE + 0.1)
+	check(zero.powers[0].gravity_time > 0, "Gravidade: the floor lets go once the glow ends")
+	var moved: int = 0
+	for index in range(zero.bricks.size()):
+		if zero.bricks[index].p.distance_to(homes[index]) > 0.4:
+			moved += 1
+	check(moved > zero.bricks.size() * 0.8, "Gravidade: nearly every brick is adrift (%d de %d)" % [moved, zero.bricks.size()])
+	check(zero.bricks.filter(func(b): return b.team == 0).any(func(b): return b.p.distance_to(b.home) > 0.4) and zero.bricks.filter(func(b): return b.team == 1).any(func(b): return b.p.distance_to(b.home) > 0.4), "Gravidade: both walls, not just the rival's")
+	check(zero.bricks.all(func(b): return zero.point_inside(zero.walls, b.p)), "Gravidade: and none of them drifts through a wall")
+	# The pilot who called it shoots harder, and the other side's rounds die in the air.
+	zero.balls.clear()
+	zero.shoot(0)
+	check(zero.balls.size() == 1 and zero.balls[0].damage == Rules.GRAVITY_DAMAGE, "Gravidade: its own rounds bite for three")
+	zero.balls.clear()
+	zero.balls.append({"id": 8001, "owner": 1, "p": Vector2(0.0, -2.0), "v": Vector2.DOWN * Rules.BALL_SPEED, "bounces": 0, "boosted": false, "damage": 1, "ttl": Rules.BALL_LIFE, "power": 0, "ghost": true})
+	var muzzle_speed: float = zero.balls[0].v.length()
+	wait(zero, 0.4)
+	var slowed = zero.balls.filter(func(b): return b.id == 8001)
+	check(not slowed.is_empty() and slowed[0].v.length() < muzzle_speed * 0.6, "Gravidade: the rival's round leaves fast and loses the air under it")
+	wait(zero, Rules.GRAVITY_ROUND_LIFE)
+	check(zero.balls.filter(func(b): return b.id == 8001).is_empty(), "Gravidade: and then it is simply gone")
+	wait(zero, Rules.GRAVITY_SECONDS)
+	check(zero.powers[0].gravity_time <= 0, "Gravidade: six seconds and the floor comes back")
+	check(range(zero.bricks.size()).all(func(i): return zero.bricks[i].p.is_equal_approx(homes[i])), "Gravidade: every brick lands back on its own spot")
 
 	print("ULTIMATES_RESULT failures=", failures)
 	quit(failures)
