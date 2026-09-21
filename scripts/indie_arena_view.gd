@@ -1357,7 +1357,7 @@ func measure_view_bounds() -> Rect2:
 	var basis = camera.global_transform.basis
 	var bounds = Rect2()
 	var first = true
-	if camera_home == PORTRAIT_EYE:
+	if camera_home != LANDSCAPE_EYE:
 		var outline: Array = Rules.outline_points(map.get("outline", "hex"))
 		var marks: Array = []
 		for point in outline:
@@ -1371,10 +1371,11 @@ func measure_view_bounds() -> Rect2:
 		for mark in marks:
 			for corner in [Vector2(-margin, -margin), Vector2(margin, -margin), Vector2(-margin, margin), Vector2(margin, margin)]:
 				var spot: Vector2 = mark + corner
-				var offset = Vector3(spot.x, 0.6, spot.y) - camera.global_position
-				var point = Vector2(offset.dot(basis.x), offset.dot(basis.y))
-				bounds = Rect2(point, Vector2.ZERO) if first else bounds.expand(point)
-				first = false
+				for height in [0.0, 1.35]:
+					var offset = Vector3(spot.x, height, spot.y) - camera.global_position
+					var point = Vector2(offset.dot(basis.x), offset.dot(basis.y))
+					bounds = Rect2(point, Vector2.ZERO) if first else bounds.expand(point)
+					first = false
 		return bounds
 	else:
 		# Menu and landscape: full stadium extent on camera plane, side beacons included.
@@ -1413,12 +1414,18 @@ func frame_landscape(h_offset: float) -> void:
 # A hair more lean than the landscape seat, no more: at 72 degrees the arena flattened
 # into something that read as 2D, and the depth is what gives this game its look.
 const PORTRAIT_EYE = Vector3(0, 26.6, 14.2)
+# Fifty degrees instead of sixty-two. A map asks for this seat with "low_camera": the
+# arena has to be narrow enough to take the squash that comes with the lean.
+const TOWER_EYE = Vector3(0, 21.4, 18.0)
+
+func portrait_eye() -> Vector3:
+	return TOWER_EYE if map.get("low_camera", false) else PORTRAIT_EYE
 
 func frame_rect(rect: Rect2, screen: Vector2, is_menu: bool = false) -> void:
 	# Fit the stadium inside the viewport band between top cards and bottom controls.
 	# In menu mode, restore the original camera seat so demo maps look as they did before.
 	# In match portrait mode, frame the arena closely without cutting off the sides.
-	var target_eye = LANDSCAPE_EYE if is_menu else PORTRAIT_EYE
+	var target_eye = LANDSCAPE_EYE if is_menu else portrait_eye()
 	if camera_home != target_eye:
 		camera_home = target_eye
 		camera.position = camera_home
