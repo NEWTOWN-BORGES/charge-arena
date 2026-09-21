@@ -164,6 +164,10 @@ func charge_ultimates() -> void:
 			rules.powers[team].charge[2] = cost
 
 func start_pve(layout: Dictionary = {}) -> void:
+	# Quick play opens on the tall arena, which fills a phone held upright instead of
+	# sitting in a band across the middle of it. Campaign levels bring their own.
+	if layout.is_empty():
+		layout = Rules.tower_map()
 	pve_paused = false
 	close_network()
 	mode = "pve"

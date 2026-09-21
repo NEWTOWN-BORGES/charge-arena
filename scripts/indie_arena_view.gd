@@ -34,7 +34,6 @@ var shapes: Dictionary = {}
 var phase_before = ""
 var stuns_before: Array = [0.0, 0.0]
 var clock = 0.0
-var satellites: Array = []
 var ball_previous: Dictionary = {}
 var trail_timer = 0.0
 var booster_nodes: Array = []
@@ -222,8 +221,6 @@ func set_quality(level: int) -> void:
 	for node in soft_disc_nodes:
 		if is_instance_valid(node):
 			node.visible = quality_level > 0
-	for node in satellites:
-		node.visible = quality_level > 0
 	if is_instance_valid(secondary_light):
 		secondary_light.visible = quality_level > 0
 	for mat in materials.values():
@@ -327,7 +324,8 @@ func build(new_map: Dictionary = {}) -> void:
 	# Team machinery, four low towers and outside ventilation grilles.
 	for sign_x in [-1, 1]:
 		for sign_z in [-1, 1]:
-			var pos = Vector3(sign_x * (Rules.HALF_WIDTH + 0.1), -0.1, sign_z * Rules.HALF_LENGTH * 0.5)
+			var depth = sign_z * Rules.HALF_LENGTH * 0.5
+			var pos = Vector3(sign_x * (Rules.outline_x_at(walls, depth) + 0.1), -0.1, depth)
 			box(self, pos, Vector3(1.0, 0.7, 1.65), DARK, false, 0.16)
 			box(self, pos + Vector3.UP * 0.46, Vector3(0.78, 0.34, 1.3), CREAM, false, 0.12)
 			box(self, pos + Vector3.UP * 0.66, Vector3(0.48, 0.08, 0.88), Color("536764"))
@@ -363,7 +361,6 @@ func build(new_map: Dictionary = {}) -> void:
 		guide_dots.append(cylinder(aim_guide, Vector3.ZERO, 0.045, 0.012, Color(CREAM, 0.7), true, 10))
 	guide_marker = torus(aim_guide, Vector3.ZERO, 0.42, 0.024, LIME)
 	aim_guide.hide()
-	build_satellites()
 	batch_bricks()
 	batch_static_geometry()
 
@@ -386,7 +383,7 @@ func batch_static_geometry() -> void:
 
 func collect_static(parent: Node, groups: Dictionary) -> void:
 	for child in parent.get_children():
-		if child in units or child in brick_nodes or child in obstacle_nodes or child in satellites or child in power_nodes or child == aim_line or child == aim_guide:
+		if child in units or child in brick_nodes or child in obstacle_nodes or child in power_nodes or child == aim_line or child == aim_guide:
 			continue
 		if child is MeshInstance3D and child.material_override is StandardMaterial3D and child.material_override.transparency == BaseMaterial3D.TRANSPARENCY_DISABLED:
 			# Separate attribute layouts so SurfaceTool never mixes UV and non-UV formats.
@@ -1355,19 +1352,6 @@ func glass_material() -> ShaderMaterial:
 		materials["glass"] = glass
 	return materials["glass"]
 
-func build_satellites() -> void:
-	# Decorative hovering beacons sit outside the playable collision boundary.
-	for side in [-1, 1]:
-		var root = Node3D.new()
-		root.position = Vector3(side * (Rules.outline_x_at(walls, -3.6) + 1.55), 0.0, -3.6)
-		add_child(root)
-		cylinder(root, Vector3.ZERO, 0.48, 0.24, DARK, false, 8)
-		cylinder(root, Vector3(0, 0.18, 0), 0.33, 0.12, CREAM, false, 8)
-		var gem = box(root, Vector3(0, 0.55, 0), Vector3(0.29, 0.47, 0.29), GOLD, true, 0.06)
-		gem.rotation_degrees = Vector3(0, 45, 15)
-		torus(root, Vector3(0, -0.18, 0), 0.34, 0.03, CYAN)
-		satellites.append(root)
-
 func measure_view_bounds() -> Rect2:
 	# What the camera has to show: the field, its walls and the rails the pilots walk.
 	var basis = camera.global_transform.basis
@@ -1464,8 +1448,6 @@ func update_state(rules, local_team: int, dt: float, motion_alpha: float = 1.0) 
 		camera.position = camera_home
 	trail_timer += dt
 	var interpolate = not previous_motion.is_empty() and previous_motion.phase == rules.phase
-	for i in range(satellites.size()):
-		satellites[i].position.y = 0.25 + sin(clock * 1.2 + i * 2) * 0.15
 	for i in range(rules.obstacles.size()):
 		var p: Vector2 = rules.obstacles[i].p
 		if interpolate:
@@ -2029,9 +2011,10 @@ func plunder_flash(team: int) -> void:
 		var curtain = Node3D.new()
 		add_child(curtain)
 		curtain.position = Vector3(0, 0, side * Rules.HALF_LENGTH * 0.7)
-		box(curtain, Vector3(0, 0.75, 0), Vector3(Rules.HALF_WIDTH * 2.0, 1.5, 0.1), Color(color, 0.8), true, 0.04)
-		box(curtain, Vector3(0, 0.75, 0), Vector3(Rules.HALF_WIDTH * 2.0, 1.9, 0.5), Color(color, 0.22), true, 0.04)
-		box(curtain, Vector3(0, 0.05, 0), Vector3(Rules.HALF_WIDTH * 2.0, 0.04, 1.6), Color(pale, 0.5), true, 0.02)
+		var span: float = Rules.side_x(map.get("outline", "hex")) * 2.0
+		box(curtain, Vector3(0, 0.75, 0), Vector3(span, 1.5, 0.1), Color(color, 0.8), true, 0.04)
+		box(curtain, Vector3(0, 0.75, 0), Vector3(span, 1.9, 0.5), Color(color, 0.22), true, 0.04)
+		box(curtain, Vector3(0, 0.05, 0), Vector3(span, 0.04, 1.6), Color(pale, 0.5), true, 0.02)
 		effects.append({"node": curtain, "v": Vector3(0, 0, -side * 9.0), "ttl": 0.62, "life": 0.62, "gravity": false, "base": Vector3.ONE, "keep": true})
 		emitter(Vector3(0, 0.6, side * Rules.HALF_LENGTH * 0.7), pale, 22, 0.7, 3.0, 85.0, 0.34, -1.2, Vector3.UP)
 	flash(Vector3(0, 1.6, 0), color, 6.0, 0.5, 16.0)

@@ -1,6 +1,9 @@
 extends RefCounted
 ## Authoritative, renderer-independent simulation. World Vector2 maps to X/Z.
 const MAP_SCALE = 1.24
+# The tall arena's half width. Narrow enough that the field fills a phone screen held
+# upright instead of sitting in a band across the middle of it.
+const TOWER_HALF_WIDTH = 5.3
 const HALF_WIDTH = 6.0 * MAP_SCALE
 const HALF_LENGTH = 6.93 * MAP_SCALE
 const GOAL_RADIUS = 1.65
@@ -220,6 +223,17 @@ static func default_map() -> Dictionary:
 		],
 	}
 
+static func tower_map() -> Dictionary:
+	# Narrow and long, shaped for a phone held upright: the wide arenas leave bands of dead
+	# screen above and below, because seen from this camera they come out wider than tall.
+	return {
+		"id": "torre", "name": "Torre Aurora", "outline": "torre", "boosters": true, "bricks": "torre", "barriers": [],
+		"obstacles": [
+			{"kind": "slide", "center": Vector2(0, -2.6), "axis": Vector2.RIGHT, "travel": 2.4, "frequency": 0.55, "phase": 0.0, "radius": 0.42},
+			{"kind": "slide", "center": Vector2(0, 2.6), "axis": Vector2.RIGHT, "travel": 2.4, "frequency": 0.55, "phase": PI, "radius": 0.42},
+		],
+	}
+
 static func pvp_map() -> Dictionary:
 	return {
 		"id": "colosseum", "name": "Coliseu Retangular", "outline": "colosseum", "boosters": true, "bricks": "colosseum", "barriers": [],
@@ -253,6 +267,11 @@ static func outline_points(kind: String) -> Array:
 			return [Vector2(0, -l), Vector2(w, -l / 2), Vector2(w + 1.3, -1.5), Vector2(w + 1.3, 1.5), Vector2(w, l / 2), Vector2(0, l), Vector2(-w, l / 2), Vector2(-w - 1.3, 1.5), Vector2(-w - 1.3, -1.5), Vector2(-w, -l / 2)]
 		"octagon":
 			return [Vector2(-2.3, -l), Vector2(2.3, -l), Vector2(w, -l / 2), Vector2(w, l / 2), Vector2(2.3, l), Vector2(-2.3, l), Vector2(-w, l / 2), Vector2(-w, -l / 2)]
+		"torre":
+			# Narrow and long: on a phone held upright the wide arenas leave bands of dead
+			# screen above and below, because seen from the camera they come out wider than
+			# tall. This one is the shape of the screen it is played on.
+			return [Vector2(-3.4, -l), Vector2(3.4, -l), Vector2(TOWER_HALF_WIDTH, -l + 2.2), Vector2(TOWER_HALF_WIDTH, l - 2.2), Vector2(3.4, l), Vector2(-3.4, l), Vector2(-TOWER_HALF_WIDTH, l - 2.2), Vector2(-TOWER_HALF_WIDTH, -l + 2.2)]
 		"stadium":
 			# A long hall with a broad flat end behind each goal: the roomiest rail of all.
 			return [Vector2(-5.0, -l), Vector2(5.0, -l), Vector2(w, -l + 2.6), Vector2(w, l - 2.6), Vector2(5.0, l), Vector2(-5.0, l), Vector2(-w, l - 2.6), Vector2(-w, -l + 2.6)]
@@ -275,7 +294,7 @@ static func outline_points(kind: String) -> Array:
 	return WALLS.duplicate()
 
 static func side_x(kind: String) -> float:
-	return {"pinch": HALF_WIDTH - 1.9, "wide": HALF_WIDTH + 1.3, "gorge": HALF_WIDTH - 1.7, "lens": HALF_WIDTH + 1.0}.get(kind, HALF_WIDTH)
+	return {"pinch": HALF_WIDTH - 1.9, "wide": HALF_WIDTH + 1.3, "gorge": HALF_WIDTH - 1.7, "lens": HALF_WIDTH + 1.0, "torre": TOWER_HALF_WIDTH}.get(kind, HALF_WIDTH)
 
 static func track_limit_for(layout: Dictionary) -> float:
 	# How far this arena lets a pilot walk before it would scrape a wall, a barrier or a
@@ -492,6 +511,14 @@ static func make_bricks(layout: String = "banks", lives: int = BRICK_LIVES) -> A
 						for column in range(10):
 							var pos = Vector2(side * (0.55 + column * 0.545), goal.y - sign_y * (3.6 + column * 0.197 + row * 0.36))
 							add_brick(result, team, side, pos, direction.angle())
+			"torre":
+				# Four rows that reach wall to wall in the narrow arena: the same forty
+				# bricks, packed into a field barely two thirds as wide.
+				for row in range(4):
+					var count = 10
+					for column in range(count):
+						var x = lerpf(-3.5, 3.5, float(column) / float(count - 1))
+						add_brick(result, team, -1 if x < 0 else 1, Vector2(x, goal.y - sign_y * (3.5 + row * 0.42)), 0.0, lives)
 			"bulwark":
 				# Three long rows: a boss wall you have to chew through, not slip past.
 				for row in range(3):

@@ -1664,7 +1664,9 @@ func layout() -> void:
 		menu.position = Vector2(48, maxf(76, size.y - menu.size.y - 40))
 		fps_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
 		fps_label.size = Vector2.ZERO
-		fps_label.position = Vector2(size.x - 260, size.y - 53)
+		# In a match the stick and its caption own the bottom right corner, so the counter
+		# takes the left one, which is where the arena name sits on the menu.
+		fps_label.position = Vector2(size.x - 260, size.y - 53) if mode == "menu" else Vector2(34, size.y - 42)
 		score_rect = Rect2(size.x * 0.5 - 152, 19, 304, 59)
 		card_rects = [Rect2(38, 184, 200, 222), Rect2(size.x - 238, 184, 200, 222)]
 		message_center = size * 0.5
@@ -1688,10 +1690,11 @@ func layout_vertical(menu_height: float) -> void:
 	var mid = size.x * 0.5
 	var bottom = size.y - safe_bottom
 	score_rect = Rect2(mid - 152, safe_top + 86, 304, 59)
-	fps_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER if mode == "menu" else HORIZONTAL_ALIGNMENT_RIGHT
+	fps_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER if mode == "menu" else HORIZONTAL_ALIGNMENT_LEFT
 	fps_label.size = Vector2(240 if mode == "menu" else 128, 20)
-	# In a match the keys own the left of the band, so the counter keeps the right corner.
-	fps_label.position = Vector2(mid - 120, bottom - 46) if mode == "menu" else Vector2(size.x - 138, bottom - 24)
+	# The stick sits on the right of the band with its caption under it, so in a match the
+	# counter takes the left corner instead of landing on top of them.
+	fps_label.position = Vector2(mid - 120, bottom - 46) if mode == "menu" else Vector2(30, bottom - 26)
 	menu.size = Vector2(minf(size.x - 48, 520), menu_height)
 	menu.position = Vector2((size.x - menu.size.x) * 0.5, maxf(safe_top + 150, bottom - menu.size.y - 56))
 	if mode == "menu":
@@ -1701,7 +1704,8 @@ func layout_vertical(menu_height: float) -> void:
 	else:
 		# Top match info band sits comfortably below the header buttons (bar_y = safe_top + 48)
 		var bar_y = safe_top + 48.0
-		var card_h = 76.0
+		# Tall enough for a face you can actually see: the avatar is 40 across now.
+		var card_h = 96.0
 		var score_w = clampf(size.x * 0.25, 116.0, 150.0)
 		score_rect = Rect2(mid - score_w * 0.5, bar_y, score_w, card_h)
 		var card_w = maxf((size.x - score_w - 20.0) * 0.5, 110.0)
@@ -1709,7 +1713,9 @@ func layout_vertical(menu_height: float) -> void:
 		var right_card = Rect2(size.x - 8 - card_w, bar_y, card_w, card_h)
 		card_rects = [left_card, right_card] if team == 0 else [right_card, left_card]
 		var band_top = bar_y + card_h + 10.0
-		var band_bottom = bottom - STICK_RADIUS - 100.0
+		# The stadium stops where the stick begins. Measured from the stick itself, because
+		# a short screen pushes the two into each other and the field would cover the thumb.
+		var band_bottom = move_home.y - STICK_RADIUS - 10.0
 		arena_rect = Rect2(10, band_top, size.x - 20, maxf(band_bottom - band_top, 120))
 	message_center = arena_rect.get_center()
 	touch_top = arena_rect.get_center().y
@@ -2153,27 +2159,28 @@ func player_card(rect: Rect2, side: int, t: int) -> void:
 		tips = [["BOOST: 2 NOS TIJOLOS", LIME, true], ["5 acertos · pausa 0,5 s", MUTED, false]]
 	if vertical:
 		var is_left = (side == 0)
-		var avatar_x = at.x + 36.0 if is_left else at.x + rect.size.x - 36.0
-		var content_x = at.x + 72.0 if is_left else at.x + 10.0
+		var avatar_x = at.x + 46.0 if is_left else at.x + rect.size.x - 46.0
+		var content_x = at.x + 92.0 if is_left else at.x + 12.0
 		var avatar_center = Vector2(avatar_x, at.y + rect.size.y * 0.5)
 
-		# Avatar enlarged to 0.65 scale (detail clearly visible)
-		draw_circle(avatar_center, 30.0, Color(INK, 0.45), true, -1, smooth)
-		draw_set_transform(avatar_center, 0.0, Vector2(0.65, 0.65))
+		# The pilot's face is what the eye goes to, so it gets the room.
+		draw_circle(avatar_center, 40.0, Color(INK, 0.45), true, -1, smooth)
+		draw_set_transform(avatar_center, 0.0, Vector2(0.88, 0.88))
 		portrait(Vector2.ZERO, color, stunned, team_skins[t], null, team_tints[t])
 		draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 
 		var disp_name = pilot
 		if disp_name.length() > 8 and rect.size.x < 190:
 			disp_name = disp_name.substr(0, 7) + "."
-		write(disp_name, Vector2(content_x, at.y + 20), 15, color, true)
-		player_life_bar_compact(Vector2(content_x, at.y + 30), match_data.players[t].hp, color)
+		write(disp_name, Vector2(content_x, at.y + 26), 16, color, true)
+		player_life_bar_compact(Vector2(content_x, at.y + 38), match_data.players[t].hp, color)
+		# The wall count is what both pilots watch, so it never leaves the card. Whatever else
+		# there is to say — a stun, the rival's charged powers — takes the line under it.
+		write(status, Vector2(content_x, at.y + 64), 11, status_color, count == 0)
 		if stunned:
-			write("⚡ STUN %.1fs" % match_data.players[t].stun, Vector2(content_x, at.y + 60), 11, LIME, true)
+			write("⚡ ATORDOADO %.1fs" % match_data.players[t].stun, Vector2(content_x, at.y + 84), 12, LIME, true)
 		elif side == 1 and match_data.has("powers") and t < match_data.powers.size():
-			power_pips(Vector2(content_x, at.y + 60), t)
-		else:
-			write(status, Vector2(content_x, at.y + 60), 10, status_color, count == 0)
+			power_pips(Vector2(content_x, at.y + 84), t)
 	else:
 		var bricks_at = at + Vector2(23, 172)
 		for i in range(per_team):
@@ -2187,11 +2194,14 @@ func player_card(rect: Rect2, side: int, t: int) -> void:
 		centered(pilot, Vector2(center, at.y + 146), 22, WHITE, true)
 		player_life_bar(Vector2(center - 47, at.y + 158), match_data.players[t].hp, color)
 		centered(status, Vector2(center, at.y + 210), 10, status_color, true)
+		# Your own hints go under the power buttons, which hang below your card; the rival's
+		# take the same band on the other side, where the buttons never reach.
 		var tip_x = 49.0 if side == 0 else size.x - 221
-		write(tips[0][0], Vector2(tip_x, 437), 13, tips[0][1], tips[0][2])
-		write(tips[1][0], Vector2(tip_x, 461), 12, tips[1][1], tips[1][2])
+		var tip_y = 556.0 if side == 0 else 437.0
+		write(tips[0][0], Vector2(tip_x, tip_y), 13, tips[0][1], tips[0][2])
+		write(tips[1][0], Vector2(tip_x, tip_y + 24), 12, tips[1][1], tips[1][2])
 		if side == 1:
-			power_pips(Vector2(tip_x, 485), t)
+			power_pips(Vector2(tip_x, tip_y + 48), t)
 
 func player_life_bar_compact(at: Vector2, hp: int, color: Color) -> void:
 	for i in range(5):
@@ -2235,9 +2245,11 @@ func _draw() -> void:
 		draw_polyline(bolt, CYAN, 2.5, smooth)
 		write("CHARGE ARENA", Vector2(82, 44) + top, 17, WHITE, true)
 		write("C I R C U I T O   A U R O R A", Vector2(82, 62) + top, 9, MUTED)
-	write("ARENA 01   /   AURORA", Vector2(34, bottom - 24), 10, MUTED)
-	write("ENCONTRA O TEU ÂNGULO", Vector2(size.x - 204, bottom - 24), 10, MUTED)
 	if mode == "menu":
+		# Flavour for the menu alone. In a match that strip belongs to the stick's caption and
+		# to the frame counter, and the three of them were landing on top of each other.
+		write("ARENA 01   /   AURORA", Vector2(34, bottom - 24), 10, MUTED)
+		write("ENCONTRA O TEU ÂNGULO", Vector2(size.x - 204, bottom - 24), 10, MUTED)
 		if not vertical:
 			write("UM DISPARO.", Vector2(size.x - 285, size.y - 126), 22, WHITE, true)
 			write("MIL POSSIBILIDADES.", Vector2(size.x - 285, size.y - 98), 22, LIME, true)
@@ -2333,8 +2345,8 @@ func _draw() -> void:
 	draw_circle(knob, 26, CYAN.darkened(0.2 if move_id >= 0 else 0.55), true, -1, smooth)
 	draw_arc(knob, 26, 0, TAU, 48, Color(CYAN, 0.65), 1.2, smooth)
 	draw_circle(knob, 3, INK if move_id >= 0 else CYAN, true, -1, smooth)
-	centered("MOVER E APONTAR", stick + Vector2(0, 99), 10, CYAN, true)
-	centered("DISPARO AUTOMÁTICO  ·  MIRA ASSISTIDA", stick + Vector2(0, 114), 9, Color(LIME, 0.75), true)
+	centered("MOVER E APONTAR", stick + Vector2(0, 84), 10, CYAN, true)
+	centered("DISPARO AUTOMÁTICO  ·  MIRA ASSISTIDA", stick + Vector2(0, 99), 9, Color(LIME, 0.75), true)
 	draw_powers()
 
 func stun_banner_rect() -> Rect2:
@@ -2386,7 +2398,9 @@ func draw_powers() -> void:
 		elif running:
 			caption = "%.1f s" % (state.laser_time if id == "laser" else state.rapid_time)
 		centered(caption, center + Vector2(0, 13), 9, INK if ready or pressed else WHITE, true)
-		centered(Rules.power_label(id), center + Vector2(0, 27), 8, INK if ready or pressed else Color(WHITE, 0.6), true)
+		# The name goes under the button, not inside it: the ring is forty pixels across, and
+		# with the icon and the charge already in there the name was crossing the rim.
+		centered(Rules.power_label(id), center + Vector2(0, POWER_RADIUS + 14), 8, Color(WHITE, 0.85 if ready or pressed else 0.5), true)
 
 func match_loadout(t: int, index: int) -> String:
 	# The power on that button: empty while the skin ultimates are still to come.
