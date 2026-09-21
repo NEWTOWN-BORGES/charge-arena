@@ -552,7 +552,7 @@ func fit_content_scale() -> void:
 
 func frame_arena() -> void:
 	if hud.vertical:
-		arena.frame_rect(hud.arena_rect, hud.size)
+		arena.frame_rect(hud.arena_rect, hud.size, hud.mode == "menu")
 	else:
 		arena.frame_landscape(-4.5 if hud.mode == "menu" else 0.0)
 

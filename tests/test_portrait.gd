@@ -70,25 +70,25 @@ func run() -> void:
 		screen = Rect2(Vector2.ZERO, hud.size)
 		arena = drawn_arena(game)
 		var tag = "%dx%d: " % [size.x, size.y]
-		var upper: Rect2 = hud.card_rects[1]
-		var lower: Rect2 = hud.card_rects[0]
+		var card_player: Rect2 = hud.card_rects[0]
+		var card_rival: Rect2 = hud.card_rects[1]
 		var controls = control_rects(hud)
 		check(hud.back.get_rect().end.y <= hud.score_rect.position.y and hud.video_button.get_rect().end.y <= hud.score_rect.position.y, tag + "MENU and OPÇÕES buttons sit above the score")
-		check(hud.score_rect.end.y <= upper.position.y, tag + "Score sits above the opponent card")
-		check(upper.end.y <= arena.position.y and arena.end.y <= lower.position.y, tag + "Stadium sits between both player cards without overlap")
-		check(lower.end.y <= controls[0].position.y and lower.end.y <= controls[1].position.y, tag + "Player card sits above the thumb controls")
-		check(screen.encloses(controls[0]) and screen.encloses(controls[1]) and screen.encloses(upper) and screen.encloses(lower), tag + "Cards and controls stay on screen")
+		check(hud.score_rect.end.y <= arena.position.y, tag + "Score sits above the stadium")
+		check(card_player.end.y <= arena.position.y and card_rival.end.y <= arena.position.y, tag + "Both player cards sit above the stadium without overlap")
+		check(arena.end.y <= controls[0].position.y and arena.end.y <= controls[1].position.y, tag + "Stadium sits above the thumb controls")
+		check(screen.encloses(controls[0]) and screen.encloses(controls[1]) and screen.encloses(card_player) and screen.encloses(card_rival), tag + "Cards and controls stay on screen")
 		check(arena.size.x >= hud.size.x * 0.85, tag + "Stadium uses the full width (%d px)" % arena.size.x)
 		check(arena.has_point(hud.message_center) and screen.encloses(hud.replay.get_rect()), tag + "Countdown, goal and replay messages centre on the stadium")
 		var fps = hud.fps_label.get_rect()
-		check(screen.encloses(fps) and controls.all(func(c): return not fps.intersects(c)) and fps.position.y >= lower.end.y, tag + "FPS counter keeps clear of the thumb controls")
+		check(screen.encloses(fps) and controls.all(func(c): return not fps.intersects(c)), tag + "FPS counter keeps clear of the thumb controls")
 		var stun: Rect2 = hud.stun_banner_rect()
-		check(screen.encloses(stun) and controls.all(func(c): return not stun.intersects(c)) and stun.position.y >= lower.end.y, tag + "Stun banner sits over the controls, clear of them")
+		check(screen.encloses(stun) and controls.all(func(c): return not stun.intersects(c)), tag + "Stun banner sits over the controls, clear of them")
 
-	check(hud.card_rects[0].position.y > hud.card_rects[1].position.y, "Host/PvE player card is beside the bottom goal")
+	check(hud.card_rects[0].position.x < hud.card_rects[1].position.x, "Host/PvE player card is on the left of the top band")
 	hud.show_game("client", 1)
 	await settle()
-	check(hud.card_rects[0].position.y < hud.card_rects[1].position.y, "Client player card moves beside the top goal")
+	check(hud.card_rects[0].position.x > hud.card_rects[1].position.x, "Client local card stays on the left of the top band")
 	hud.show_game("pve", 0)
 	await settle()
 

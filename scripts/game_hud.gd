@@ -1604,10 +1604,24 @@ func layout() -> void:
 	var insets = safe_insets() if vertical else Vector2.ZERO
 	safe_top = insets.x
 	safe_bottom = insets.y
-	back.position = Vector2(size.x - 130, 27 + safe_top)
-	back.size = Vector2(100, 46)
-	video_button.position = Vector2(size.x - 242, 27 + safe_top)
-	video_button.size = Vector2(100, 46)
+	if vertical:
+		video_button.custom_minimum_size.y = 36
+		video_button.add_theme_font_size_override("font_size", 13)
+		video_button.position = Vector2(size.x - 198, safe_top + 8)
+		video_button.size = Vector2(92, 36)
+		back.custom_minimum_size.y = 36
+		back.add_theme_font_size_override("font_size", 13)
+		back.position = Vector2(size.x - 100, safe_top + 8)
+		back.size = Vector2(92, 36)
+	else:
+		video_button.custom_minimum_size.y = 46
+		video_button.add_theme_font_size_override("font_size", 17)
+		video_button.position = Vector2(size.x - 242, 27 + safe_top)
+		video_button.size = Vector2(100, 46)
+		back.custom_minimum_size.y = 46
+		back.add_theme_font_size_override("font_size", 17)
+		back.position = Vector2(size.x - 130, 27 + safe_top)
+		back.size = Vector2(100, 46)
 	skins_body.vertical = size.y > size.x
 	viewer.custom_minimum_size = Vector2(0, 360) if skins_body.vertical else Vector2(420, 440)
 	# The scrolling column keeps the whole panel inside the screen, whatever its height.
@@ -1685,21 +1699,18 @@ func layout_vertical(menu_height: float) -> void:
 		var top = safe_top + 172
 		arena_rect = Rect2(16, top, size.x - 32, maxf(menu.position.y - 48 - top, 120))
 	else:
-		# Compact Top Match Band:
-		# Sits directly under header: Left Card (Player) - Center Score - Right Card (Rival).
-		# Uses minimal height (52px), leaving the ENTIRE rest of the vertical screen for the arena!
-		var bar_y = safe_top + 68.0
-		var score_w = clampf(size.x * 0.24, 96.0, 130.0)
-		var score_h = 52.0
-		score_rect = Rect2(mid - score_w * 0.5, bar_y, score_w, score_h)
-		var card_w = maxf((size.x - score_w - 20.0) * 0.5, 100.0)
-		var card_h = 52.0
-		var left_card = Rect2(6, bar_y, card_w, card_h)
-		var right_card = Rect2(size.x - 6 - card_w, bar_y, card_w, card_h)
+		# Top match info band sits comfortably below the header buttons (bar_y = safe_top + 48)
+		var bar_y = safe_top + 48.0
+		var card_h = 76.0
+		var score_w = clampf(size.x * 0.25, 116.0, 150.0)
+		score_rect = Rect2(mid - score_w * 0.5, bar_y, score_w, card_h)
+		var card_w = maxf((size.x - score_w - 20.0) * 0.5, 110.0)
+		var left_card = Rect2(8, bar_y, card_w, card_h)
+		var right_card = Rect2(size.x - 8 - card_w, bar_y, card_w, card_h)
 		card_rects = [left_card, right_card] if team == 0 else [right_card, left_card]
-		var band_top = bar_y + card_h + 8.0
+		var band_top = bar_y + card_h + 10.0
 		var band_bottom = bottom - STICK_RADIUS - 100.0
-		arena_rect = Rect2(4, band_top, size.x - 8, maxf(band_bottom - band_top, 120))
+		arena_rect = Rect2(10, band_top, size.x - 20, maxf(band_bottom - band_top, 120))
 	message_center = arena_rect.get_center()
 	touch_top = arena_rect.get_center().y
 	if is_instance_valid(host_ai_button):
@@ -2142,23 +2153,27 @@ func player_card(rect: Rect2, side: int, t: int) -> void:
 		tips = [["BOOST: 2 NOS TIJOLOS", LIME, true], ["5 acertos · pausa 0,5 s", MUTED, false]]
 	if vertical:
 		var is_left = (side == 0)
-		var avatar_x = at.x + 24 if is_left else at.x + rect.size.x - 24
-		var content_x = at.x + 46 if is_left else at.x + 8
-		draw_set_transform(Vector2(avatar_x, at.y + rect.size.y * 0.5), 0.0, Vector2(0.42, 0.42))
+		var avatar_x = at.x + 36.0 if is_left else at.x + rect.size.x - 36.0
+		var content_x = at.x + 72.0 if is_left else at.x + 10.0
+		var avatar_center = Vector2(avatar_x, at.y + rect.size.y * 0.5)
+
+		# Avatar enlarged to 0.65 scale (detail clearly visible)
+		draw_circle(avatar_center, 30.0, Color(INK, 0.45), true, -1, smooth)
+		draw_set_transform(avatar_center, 0.0, Vector2(0.65, 0.65))
 		portrait(Vector2.ZERO, color, stunned, team_skins[t], null, team_tints[t])
 		draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 
 		var disp_name = pilot
-		if disp_name.length() > 7 and rect.size.x < 170:
-			disp_name = disp_name.substr(0, 6) + "."
-		write(disp_name, Vector2(content_x, at.y + 15), 11, color, true)
-		player_life_bar_compact(Vector2(content_x, at.y + 22), match_data.players[t].hp, color)
+		if disp_name.length() > 8 and rect.size.x < 190:
+			disp_name = disp_name.substr(0, 7) + "."
+		write(disp_name, Vector2(content_x, at.y + 20), 15, color, true)
+		player_life_bar_compact(Vector2(content_x, at.y + 30), match_data.players[t].hp, color)
 		if stunned:
-			write("⚡ STUN %.1fs" % match_data.players[t].stun, Vector2(content_x, at.y + 44), 9, LIME, true)
+			write("⚡ STUN %.1fs" % match_data.players[t].stun, Vector2(content_x, at.y + 60), 11, LIME, true)
 		elif side == 1 and match_data.has("powers") and t < match_data.powers.size():
-			power_pips(Vector2(content_x, at.y + 44), t)
+			power_pips(Vector2(content_x, at.y + 60), t)
 		else:
-			write(status, Vector2(content_x, at.y + 44), 9, status_color, count == 0)
+			write(status, Vector2(content_x, at.y + 60), 10, status_color, count == 0)
 	else:
 		var bricks_at = at + Vector2(23, 172)
 		for i in range(per_team):
@@ -2180,21 +2195,21 @@ func player_card(rect: Rect2, side: int, t: int) -> void:
 
 func player_life_bar_compact(at: Vector2, hp: int, color: Color) -> void:
 	for i in range(5):
-		var cell = Rect2(at + Vector2(i * 11, 0), Vector2(8, 5))
+		var cell = Rect2(at + Vector2(i * 15, 0), Vector2(11, 6))
 		var fill = color if i < hp else Color("263f44")
-		draw_style_box(style(fill, Color(fill.lightened(0.22), 0.75), 1), cell)
+		draw_style_box(style(fill, Color(fill.lightened(0.22), 0.8), 1), cell)
 
 func power_pips(at: Vector2, t: int) -> void:
 	# Which of the rival's powers are charged, in the same colours as your own buttons.
 	if not match_data.has("powers") or t >= match_data.powers.size():
 		return
 	var state: Dictionary = match_data.powers[t]
-	write("PODERES", at, 9, MUTED, true)
+	write("PODERES", at, 10, MUTED, true)
 	for index in range(Rules.POWER_SLOTS):
 		var id = match_loadout(t, index)
 		var cost: int = int(Powers.entry(id).get("charge", 0))
 		var ready: bool = cost > 0 and state.charge[index] >= cost
-		draw_circle(at + Vector2(56 + index * 15, -3), 5, Rules.power_color(id) if ready else Color("284349"), true, -1, smooth)
+		draw_circle(at + Vector2(62 + index * 16, -4), 5, Rules.power_color(id) if ready else Color("284349"), true, -1, smooth)
 
 func player_life_bar(at: Vector2, hp: int, color: Color) -> void:
 	# Five separate cells stay legible on small displays and make every hit clear.
@@ -2208,11 +2223,18 @@ func _draw() -> void:
 		return
 	var top = Vector2(0, safe_top)
 	var bottom = size.y - safe_bottom
-	draw_circle(Vector2(49, 47) + top, 19, Color(CYAN, 0.1), true, -1, smooth)
-	var bolt = PackedVector2Array([Vector2(54, 32) + top, Vector2(40, 49) + top, Vector2(52, 49) + top, Vector2(44, 62) + top])
-	draw_polyline(bolt, CYAN, 2.5, smooth)
-	write("CHARGE ARENA", Vector2(82, 44) + top, 17, WHITE, true)
-	write("C I R C U I T O   A U R O R A", Vector2(82, 62) + top, 9, MUTED)
+	if vertical:
+		draw_circle(Vector2(28, 26) + top, 14, Color(CYAN, 0.12), true, -1, smooth)
+		var bolt = PackedVector2Array([Vector2(32, 16) + top, Vector2(23, 27) + top, Vector2(31, 27) + top, Vector2(25, 36) + top])
+		draw_polyline(bolt, CYAN, 2.2, smooth)
+		write("CHARGE ARENA", Vector2(49, 24) + top, 15, WHITE, true)
+		write("C I R C U I T O   A U R O R A", Vector2(49, 38) + top, 8, MUTED)
+	else:
+		draw_circle(Vector2(49, 47) + top, 19, Color(CYAN, 0.1), true, -1, smooth)
+		var bolt = PackedVector2Array([Vector2(54, 32) + top, Vector2(40, 49) + top, Vector2(52, 49) + top, Vector2(44, 62) + top])
+		draw_polyline(bolt, CYAN, 2.5, smooth)
+		write("CHARGE ARENA", Vector2(82, 44) + top, 17, WHITE, true)
+		write("C I R C U I T O   A U R O R A", Vector2(82, 62) + top, 9, MUTED)
 	write("ARENA 01   /   AURORA", Vector2(34, bottom - 24), 10, MUTED)
 	write("ENCONTRA O TEU ÂNGULO", Vector2(size.x - 204, bottom - 24), 10, MUTED)
 	if mode == "menu":
@@ -2227,11 +2249,15 @@ func _draw() -> void:
 	var s = score_rect.position
 	panel(score_rect)
 	if vertical:
-		centered(str(match_data.scores[0]) + "  :  " + str(match_data.scores[1]), Vector2(score_rect.get_center().x, s.y + 26), 22, WHITE, true)
-		var round_text = "1º A %d" % Rules.WIN_SCORE
+		var round_text = "1º A %d GOLOS" % Rules.WIN_SCORE
 		if not level_info.is_empty():
 			round_text = "NÍVEL %d" % level_info.number
-		centered(round_text, Vector2(score_rect.get_center().x, s.y + 43), 8, LIME, true)
+		centered(round_text, Vector2(score_rect.get_center().x, s.y + 19), 10, LIME, true)
+		centered(str(match_data.scores[0]) + "  :  " + str(match_data.scores[1]), Vector2(score_rect.get_center().x, s.y + 44), 26, WHITE, true)
+		var mode_label = "TREINO / PvE" if mode == "pve" else "DUELO / PvP"
+		if not level_info.is_empty():
+			mode_label = "CAMPANHA"
+		centered(mode_label, Vector2(score_rect.get_center().x, s.y + 64), 9, MUTED, true)
 	else:
 		draw_circle(s + Vector2(23, 30), 4, CYAN, true, -1, smooth)
 		write("NOVA", s + Vector2(36, 35), 12, CYAN, true)
