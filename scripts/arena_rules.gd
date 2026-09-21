@@ -1229,7 +1229,7 @@ func rebuild_bricks(team: int) -> void:
 		bricks[index].hp = brick_lives
 		bricks[index].alive = true
 		restored.append(index)
-	events.append({"kind": "rebuild", "team": team, "bricks": restored, "p": players[team].p})
+	events.append({"kind": "rebuild", "team": team, "bricks": restored, "p": players[team].p, "gain": brick_lives})
 
 func step_laser(team: int, dt: float) -> void:
 	var state: Dictionary = powers[team]
@@ -1305,7 +1305,7 @@ func fire_laser(team: int) -> void:
 		if segment_circle(from, travel, players[enemy].p, 0.43 + LASER_WIDTH) >= 0:
 			caught_pilot = true
 	for index in hit:
-		damage_brick(index, LASER_DAMAGE, team, bricks[index].p)
+		damage_brick(index, LASER_DAMAGE, team, bricks[index].p, true)
 	if caught_pilot:
 		damage_player(enemy, 1, players[enemy].p)
 	events.append({"kind": "laser", "team": team, "p": origin, "heading": heading, "length": origin.distance_to(path[1]), "path": path})
@@ -1349,7 +1349,7 @@ func explode(ball: Dictionary) -> void:
 	for index in range(bricks.size()):
 		var brick: Dictionary = bricks[index]
 		if brick.alive and brick.team != ball.owner and brick.p.distance_to(ball.p) <= EXPLOSION_RADIUS:
-			damage_brick(index, EXPLOSION_DAMAGE, ball.owner, brick.p)
+			damage_brick(index, EXPLOSION_DAMAGE, ball.owner, brick.p, true)
 	var enemy: int = 1 - int(ball.owner)
 	if players[enemy].p.distance_to(ball.p) <= EXPLOSION_RADIUS:
 		damage_player(enemy, EXPLOSION_DAMAGE, ball.p)

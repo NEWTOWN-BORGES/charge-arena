@@ -42,6 +42,12 @@ var obstacle_nodes: Array = []
 var carrying = false
 # Whether each side's wall is currently showing its crystal plating.
 var plated: Array = [false, false]
+# The running total of damage each side is taking from the power landing right now. One
+# number that climbs answers the only question worth asking - how much did that take off
+# in all - where forty little ones only buried the field in digits.
+var tally: Array = [{}, {}]
+const TALLY_HOLD = 1.0
+const TALLY_FADE = 0.35
 var effect_limit = 112
 var trail_interval = 0.035
 var brick_instances: Array = []
@@ -1541,6 +1547,7 @@ func update_state(rules, local_team: int, dt: float, motion_alpha: float = 1.0) 
 		camera.position = camera_home + Vector3(sin(shake_seed) * 0.6, cos(shake_seed * 1.37) * 0.35, sin(shake_seed * 0.8) * 0.3) * shake_power
 	elif camera.position != camera_home:
 		camera.position = camera_home
+	step_tallies(dt)
 	trail_timer += dt
 	var interpolate = not previous_motion.is_empty() and previous_motion.phase == rules.phase
 	for i in range(rules.obstacles.size()):
@@ -2128,8 +2135,7 @@ func bloom_flash(positions: Array, heal: int) -> void:
 		var halo = torus(self, Vector3(at.x, 0.42, at.y), 0.38, 0.045, Color(color, 0.85), true)
 		effects.append({"node": halo, "v": Vector3(0, 1.3, 0), "ttl": 0.55, "life": 0.55, "gravity": false, "base": Vector3.ONE * 1.5, "grow": true, "tint": color})
 		if index % 2 == 0:
-			var mark = world_label("+%d" % heal, Vector3(at.x, 1.15, at.y), pale, 54)
-			effects.append({"node": mark, "v": Vector3(0, 1.1, 0), "ttl": 1.5, "life": 1.5, "gravity": false, "base": Vector3.ONE, "keep": true})
+			gain_mark(at, heal, color)
 
 func surge_flash(at: Vector2) -> void:
 	# The gauntlet overloads: rings open off the pilot and sparks come with them. The rest
@@ -2159,23 +2165,86 @@ func volley_flash(at: Vector2, heading: Vector2) -> void:
 # arrives instead of the whole wall flashing at once.
 const SHOCK_SPEED = 24.0
 
-func damage_mark(at: Vector2, bite: int) -> void:
-	# What a single brick took, floating off it. The ultimates hit a whole wall at once and
-	# the counter on the card only moves by the total; this is where it comes from.
-	if bite <= 0 or effects.size() >= effect_limit:
+func tally_mark(team: int, at: Vector2, amount: int, color: Color) -> void:
+	# Starts at the first bite and climbs with every one after it, then lingers a moment
+	# past the last so the final figure can be read.
+	if amount <= 0 or team < 0 or team > 1:
 		return
-	var color: Color = [Color("ffe9c0"), Color("ffd27a"), Color("ff9f5c"), Color("ff6a5c")][clampi(bite, 0, 3)]
-	var label = world_label("-%d" % bite, Vector3(at.x, 1.45, at.y), color, 54 + bite * 14)
-	effects.append({"node": label, "v": Vector3(0, 0.75, 0), "ttl": 1.5, "life": 1.5, "gravity": false, "base": Vector3.ONE, "keep": true})
+	var box: Dictionary = tally[team]
+	if not box.is_empty() and is_instance_valid(box.node):
+		box.total = int(box.total) + amount
+		box.left = TALLY_HOLD
+		box.pop = 1.0
+		box.node.text = "-%d" % int(box.total)
+		return
+	# Centred over the half it is hitting, not over the first brick: a blow that starts at
+	# the edge of the wall would otherwise put the figure half off the screen.
+	var label = world_label("-%d" % amount, Vector3(0.0, 2.5, at.y), color.lightened(0.4), 128)
+	label.outline_size = 36
+	label.outline_modulate = Color(0.01, 0.04, 0.05, 0.96)
+	label.no_depth_test = true
+	label.render_priority = 6
+	label.outline_render_priority = 5
+	tally[team] = {"node": label, "total": amount, "left": TALLY_HOLD, "pop": 1.0}
+
+func step_tallies(dt: float) -> void:
+	for team in range(2):
+		var box: Dictionary = tally[team]
+		if box.is_empty():
+			continue
+		if not is_instance_valid(box.node):
+			tally[team] = {}
+			continue
+		box.left = float(box.left) - dt
+		if box.left <= 0:
+			box.node.queue_free()
+			tally[team] = {}
+			continue
+		# A kick each time it climbs, then it settles and drifts up as it fades out.
+		box.pop = maxf(0.0, float(box.pop) - dt * 4.0)
+		box.node.scale = Vector3.ONE * (1.0 + float(box.pop) * 0.3)
+		box.node.position.y += dt * 0.4
+		box.node.modulate.a = clampf(float(box.left) / TALLY_FADE, 0.0, 1.0)
+
+func float_number(text: String, at: Vector3, color: Color, size: int, life: float) -> void:
+	# Every number that floats off the field goes through here, because the field is the
+	# hardest place in the game to read text on: a teal floor, cream walls and whatever the
+	# effect itself is throwing off. So each one is drawn over everything else, in a strong
+	# colour, inside a thick dark outline. Without the outline the greens and the ambers
+	# both disappeared into the floor.
+	if effects.size() >= effect_limit:
+		return
+	var label = world_label(text, at, color, size)
+	label.outline_size = maxi(18, size / 4)
+	label.outline_modulate = Color(0.01, 0.04, 0.05, 0.96)
+	label.no_depth_test = true
+	label.render_priority = 5
+	label.outline_render_priority = 4
+	effects.append({"node": label, "v": Vector3(0, 0.8, 0), "ttl": life, "life": life, "gravity": false, "base": Vector3.ONE, "keep": true})
+
+func damage_mark(team: int, at: Vector2, bite: int) -> void:
+	# What a single brick took, floating off it. A power hits a whole wall at once and the
+	# counter on the card only moves by the total; this is where that total comes from.
+	if bite <= 0:
+		return
+	# Pale for a scratch, amber for two, red for three: the colour says it before the digit.
+	var color: Color = [Color("fff6e0"), Color("fff0c4"), Color("ffb13c"), Color("ff6134")][clampi(bite, 0, 3)]
+	# A ring says which brick and how hard; the total over the wall says how much the whole
+	# attack has taken off so far.
+	if effects.size() + 1 < effect_limit:
+		var ring = torus(self, Vector3(at.x, 0.42, at.y), 0.3, 0.045, Color(color, 0.9), true)
+		effects.append({"node": ring, "v": Vector3(0, 0.8, 0), "ttl": 0.4, "life": 0.4, "gravity": false, "base": Vector3.ONE * 1.7, "grow": true, "tint": color})
+	tally_mark(team, at, bite, color)
 
 func gain_mark(at: Vector2, gain: int, tint: Color) -> void:
-	# The other side of the same coin: what a buff is worth, over whatever it is helping.
-	if gain <= 0 or effects.size() >= effect_limit:
+	# A buff keeps its number on the thing it helps, one by one: it lands on a handful of
+	# bricks at most, and seeing which ones is the point. Only damage, which can touch a
+	# whole wall at once, is gathered into a single total.
+	if gain <= 0:
 		return
-	var label = world_label("+%d" % gain, Vector3(at.x, 1.6, at.y), tint, 76)
-	effects.append({"node": label, "v": Vector3(0, 0.9, 0), "ttl": 1.6, "life": 1.6, "gravity": false, "base": Vector3.ONE, "keep": true})
+	float_number("+%d" % gain, Vector3(at.x, 1.6, at.y), tint.lightened(0.45), 84, 1.7)
 
-func shock_mark(at: Vector2, bite: int) -> void:
+func shock_mark(team: int, at: Vector2, bite: int) -> void:
 	# One brick, caught by the wave: a halo in the colour of the blow and the lives it took
 	# floating off it. Without this the ultimate is all sky and you cannot read what it did.
 	if effects.size() + 2 >= effect_limit:
@@ -2183,14 +2252,9 @@ func shock_mark(at: Vector2, bite: int) -> void:
 	var color: Color = [Color("ffe9c0"), Color("ffd27a"), Color("ff9f5c"), Color("ff6a5c")][clampi(bite, 0, 3)]
 	var halo = torus(self, Vector3(at.x, 0.42, at.y), 0.32, 0.05, Color(color, 0.95), true)
 	effects.append({"node": halo, "v": Vector3(0, 1.0, 0), "ttl": 0.5, "life": 0.5, "gravity": false, "base": Vector3.ONE * 2.0, "grow": true, "tint": color})
-	# The bigger the bite the bigger the number: a wall of threes has to read at a glance.
-	# Clear of the brick tops, or at this camera angle the number is read through the wall.
-	var label = world_label("-%d" % bite, Vector3(at.x, 1.45, at.y), color, 54 + bite * 14)
-	# Long enough that the far end of the wall is still lit when the near end is: the whole
-	# blow has to be readable in one look, not brick by brick as it fades.
-	effects.append({"node": label, "v": Vector3(0, 0.75, 0), "ttl": 1.9, "life": 1.9, "gravity": false, "base": Vector3.ONE, "keep": true})
+	tally_mark(team, at, bite, color)
 
-func shock_wave(at: Vector2, marks: Array = []) -> void:
+func shock_wave(at: Vector2, marks: Array = [], hurt: int = 1) -> void:
 	# The same blow as the stun pulse, on the scale of the whole stadium: rings that leave
 	# the core and keep going out past the walls, with the ground lit under them.
 	var color = Rules.power_color("singularity")
@@ -2211,7 +2275,7 @@ func shock_wave(at: Vector2, marks: Array = []) -> void:
 	for mark in marks:
 		var spot: Vector2 = mark.p
 		var bite: int = int(mark.bite)
-		pending.append({"time": clampf(at.distance_to(spot) / SHOCK_SPEED, 0.0, 0.8), "call": func(): shock_mark(spot, bite)})
+		pending.append({"time": clampf(at.distance_to(spot) / SHOCK_SPEED, 0.0, 0.8), "call": func(): shock_mark(hurt, spot, bite)})
 
 func plating_flash(team: int) -> void:
 	# Crystal closes over the wall: a plate lights up on each brick and stays lit while the

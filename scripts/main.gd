@@ -620,7 +620,10 @@ func play_events() -> void:
 		elif event.kind == "laser":
 			arena.laser_beam(event.p, event.heading, event.team)
 		elif event.kind == "rebuild":
-			arena.rebuild_flash(event.bricks.map(func(i): return rules.bricks[i].p))
+			var back: Array = event.bricks.map(func(i): return rules.bricks[i].p)
+			arena.rebuild_flash(back)
+			for spot in back:
+				arena.gain_mark(spot, int(event.get("gain", 0)), Rules.power_color("rebuild"))
 		elif event.kind == "mirror":
 			arena.burst(event.p, Rules.power_color("mirror"), false)
 		elif event.kind == "shock":
@@ -675,7 +678,7 @@ func play_events() -> void:
 			arena.gain_mark(event.p, int(event.get("gain", 0)), Rules.power_color("plating"))
 			play_tone("power")
 		elif event.kind == "shock_wave":
-			arena.shock_wave(event.p, event.get("marks", []))
+			arena.shock_wave(event.p, event.get("marks", []), 1 - int(event.team))
 			play_tone("void_burst")
 		elif event.kind == "plunder_land":
 			arena.plunder_land(event.team)
@@ -683,7 +686,7 @@ func play_events() -> void:
 		elif event.kind == "power_ready" and event.team == local_team:
 			play_tone("ready")
 		elif event.kind in ["brick", "brick_hit"] and int(event.get("bite", 0)) > 0:
-			arena.damage_mark(event.p, int(event.bite))
+			arena.damage_mark(int(event.team), event.p, int(event.bite))
 		elif event.kind == "explosion":
 			arena.explosion(event.p, event.radius)
 			play_tone("blast")
