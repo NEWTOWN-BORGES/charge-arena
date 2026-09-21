@@ -150,6 +150,29 @@ const AIR_SPREAD = 0.72
 const MAX_BALLS = 128
 const BALL_FIELDS = 13
 const TURRET_FIELDS = 8
+# Sobrecarga, the starter pilot's ultimate: for a few seconds the gauntlet hands out
+# turbocharged rounds by itself, twice as fast as usual.
+const SURGE_SECONDS = 6.0
+const SURGE_INTERVAL = FIRE_INTERVAL * 0.5
+# Farol guia: a beacon planted at mid-field bends its owner's shots towards the far goal.
+# The turn is strongest at its heart and fades to nothing at the edge of its reach, so a
+# shot that only clips the beam is nudged rather than hijacked.
+const BEACON_SECONDS = 8.0
+const BEACON_REACH = 3.6
+const BEACON_TURN = 3.1
+# Detonacao: charges that go off under the thickest part of the rival's wall. The radius
+# is wider than a meteor's because it has to be worth the aim it does not need.
+const CHARGE_COUNT = 3
+const CHARGE_SECONDS = 0.9
+const CHARGE_RADIUS = 0.55
+const CHARGE_DAMAGE = 2
+# Transmutacao: the rival's wall turns to glass. A life gone at once, and every hit counts
+# double until it sets again.
+const GLASS_SECONDS = 8.0
+const GLASS_BITE = 1
+const GLASS_FACTOR = 2
+# How many numbers each side's power state takes in a network packet.
+const POWER_FIELDS = 14
 # A shot ends on a target or after MAX_BOUNCES ricochets: walls, shields, boosters,
 # barriers and bumpers all reflect it. This lifetime is only a safety net for a shot caught in a repeating path
 # that would otherwise bounce for the rest of the match.
@@ -435,8 +458,11 @@ func reset_match() -> void:
 	reset_round()
 
 static func new_power_state() -> Dictionary:
+	# surge_time and beacon_time belong to the pilot who lit them; brittle_time is the
+	# opposite - it is set on the side whose wall was turned to glass.
 	return {"charge": [0, 0, 0], "destroyed": 0, "rapid_time": 0.0, "ghost_time": 0.0,
 		"laser_time": 0.0, "laser_tick": 0.0, "mirror_time": 0.0, "walls_time": 0.0,
+		"surge_time": 0.0, "beacon_time": 0.0, "brittle_time": 0.0,
 		"ultimate_windup": 0.0, "ultimate_time": 0.0, "ultimate_tick": 0.0, "ultimate_shots": 0, "ultimate_id": ""}
 
 static func power_color(id: String) -> Color:
@@ -471,6 +497,9 @@ func reset_round() -> void:
 		state.laser_tick = 0.0
 		state.mirror_time = 0.0
 		state.walls_time = 0.0
+		state.surge_time = 0.0
+		state.beacon_time = 0.0
+		state.brittle_time = 0.0
 		state.ultimate_windup = 0.0
 		state.ultimate_time = 0.0
 		state.ultimate_tick = 0.0
@@ -644,7 +673,7 @@ func step(dt: float, commands: Array) -> void:
 		# accumulated float residue would otherwise buy it one extra round.
 		var burst_left: float = powers[team].rapid_time - dt
 		powers[team].rapid_time = 0.0 if burst_left < dt * 0.5 else burst_left
-		for timer_name in ["ghost_time", "mirror_time", "walls_time"]:
+		for timer_name in ["ghost_time", "mirror_time", "walls_time", "surge_time", "beacon_time", "brittle_time"]:
 			powers[team][timer_name] = maxf(0.0, powers[team][timer_name] - dt)
 		step_laser(team, dt)
 		step_ultimate(team, dt)
@@ -687,6 +716,7 @@ func step(dt: float, commands: Array) -> void:
 				if cost > 0 and powers[1].charge[index] < cost:
 					powers[1].charge[index] += 1
 	step_turrets(dt)
+	steer_beacons(dt)
 	for ball in balls.duplicate():
 		if phase != "play":
 			break
@@ -797,6 +827,9 @@ func step_ultimate(team: int, dt: float) -> void:
 		"thunder":
 			state.ultimate_tick = THUNDER_SECONDS / THUNDER_COUNT
 			sky_strike(team, "thunder", THUNDER_DAMAGE, THUNDER_RADIUS)
+		"charges":
+			state.ultimate_tick = CHARGE_SECONDS / CHARGE_COUNT
+			blast_charge(team)
 
 func fire_ultimate(team: int) -> void:
 	var state: Dictionary = powers[team]
@@ -829,6 +862,20 @@ func fire_ultimate(team: int) -> void:
 			bloom_bricks(team)
 		"plunder":
 			plunder_bricks(team)
+		"surge":
+			state.surge_time = SURGE_SECONDS
+			players[team].cooldown = 0.0
+			events.append({"kind": "surge", "team": team, "p": players[team].p, "seconds": SURGE_SECONDS})
+		"beacon":
+			state.beacon_time = BEACON_SECONDS
+			events.append({"kind": "beacon", "team": team, "p": Vector2.ZERO, "seconds": BEACON_SECONDS})
+		"charges":
+			state.ultimate_time = CHARGE_SECONDS
+			state.ultimate_tick = CHARGE_SECONDS / CHARGE_COUNT
+			state.ultimate_shots = CHARGE_COUNT - 1
+			blast_charge(team)
+		"glass":
+			glass_wall(team)
 
 func sun_ray_bite(team: int) -> void:
 	# A band as wide as four bricks, straight out of the pilot and past the wall.
@@ -884,6 +931,59 @@ func sky_hit(team: int, kind: String, damage: int, radius: float, at: Vector2) -
 	if players[enemy].p.distance_to(at) <= radius:
 		damage_player(enemy, damage, players[enemy].p)
 	events.append({"kind": kind, "team": team, "p": at, "radius": radius})
+
+func blast_charge(team: int) -> void:
+	# A charge goes off under the thickest part of the wall still standing: for every brick
+	# left, count how many of its neighbours are inside the blast and take the best spot.
+	# The meteors and the thunder fall where they fall; this one is dug in on purpose.
+	var enemy = 1 - team
+	var best: Vector2 = Vector2.ZERO
+	var best_count = -1
+	for brick in bricks:
+		if not brick.alive or brick.team != enemy:
+			continue
+		var count = 0
+		for other in bricks:
+			if other.alive and other.team == enemy and other.p.distance_to(brick.p) <= CHARGE_RADIUS:
+				count += 1
+		if count > best_count:
+			best_count = count
+			best = brick.p
+	if best_count < 0:
+		# Nothing left standing: the charge goes off in front of the open goal instead.
+		best = goal_center(enemy) - Vector2(0, 2.4 * (1.0 if enemy == 0 else -1.0))
+	sky_hit(team, "charge", CHARGE_DAMAGE, CHARGE_RADIUS, best)
+
+func glass_wall(team: int) -> void:
+	# The rival's wall is transmuted: a life gone at once from every brick still standing,
+	# and until it sets again every hit on it counts double.
+	var enemy = 1 - team
+	var touched: Array = []
+	for index in range(bricks.size()):
+		var brick: Dictionary = bricks[index]
+		if brick.team != enemy or not brick.alive:
+			continue
+		touched.append(index)
+		damage_brick(index, GLASS_BITE, team, brick.p)
+	# Set after the bite, so the first life taken is one life and not two.
+	powers[enemy].brittle_time = GLASS_SECONDS
+	events.append({"kind": "glass", "team": team, "bricks": touched, "seconds": GLASS_SECONDS, "p": players[team].p})
+
+func steer_beacons(dt: float) -> void:
+	# A lit beacon curves its owner's shots towards the far goal, hardest at its heart.
+	for team in range(2):
+		if powers[team].beacon_time <= 0:
+			continue
+		var goal: Vector2 = goal_center(1 - team)
+		for ball in balls:
+			if ball.owner != team or ball.get("held", false):
+				continue
+			var reach: float = ball.p.length()
+			if reach > BEACON_REACH:
+				continue
+			var pull: float = (1.0 - reach / BEACON_REACH) * BEACON_TURN * dt
+			var wanted: float = (goal - ball.p).angle()
+			ball.v = ball.v.rotated(clampf(angle_difference(ball.v.angle(), wanted), -pull, pull))
 
 func singularity_front(team: int) -> float:
 	# Three waves come in out of the sky, and each one sweeps the whole arena: this is how
@@ -1245,7 +1345,8 @@ func damage_brick(index: int, damage: int, owner: int, at: Vector2) -> void:
 	var brick: Dictionary = bricks[index]
 	if not brick.alive or brick.team == owner:
 		return
-	brick.hp = maxi(0, brick.hp - damage)
+	# A wall turned to glass takes every hit twice over, whatever broke it.
+	brick.hp = maxi(0, brick.hp - damage * (GLASS_FACTOR if powers[brick.team].brittle_time > 0 else 1))
 	brick.alive = brick.hp > 0
 	events.append({"kind": "brick" if not brick.alive else "brick_hit", "p": at, "team": brick.team})
 	if not brick.alive:
@@ -1352,24 +1453,25 @@ func assist_heading(team: int) -> Vector2:
 
 func shoot(team: int, power: int = 0) -> void:
 	# The machine gun keeps the cadence of its own stream; every other shot is single.
+	var surged: bool = powers[team].surge_time > 0
 	if power == 2:
 		var pilot: Dictionary = players[team]
 		pilot.cooldown = RAPID_INTERVAL
-		spawn_ball(team, assist_heading(team), power)
+		spawn_ball(team, assist_heading(team), power, BOOST_DAMAGE if surged else 1, surged)
 		events.append({"kind": "shot", "p": pilot.p, "team": team, "power": power})
 		return
 	var p: Dictionary = players[team]
 	p.aim = forward_direction(team, p.angle)
-	p.cooldown = FIRE_INTERVAL
-	spawn_ball(team, assist_heading(team), power)
+	p.cooldown = SURGE_INTERVAL if surged else FIRE_INTERVAL
+	spawn_ball(team, assist_heading(team), power, BOOST_DAMAGE if surged else 1, surged)
 	events.append({"kind": "shot", "p": p.p, "team": team, "power": power})
 
-func spawn_ball(team: int, heading: Vector2, power: int, damage: int = 1) -> void:
+func spawn_ball(team: int, heading: Vector2, power: int, damage: int = 1, boosted: bool = false) -> void:
 	# Shots no longer expire against a wall, so a full arena drops the oldest one instead
 	# of silently refusing to fire.
 	while balls.size() >= MAX_BALLS:
 		balls.remove_at(0)
-	balls.append({"id": next_id, "owner": team, "p": players[team].p + heading * 0.64, "v": heading * BALL_SPEED, "bounces": 0, "boosted": false, "damage": damage, "ttl": BALL_LIFE, "power": power, "ghost": powers[team].ghost_time > 0})
+	balls.append({"id": next_id, "owner": team, "p": players[team].p + heading * 0.64, "v": heading * BALL_SPEED, "bounces": 0, "boosted": boosted, "damage": damage, "ttl": BALL_LIFE, "power": power, "ghost": powers[team].ghost_time > 0})
 	next_id += 1
 
 func advance_ball(ball: Dictionary, dt: float, sweep_obstacles: bool = false, preview: bool = false, future_time: float = 0.0, shooter_position: Vector2 = Vector2.ZERO) -> Dictionary:
@@ -1777,7 +1879,8 @@ func network_snapshot() -> Dictionary:
 	var power_data = PackedFloat32Array()
 	for state in powers:
 		power_data.append_array([state.charge[0], state.charge[1], state.charge[2], state.destroyed, state.rapid_time,
-			state.ghost_time, state.laser_time, state.mirror_time, state.walls_time, state.ultimate_windup, state.ultimate_time])
+			state.ghost_time, state.laser_time, state.mirror_time, state.walls_time, state.surge_time, state.beacon_time,
+			state.brittle_time, state.ultimate_windup, state.ultimate_time])
 	# Sentries: team, place, health and reload, so the client draws and predicts the same.
 	var turret_data = PackedFloat32Array()
 	for turret in turrets:
@@ -1800,7 +1903,7 @@ func apply_network_snapshot(data: Dictionary) -> bool:
 	var ball_data: PackedFloat32Array = data.b
 	var match_data: PackedFloat32Array = data.m
 	var power_data: PackedFloat32Array = data.w
-	if player_data.size() != 8 or hp.size() != bricks.size() or match_data.size() != 8 or power_data.size() != 22 or ball_data.size() % BALL_FIELDS != 0 or ball_data.size() > MAX_BALLS * BALL_FIELDS:
+	if player_data.size() != 8 or hp.size() != bricks.size() or match_data.size() != 8 or power_data.size() != POWER_FIELDS * 2 or ball_data.size() % BALL_FIELDS != 0 or ball_data.size() > MAX_BALLS * BALL_FIELDS:
 		return false
 	for packed in [player_data, ball_data, match_data, power_data]:
 		for value in packed:
@@ -1810,7 +1913,7 @@ func apply_network_snapshot(data: Dictionary) -> bool:
 		if ball_data[offset + 1] not in [0.0, 1.0] or ball_data[offset + 10] not in [0.0, 1.0, 2.0, 3.0] or ball_data[offset + 11] not in [0.0, 1.0] or ball_data[offset + 12] not in [0.0, 1.0]:
 			return false
 	for team in range(2):
-		var base = team * 11
+		var base = team * POWER_FIELDS
 		for index in range(POWER_SLOTS):
 			powers[team].charge[index] = clampi(int(power_data[base + index]), 0, maxi(power_charge_cost(team, index), 0))
 		powers[team].destroyed = maxi(0, int(power_data[base + 3]))
@@ -1819,8 +1922,11 @@ func apply_network_snapshot(data: Dictionary) -> bool:
 		powers[team].laser_time = clampf(power_data[base + 6], 0, LASER_SECONDS)
 		powers[team].mirror_time = clampf(power_data[base + 7], 0, MIRROR_SECONDS)
 		powers[team].walls_time = clampf(power_data[base + 8], 0, WALLS_SECONDS)
-		powers[team].ultimate_windup = clampf(power_data[base + 9], 0, ULTIMATE_WINDUP)
-		powers[team].ultimate_time = clampf(power_data[base + 10], 0, maxf(THUNDER_SECONDS, SINGULARITY_PULL))
+		powers[team].surge_time = clampf(power_data[base + 9], 0, SURGE_SECONDS)
+		powers[team].beacon_time = clampf(power_data[base + 10], 0, BEACON_SECONDS)
+		powers[team].brittle_time = clampf(power_data[base + 11], 0, GLASS_SECONDS)
+		powers[team].ultimate_windup = clampf(power_data[base + 12], 0, ULTIMATE_WINDUP)
+		powers[team].ultimate_time = clampf(power_data[base + 13], 0, maxf(THUNDER_SECONDS, SINGULARITY_PULL))
 		powers[team].ultimate_id = power_id(team, 2)
 		var angle = clampf(player_data[team * 4], -track_limit, track_limit)
 		players[team].angle = angle

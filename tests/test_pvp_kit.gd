@@ -39,7 +39,9 @@ func run() -> void:
 	game.share_kit("inventado", "mirror")
 	check(game.rules.loadouts[1] == ["laser", "mirror", "bloom"], "A kit with an unknown power is ignored")
 	game.share_skin(0)
-	check(game.rules.power_id(1, 2) == "", "A skin with no ultimate leaves the third key empty")
+	check(game.rules.power_id(1, 2) == "surge", "The starter skin brings the overload, like every other skin brings its own")
+	game.share_skin(Skins.CATALOG.size())
+	check(game.rules.power_id(1, 2) == "surge" and game.arena.unit_skins[1] == 0, "A skin index that does not exist is ignored, kit and model left as they were")
 	game.return_to_menu()
 	for leftover in [TMP, TMP + "s"]:
 		DirAccess.remove_absolute(ProjectSettings.globalize_path(leftover))

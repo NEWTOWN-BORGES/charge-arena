@@ -666,6 +666,18 @@ func play_events() -> void:
 			arena.bloom_flash(event.bricks.map(func(i): return rules.bricks[i].p), event.heal)
 		elif event.kind == "plunder":
 			arena.plunder_flash(event.team)
+		elif event.kind == "surge":
+			arena.surge_flash(event.p)
+			play_tone("boost")
+		elif event.kind == "beacon":
+			arena.beacon_open(float(event.get("seconds", 0.0)))
+			play_tone("power")
+		elif event.kind == "charge":
+			arena.charge_blast(event.p, event.radius)
+			play_tone("blast")
+		elif event.kind == "glass":
+			arena.glass_flash(event.bricks.map(func(i): return rules.bricks[i].p), float(event.get("seconds", 0.0)))
+			play_tone("power")
 		elif event.kind == "power_ready" and event.team == local_team:
 			play_tone("ready")
 		elif event.kind == "explosion":

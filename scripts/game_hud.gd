@@ -2521,6 +2521,37 @@ func power_icon(id: String, center: Vector2, color: Color, canvas: CanvasItem = 
 			c.draw_rect(Rect2(center + Vector2(2, 5), Vector2(11, 7)), color, true)
 			c.draw_polyline(PackedVector2Array([center + Vector2(-2, -6), center + Vector2(6, -6), center + Vector2(3, -9)]), brass, 2.0, smooth)
 			c.draw_polyline(PackedVector2Array([center + Vector2(2, 2), center + Vector2(-6, 2), center + Vector2(-3, 5)]), brass, 2.0, smooth)
+		"surge":
+			# Overload: a core with three bars of charge climbing out of it.
+			c.draw_circle(center, 4.6, color, true, -1, smooth)
+			c.draw_arc(center, 4.6, 0, TAU, 20, brass, 1.0, smooth)
+			for step in range(3):
+				var height = 6.0 + step * 3.0
+				var x = center.x - 9.0 + step * 9.0
+				c.draw_line(Vector2(x, center.y + 11), Vector2(x, center.y + 11 - height), color, 2.4, smooth)
+			c.draw_polyline(PackedVector2Array([center + Vector2(2, -13), center + Vector2(-4, -5), center + Vector2(2, -5), center + Vector2(-2, 3)]), brass, 1.8, smooth)
+		"beacon":
+			# Beacon: a lantern on its tower, throwing light to both sides.
+			c.draw_line(center + Vector2(-6, 12), center + Vector2(-3, -2), brass, 2.0, smooth)
+			c.draw_line(center + Vector2(6, 12), center + Vector2(3, -2), brass, 2.0, smooth)
+			c.draw_rect(Rect2(center + Vector2(-5, -8), Vector2(10, 7)), color, true)
+			c.draw_arc(center + Vector2(0, -4.5), 3.0, 0, TAU, 16, brass, 1.0, smooth)
+			for side in [-1.0, 1.0]:
+				c.draw_polyline(PackedVector2Array([center + Vector2(side * 6, -6), center + Vector2(side * 13, -9), center + Vector2(side * 13, -1)]), Color(color, 0.7), 1.6, smooth)
+		"charges":
+			# Charges: a blast opening under the ground line.
+			c.draw_line(center + Vector2(-13, 4), center + Vector2(13, 4), brass, 1.6, smooth)
+			c.draw_circle(center + Vector2(0, 7), 3.4, color, true, -1, smooth)
+			for step in range(5):
+				var angle = lerpf(-2.5, -0.64, step / 4.0)
+				var direction = Vector2(cos(angle), sin(angle))
+				c.draw_line(center + Vector2(0, 5) + direction * 5.0, center + Vector2(0, 5) + direction * 12.0, color, 2.0, smooth)
+		"glass":
+			# Glass: a brick with a crack running through it.
+			c.draw_rect(Rect2(center + Vector2(-11, -8), Vector2(22, 16)), Color(color, 0.55), true)
+			c.draw_rect(Rect2(center + Vector2(-11, -8), Vector2(22, 16)), brass, false, 1.2)
+			c.draw_polyline(PackedVector2Array([center + Vector2(-3, -8), center + Vector2(1, -2), center + Vector2(-3, 2), center + Vector2(2, 8)]), CERAMIC, 1.8, smooth)
+			c.draw_line(center + Vector2(1, -2), center + Vector2(8, -4), CERAMIC, 1.4, smooth)
 		_:
 			# An empty slot: the skin ultimate, still to come.
 			var star = PackedVector2Array()

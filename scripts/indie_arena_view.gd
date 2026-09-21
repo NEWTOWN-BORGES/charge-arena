@@ -38,6 +38,8 @@ var ball_previous: Dictionary = {}
 var trail_timer = 0.0
 var booster_nodes: Array = []
 var obstacle_nodes: Array = []
+# The lighthouse planted by the Faroleiro's ultimate, while it is lit.
+var beacon_node: Node3D = null
 var effect_limit = 112
 var trail_interval = 0.035
 var brick_instances: Array = []
@@ -777,6 +779,15 @@ func build_player(color: Color, team: int, skin: int = 0, parent: Node3D = null,
 		build_archon(body, palette.body, palette.light, color)
 	else:
 		build_aurora_pilot(body, color)
+	var surge = Node3D.new()
+	surge.name = "Surge"
+	root.add_child(surge)
+	torus(surge, Vector3(0, 0.06, 0), 0.72, 0.03, Color(GOLD, 0.9))
+	torus(surge, Vector3(0, 0.5, 0), 0.46, 0.022, Color(GOLD, 0.6))
+	for i in range(6):
+		var spark_angle = i * TAU / 6.0
+		box(surge, Vector3(cos(spark_angle) * 0.66, 0.26, sin(spark_angle) * 0.66), Vector3(0.07, 0.2, 0.07), GOLD, true, 0.02)
+	surge.hide()
 	var stun = Node3D.new()
 	stun.name = "Stun"
 	root.add_child(stun)
@@ -1555,6 +1566,11 @@ func update_state(rules, local_team: int, dt: float, motion_alpha: float = 1.0) 
 		spin_parts(body, clock)
 		body.get_node("LegL").rotation.x = sin(clock * 13) * minf(speed / 5.0, 1) * 0.48
 		body.get_node("LegR").rotation.x = -sin(clock * 13) * minf(speed / 5.0, 1) * 0.48
+		var overload: Node3D = node.get_node_or_null("Surge")
+		if overload != null:
+			overload.visible = rules.powers[team].surge_time > 0
+			if overload.visible:
+				overload.rotation.y = -clock * 3.4
 		var halo: Node3D = node.get_node("Stun")
 		halo.visible = data.stun > 0
 		halo.rotation.y = clock * 2.7
@@ -1663,6 +1679,9 @@ func update_state(rules, local_team: int, dt: float, motion_alpha: float = 1.0) 
 		if effect.gravity:
 			effect.node.rotate_x(dt * 4)
 			effect.node.rotate_z(dt * 2)
+		if effect.get("spin_y", false):
+			# The lighthouse turns on its base while it is lit.
+			effect.node.rotation.y += dt * 2.1
 		if effect.get("spin", false):
 			effect.node.rotate_x(dt * 7.5)
 			effect.node.rotate_z(dt * 5.5)
@@ -2075,6 +2094,94 @@ func bloom_flash(positions: Array, heal: int) -> void:
 		if index % 2 == 0:
 			var mark = world_label("+%d" % heal, Vector3(at.x, 1.15, at.y), pale, 54)
 			effects.append({"node": mark, "v": Vector3(0, 1.1, 0), "ttl": 1.5, "life": 1.5, "gravity": false, "base": Vector3.ONE, "keep": true})
+
+func surge_flash(at: Vector2) -> void:
+	# The gauntlet overloads: rings open off the pilot and sparks come with them. The rest
+	# of the reading is the rounds themselves, which come out gold like a boosted shot.
+	var color = Rules.power_color("surge")
+	for step in range(3):
+		if effects.size() >= effect_limit:
+			break
+		var life = 0.5 + step * 0.12
+		var ring = torus(self, Vector3(at.x, 0.36 + step * 0.2, at.y), 0.5, 0.07, Color(color, 0.9), true)
+		ring.scale = Vector3.ONE * 0.25
+		effects.append({"node": ring, "v": Vector3(0, 0.7, 0), "ttl": life, "life": life, "gravity": false, "base": Vector3.ONE * 3.2, "grow": true, "tint": color})
+	emitter(Vector3(at.x, 0.7, at.y), GOLD, 26, 0.9, 3.4, 70.0, 0.3, -1.6, Vector3.UP)
+	flash(Vector3(at.x, 1.3, at.y), color, 5.0, 0.6, 12.0)
+	shake(0.35)
+
+func beacon_open(seconds: float) -> void:
+	# A lighthouse stands up in the middle of the ring, lantern turning, for as long as the
+	# ultimate lasts. The ring on the floor is its reach: inside it, shots are bent.
+	if is_instance_valid(beacon_node):
+		beacon_node.queue_free()
+	var color = Rules.power_color("beacon")
+	beacon_node = Node3D.new()
+	add_child(beacon_node)
+	cylinder(beacon_node, Vector3.ZERO, 0.52, 0.18, DARK, false, 20)
+	cylinder(beacon_node, Vector3(0, 0.12, 0), 0.4, 0.16, CREAM, false, 16)
+	cylinder(beacon_node, Vector3(0, 0.62, 0), 0.24, 0.92, CREAM, false, 16)
+	for band in [0.36, 0.72]:
+		torus(beacon_node, Vector3(0, band, 0), 0.25, 0.028, Color(color, 0.8))
+	cylinder(beacon_node, Vector3(0, 1.14, 0), 0.34, 0.08, GOLD, true, 16)
+	cylinder(beacon_node, Vector3(0, 1.4, 0), 0.26, 0.44, Color(color, 0.95), true, 16)
+	cylinder(beacon_node, Vector3(0, 1.68, 0), 0.3, 0.1, GOLD, true, 16)
+	torus(beacon_node, Vector3(0, 1.4, 0), 0.3, 0.035, GOLD)
+	# Four beams instead of two, tilted down so they sweep the floor they bend shots over.
+	for step in range(4):
+		var side: float = step * PI * 0.5
+		var beam = box(beacon_node, Vector3(cos(side) * 2.1, 1.1, sin(side) * 2.1), Vector3(4.0, 0.06, 0.62), Color(color, 0.34), true, 0.02)
+		beam.rotation.y = -side
+		beam.rotate_object_local(Vector3.FORWARD, 0.17)
+	var lamp = OmniLight3D.new()
+	lamp.position = Vector3(0, 1.4, 0)
+	lamp.light_color = color
+	lamp.light_energy = 3.0
+	lamp.omni_range = 9.0
+	beacon_node.add_child(lamp)
+	torus(beacon_node, Vector3(0, 0.04, 0), Rules.BEACON_REACH, 0.05, Color(color, 0.4))
+	effects.append({"node": beacon_node, "v": Vector3.ZERO, "ttl": seconds, "life": seconds, "gravity": false, "base": Vector3.ONE, "keep": true, "spin_y": true})
+	flash(Vector3(0, 1.4, 0), color, 5.0, 0.6, 12.0)
+
+func charge_blast(at: Vector2, radius: float) -> void:
+	# The charge is buried, so the light comes up out of the floor instead of down from the
+	# sky, and it throws dust with it. The ring opens to the real blast radius.
+	var color = Rules.power_color("charges")
+	if effects.size() < effect_limit:
+		var ring = torus(self, Vector3(at.x, 0.1, at.y), radius, 0.1, Color(color, 0.9), true)
+		ring.scale = Vector3.ONE * 0.2
+		effects.append({"node": ring, "v": Vector3.ZERO, "ttl": 0.5, "life": 0.5, "gravity": false, "base": Vector3.ONE, "grow": true, "tint": color})
+	emitter(Vector3(at.x, 0.08, at.y), color, 30, 0.85, 5.4, 32.0, 0.24, -8.0, Vector3.UP)
+	burst(at, color, true)
+	flash(Vector3(at.x, 0.7, at.y), color, 4.2, 0.5, 10.0)
+	shake(0.45)
+
+func glass_flash(positions: Array, seconds: float) -> void:
+	# The wall is transmuted: a pale sheet washes across it and each brick keeps a shard of
+	# glass around it while it is still brittle.
+	if positions.is_empty():
+		return
+	var color = Rules.power_color("glass")
+	var middle = Vector2.ZERO
+	for at in positions:
+		middle += at
+	middle /= positions.size()
+	var span: float = 1.2
+	for at in positions:
+		span = maxf(span, at.distance_to(middle) + 0.8)
+	var sheet = torus(self, Vector3(middle.x, 0.45, middle.y), 1.0, 0.08, Color(color, 0.9), true)
+	effects.append({"node": sheet, "v": Vector3.ZERO, "ttl": 0.65, "life": 0.65, "gravity": false, "base": Vector3.ONE * span, "grow": true, "tint": color})
+	flash(Vector3(middle.x, 1.2, middle.y), color, 4.5, 0.55, 12.0)
+	var hold: float = maxf(seconds, 0.7)
+	for index in range(positions.size()):
+		if effects.size() + 2 >= effect_limit:
+			return
+		var at: Vector2 = positions[index]
+		if index % 3 == 0:
+			emitter(Vector3(at.x, 0.4, at.y), Color("eaffff"), 10, 0.7, 2.2, 55.0, 0.2, -3.0, Vector3.UP)
+		var shard = box(self, Vector3(at.x, 0.44, at.y), Vector3(0.34, 0.46, 0.34), Color(color, 0.32), true, 0.05)
+		shard.rotation_degrees = Vector3(0, 45, 10)
+		effects.append({"node": shard, "v": Vector3.ZERO, "ttl": hold, "life": hold, "gravity": false, "base": Vector3.ONE, "keep": true})
 
 func plunder_flash(team: int) -> void:
 	# Two curtains of light cross the arena in opposite directions, dragging embers with
