@@ -147,7 +147,7 @@ func run() -> void:
 	game.start_level(0)
 	check(game.arena.unit_skins[1] == 0, "Level 1 is a bout against a copy of the standard pilot")
 	game.start_level(4) # Level 5 (index 4) has boss 6 (Relojoeiro)
-	check(game.arena.unit_skins[1] == 6 and game.arena.unit_tints[1] == true, "The level 5 boss fights in team red before defeat")
+	check(game.arena.unit_skins[1] == 6 and game.arena.unit_tints[1] == false, "The level 5 boss fights in the colours its own skin was drawn in")
 	game.rules.phase = "finished"
 	game.rules.winner = 0 # Player wins
 	game.finish_level()

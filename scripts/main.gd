@@ -201,8 +201,8 @@ func start_level(index: int) -> void:
 	use_loadouts(Campaign.boss_kit(index), level.boss)
 	rules.reset_match()
 	dress_pilots(local_team)
-	# The boss wears its own skin and bricks, all in red until beaten, and brings its theme.
-	arena.set_skin(1, level.boss, true)
+	# The boss wears its own skin and its own bricks, in the colours they were drawn in.
+	arena.set_skin(1, level.boss)
 	hud.level_info = {"number": index + 1, "name": level.name, "challenge": level.challenge, "boss_name": Skins.CATALOG[level.boss].name, "has_next": index + 1 < Campaign.LEVELS.size()}
 	hud.level_result = ""
 	hud.level_skin = ""
@@ -234,9 +234,9 @@ func show_menu_preview() -> void:
 	show_menu_boss()
 
 func show_menu_boss() -> void:
-	# The previewed boss stays red until it has been beaten once.
+	# The previewed boss is shown in its own colours, like it fights.
 	var boss: int = Campaign.LEVELS[menu_level].boss
-	arena.set_skin(1, boss, not skins.is_unlocked(boss))
+	arena.set_skin(1, boss)
 
 func sync_boss_skins() -> void:
 	# Levels won before boss skins existed still award their skins.
@@ -665,12 +665,14 @@ func play_events() -> void:
 			arena.plunder_flash(event.team)
 		elif event.kind == "surge":
 			arena.surge_flash(event.p)
+			arena.gain_mark(event.p, int(event.get("gain", 0)), Rules.power_color("surge"))
 			play_tone("boost")
 		elif event.kind == "volley":
 			arena.volley_flash(event.p, event.heading)
 			play_tone("power")
 		elif event.kind == "plating":
 			arena.plating_flash(event.team)
+			arena.gain_mark(event.p, int(event.get("gain", 0)), Rules.power_color("plating"))
 			play_tone("power")
 		elif event.kind == "shock_wave":
 			arena.shock_wave(event.p, event.get("marks", []))
@@ -680,6 +682,8 @@ func play_events() -> void:
 			play_tone("power")
 		elif event.kind == "power_ready" and event.team == local_team:
 			play_tone("ready")
+		elif event.kind in ["brick", "brick_hit"] and int(event.get("bite", 0)) > 0:
+			arena.damage_mark(event.p, int(event.bite))
 		elif event.kind == "explosion":
 			arena.explosion(event.p, event.radius)
 			play_tone("blast")

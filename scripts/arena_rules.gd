@@ -169,8 +169,8 @@ const SHOCK_FRONT = 3
 const SHOCK_SECOND = 2
 const SHOCK_REST = 1
 const SHOCK_PLAYER = 1
-# The wall is read in four bands from the front, whatever shape it was built in.
-const SHOCK_BANDS = 4
+# Depths this close together count as the same row of the wall.
+const SHOCK_ROW = 0.2
 # Pilhagem: how long the two walls spend crossing over in the air before they land.
 const PLUNDER_SWAP = 1.15
 # How many numbers each side's power state takes in a network packet.
@@ -873,7 +873,7 @@ func fire_ultimate(team: int) -> void:
 		"surge":
 			state.surge_time = SURGE_SECONDS
 			players[team].cooldown = 0.0
-			events.append({"kind": "surge", "team": team, "p": players[team].p, "seconds": SURGE_SECONDS})
+			events.append({"kind": "surge", "team": team, "p": players[team].p, "seconds": SURGE_SECONDS, "gain": BOOST_DAMAGE - 1})
 		"volley":
 			state.ultimate_time = VOLLEY_SECONDS
 			state.ultimate_tick = VOLLEY_SECONDS / VOLLEY_WAVES
@@ -881,7 +881,7 @@ func fire_ultimate(team: int) -> void:
 			volley_wave(team)
 		"plating":
 			state.plating_time = PLATING_SECONDS
-			events.append({"kind": "plating", "team": team, "p": players[team].p, "seconds": PLATING_SECONDS})
+			events.append({"kind": "plating", "team": team, "p": players[team].p, "seconds": PLATING_SECONDS, "gain": PLATING_SOAK})
 
 func sun_ray_bite(team: int) -> void:
 	# A band as wide as four bricks, straight out of the pilot and past the wall.
@@ -899,7 +899,7 @@ func sun_ray_bite(team: int) -> void:
 			continue
 		if absf(offset.dot(side)) > SUN_RAY_HALF_WIDTH + brick_extent.x:
 			continue
-		damage_brick(index, SUN_RAY_DAMAGE, team, brick.p)
+		damage_brick(index, SUN_RAY_DAMAGE, team, brick.p, true)
 	var enemy = 1 - team
 	var to_enemy: Vector2 = players[enemy].p - origin
 	if to_enemy.dot(heading) > 0 and absf(to_enemy.dot(side)) <= SUN_RAY_HALF_WIDTH:
@@ -933,7 +933,7 @@ func sky_hit(team: int, kind: String, damage: int, radius: float, at: Vector2) -
 	for index in range(bricks.size()):
 		var brick: Dictionary = bricks[index]
 		if brick.alive and brick.team != team and brick.p.distance_to(at) <= radius + brick_extent.x:
-			damage_brick(index, damage, team, brick.p)
+			damage_brick(index, damage, team, brick.p, true)
 	if players[enemy].p.distance_to(at) <= radius:
 		damage_player(enemy, damage, players[enemy].p)
 	events.append({"kind": kind, "team": team, "p": at, "radius": radius})
@@ -1024,23 +1024,24 @@ func singularity_pull(team: int, dt: float) -> void:
 		index -= 1
 
 func brick_ranks(team: int) -> Dictionary:
-	# Which band of the wall each brick stands in, counted from the front. Snapping depths
-	# to a grid only works on a wall built in straight rows: on the diagonal banks and the
-	# arcs it cut the wall into a dozen slivers, so almost every brick came out as a back
-	# row and the whole blow landed as ones. Sorting what is standing and cutting it into
-	# four bands gives every layout a real front line - and on a wall that really is four
-	# rows deep, the bands are those rows.
-	var live: Array = []
-	for index in range(bricks.size()):
-		if bricks[index].alive and bricks[index].team == team:
-			live.append(index)
-	if live.is_empty():
-		return {}
+	# How far back each brick of this wall stands, counted in rows from the front: the one a
+	# wave meets first is row nought. Depths are snapped, because an arc or a chevron has no
+	# two bricks at exactly the same distance from the goal. Only what is standing counts,
+	# so the front row is always the front of what is left.
 	var goal_y: float = goal_center(team).y
-	live.sort_custom(func(a, b): return absf(bricks[a].p.y - goal_y) > absf(bricks[b].p.y - goal_y))
+	var depths: Array = []
+	for brick in bricks:
+		if brick.alive and brick.team == team:
+			var depth: float = snappedf(absf(brick.p.y - goal_y), SHOCK_ROW)
+			if not depths.has(depth):
+				depths.append(depth)
+	depths.sort()
+	depths.reverse()
 	var ranks: Dictionary = {}
-	for slot in range(live.size()):
-		ranks[live[slot]] = mini(slot * SHOCK_BANDS / live.size(), SHOCK_BANDS - 1)
+	for index in range(bricks.size()):
+		var brick: Dictionary = bricks[index]
+		if brick.alive and brick.team == team:
+			ranks[index] = depths.find(snappedf(absf(brick.p.y - goal_y), SHOCK_ROW))
 	return ranks
 
 func shock_wave(team: int) -> void:
@@ -1320,7 +1321,7 @@ func credit_destroyed_brick(team: int) -> void:
 		if previous < cost and powers[team].charge[index] == cost:
 			events.append({"kind": "power_ready", "power": index, "team": team, "p": players[team].p})
 
-func damage_brick(index: int, damage: int, owner: int, at: Vector2) -> void:
+func damage_brick(index: int, damage: int, owner: int, at: Vector2, mark: bool = false) -> void:
 	var brick: Dictionary = bricks[index]
 	if not brick.alive or brick.team == owner:
 		return
@@ -1328,7 +1329,9 @@ func damage_brick(index: int, damage: int, owner: int, at: Vector2) -> void:
 	var bite: int = maxi(0, damage - (PLATING_SOAK if powers[brick.team].plating_time > 0 else 0))
 	brick.hp = maxi(0, brick.hp - bite)
 	brick.alive = brick.hp > 0
-	events.append({"kind": "brick" if not brick.alive else "brick_hit", "p": at, "team": brick.team, "soaked": bite <= 0})
+	# `mark`: an ultimate landed this one, so the arena floats the number it took. Ordinary
+	# fire says nothing - forty numbers a round would be noise, not information.
+	events.append({"kind": "brick" if not brick.alive else "brick_hit", "p": at, "team": brick.team, "soaked": bite <= 0, "bite": bite if mark else 0})
 	if not brick.alive:
 		cached_firing_angles.clear()
 		credit_destroyed_brick(owner)

@@ -439,6 +439,7 @@ func run() -> void:
 			continue
 		var bitten: int = tier.filter(func(i): return vortex.bricks[i].hp < 3).size()
 		check(bitten == tier.size(), "Onda: row %d is taken whole, not sampled (%d de %d)" % [rank, bitten, tier.size()])
+	check(third_hp - vortex.bricks[third].hp == Rules.SHOCK_REST, "Onda: and one off the rows further back")
 	print("ONDA: %d de vida na muralha" % (vortex_before - team_health(vortex, 1)))
 
 	# The rows are counted over the wall still standing, which is the whole point: by the

@@ -2159,6 +2159,22 @@ func volley_flash(at: Vector2, heading: Vector2) -> void:
 # arrives instead of the whole wall flashing at once.
 const SHOCK_SPEED = 24.0
 
+func damage_mark(at: Vector2, bite: int) -> void:
+	# What a single brick took, floating off it. The ultimates hit a whole wall at once and
+	# the counter on the card only moves by the total; this is where it comes from.
+	if bite <= 0 or effects.size() >= effect_limit:
+		return
+	var color: Color = [Color("ffe9c0"), Color("ffd27a"), Color("ff9f5c"), Color("ff6a5c")][clampi(bite, 0, 3)]
+	var label = world_label("-%d" % bite, Vector3(at.x, 1.45, at.y), color, 54 + bite * 14)
+	effects.append({"node": label, "v": Vector3(0, 0.75, 0), "ttl": 1.5, "life": 1.5, "gravity": false, "base": Vector3.ONE, "keep": true})
+
+func gain_mark(at: Vector2, gain: int, tint: Color) -> void:
+	# The other side of the same coin: what a buff is worth, over whatever it is helping.
+	if gain <= 0 or effects.size() >= effect_limit:
+		return
+	var label = world_label("+%d" % gain, Vector3(at.x, 1.6, at.y), tint, 76)
+	effects.append({"node": label, "v": Vector3(0, 0.9, 0), "ttl": 1.6, "life": 1.6, "gravity": false, "base": Vector3.ONE, "keep": true})
+
 func shock_mark(at: Vector2, bite: int) -> void:
 	# One brick, caught by the wave: a halo in the colour of the blow and the lives it took
 	# floating off it. Without this the ultimate is all sky and you cannot read what it did.
