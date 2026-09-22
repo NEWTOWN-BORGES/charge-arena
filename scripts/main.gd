@@ -150,6 +150,7 @@ func _ready() -> void:
 	cup.restore()
 	cup_screen = CupScreen.new()
 	cup_screen.cup = cup
+	cup_screen.player_skin_provider = func(): return skins.selected
 	hud.add_child(cup_screen)
 	hud.move_child(cup_screen, hud.menu.get_index() + 1)
 	cup_screen.action.connect(cup_action)

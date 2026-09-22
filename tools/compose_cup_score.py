@@ -102,5 +102,4 @@ def compose(index, target):
 
 if __name__ == '__main__':
     compose(0, ROOT/'audio/music_cup.ogg')
-    for i in range(1,11):
-        compose(i, ROOT/f'audio/music_skin_{i}.ogg')
+    # Boss originals are intentionally preserved; never overwrite music_skin_*.ogg here.

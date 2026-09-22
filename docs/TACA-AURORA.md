@@ -1,3 +1,7 @@
+## Atualização 2.3.2 — música original dos bosses
+
+Repostas as dez gravações de `5324840`, sem recomposição nem recodificação. Única alteração sonora: +1,25 dB de ganho na reprodução dos temas de bosses/skins. Menu e skin padrão inalterados. A pré-escuta do hangar mantém-se. O gerador da Taça já não substitui as músicas dos bosses.
+
 ## Atualização 2.3.1
 
 O menu 3D com carrossel de mapas e adversários voltou a ser a entrada principal. O botão TAÇA abre Percurso/Árvore/Jornal; MENU 3D regressa às demonstrações. O hangar tem seleção horizontal sempre acessível, modelo maior, detalhes/ultimate com scroll e ações inferiores. Selecionar uma skin faz pré-escuta do seu tema, respeitando a opção de música desligada; sair restaura a faixa anterior com a transição normal. As qualificatórias usam agora os temas individuais dos adversários em vez da faixa genérica da Taça. Menu e skin padrão mantêm as gravações originais.
@@ -49,3 +53,26 @@ A estrutura aprovada é qualificatórias e finais de setor, seguida da chave fin
 Teste dedicado `tests/test_cup.gd`: identidades únicas, chave e resultados, curva de dificuldade, limite da demo, reviravolta baseada num confronto, persistência, início real de partida, pausa e resultado de derrota/vitória. `tests/capture_cup.gd` captura menu, árvore, jornal, arena e efeito em retrato e paisagem. Regressões existentes verificam combate, poderes, toque, música e PvP com dois processos.
 
 Os testes headless validam estado e disparo dos sons, não a qualidade ouvida. As capturas foram feitas no PC; o equilíbrio musical final e a fluidez precisam de audição e teste no S23/A15.
+
+## Jornal Aurora em Campo — 2.4.0
+- Publicação editorial com capa ilustrada, reportagem secundária, telex discreto e boletim oficial.
+- Doze edições (abertura + onze vitórias), selecionáveis no arquivo. As derrotas não criam edições.
+- Artigos abrem com fotografia, título, contexto, resultado, protagonistas e etapa.
+- `cup_news.gd` separa os registos editoriais da interface; resultados do Farol vêm das fixtures e o resultado do protagonista vem do histórico guardado.
+- `news_scene.gd` reutiliza as skins 3D em cenários de imprensa, arena, treino e bastidores. Templates suportam futuras reportagens sem publicar spoilers da campanha completa.
+- Fotografias geradas apenas ao entrar na área visível; um render de cada vez. O cenário é libertado após a captura e só permanece a textura da página atual.
+- Aurel domina a imprensa; Nadir aparece em notas pequenas. Lira é eliminada por Vértice na jornada 7; Faroleiro ganha a chave na 10; a capa da final celebra o protagonista na 11.
+- A demo continua limitada aos dez combates + Faroleiro. Não inclui a campanha completa, nem um quiosque explorável/mascote.
+- Músicas originais dos bosses e pré-escuta da galeria preservadas.
+- Validação: test_journal, test_cup, test_menu_gallery e test_music; capturas de capa, entrevista, artigo e orientação horizontal. Desempenho nos aparelhos físicos requer teste no APK.
+
+## Árvore narrativa — 2.5.0
+- Três níveis: visão da Taça, setor do Farol e confrontos paginados (oito por página).
+- Protagonista com a skin equipada, avatar maior, contorno e caminho verde; histórico de adversários vencidos integrado no ramo até à final do setor.
+- Onze personagens de referência, com avatares dos modelos existentes; os 1 024 inscritos permanecem agrupados.
+- Perfis e percursos derivados das partidas já concluídas. Lira cai perante Vértice; este pode depois aparecer eliminado por Faroleiro; o campeão do setor só fica confirmado quando vence a chave.
+- Setores distantes distinguem vitórias publicadas de um histórico completo. Não são inventados resultados detalhados nem revelado o final futuro de Aurel/Nadir.
+- Arrasto por rato/toque, zoom com roda/pinça/botões, LOCALIZAR-ME, VISÃO GERAL, seleção e acompanhamento de rival.
+- VER NA ÁRVORE nos artigos abre diretamente o perfil do personagem.
+- Dados públicos (`cup_tree_data.gd`), canvas (`cup_tree_canvas.gd`) e navegação (`cup_tree.gd`) separados. Os avatares são renderizados uma vez por visita e os cenários temporários libertados.
+- Testes: estados e eliminação real, progressão, foco no protagonista, zoom, arrasto, páginas, percurso de rival, ligação do jornal, regressão do menu/galeria e jornal. Capturas em vertical e horizontal. Pinça e desempenho final em aparelhos físicos ainda requerem teste.

@@ -7,9 +7,12 @@ const MUTED = Color("a6b7bd")
 const MINT = Color("81d9c4")
 const ArenaView = preload("res://scripts/indie_arena_view.gd")
 var cup
+var player_skin_provider: Callable
 var tab = 0
 var page = 0
 var tree_round = -1
+var tree_view: Control
+var tree_focus = ""
 var content: VBoxContainer
 var scroll: ScrollContainer
 var title: Label
@@ -104,7 +107,7 @@ func button(value: String, primary: bool) -> Button:
 
 func arrange() -> void:
 	var wide = size.x > size.y
-	var w = minf(size.x - 48, 880 if wide else 640)
+	var w = minf(size.x - 48, 1040 if wide else 1080)
 	var x = (size.x - w) * 0.5
 	var top = 28.0
 	if OS.has_feature("mobile"):
@@ -116,10 +119,14 @@ func arrange() -> void:
 	subtitle.position = Vector2(x, top + 43)
 	nav.position = Vector2(x, top + 80)
 	nav.size = Vector2(w, 56)
-	footer.position = Vector2(x, size.y - 246)
+	footer.visible = tab == 0
+	footer.position = Vector2(x, size.y - (28 if tab != 0 else 246))
 	footer.size = Vector2(w, 204)
 	scroll.position = Vector2(x, top + 156)
 	scroll.size = Vector2(w, maxf(100, footer.position.y - scroll.position.y - 18))
+	if is_instance_valid(tree_view):
+		tree_view.position = scroll.position
+		tree_view.size = scroll.size
 	if wide:
 		# Desktop keeps the same reading order, with less vertical chrome.
 		title.add_theme_font_size_override("font_size", 26)
@@ -142,6 +149,11 @@ func card(kicker: String, headline: String, body: String, accent: Color = MINT) 
 func refresh() -> void:
 	if not is_instance_valid(content) or cup == null:
 		return
+	if is_instance_valid(tree_view):
+		remove_child(tree_view)
+		tree_view.queue_free()
+		tree_view = null
+	scroll.visible = tab != 1
 	for child in content.get_children():
 		content.remove_child(child)
 		child.queue_free()
@@ -163,38 +175,17 @@ func refresh() -> void:
 		var story: Dictionary = cup.headlines.back()
 		card("ÚLTIMA HORA", story.title, story.body, GOLD)
 	elif tab == 1:
-		card("CHAVE PARALELA · FAROL", "1 024 → 1", "Tu disputas as qualificatórias. Aqui, os rivais eliminam-se a cada vitória tua. O vencedor encontra-te na final do setor.")
-		var overview = Control.new()
-		overview.custom_minimum_size.y = 170
-		overview.draw.connect(func(): draw_tree(overview))
-		content.add_child(overview)
-		var pick = OptionButton.new()
-		pick.custom_minimum_size.y = 56
-		pick.add_item("Participantes · lista completa")
-		for i in range(cup.rounds.size()):
-			pick.add_item("Eliminatória %d · %d jogos" % [i + 1, cup.rounds[i].fixtures.size()])
-		pick.selected = clampi(tree_round + 1, 0, pick.item_count - 1)
-		pick.item_selected.connect(func(i): tree_round = i - 1; page = 0; refresh())
-		content.add_child(pick)
-		var rows: Array = cup.entrants if tree_round < 0 or tree_round >= cup.rounds.size() else cup.rounds[tree_round].fixtures
-		page = clampi(page, 0, maxi(0, (rows.size() - 1) / 16))
-		var listing = ""
-		for i in range(page * 16, mini(rows.size(), page * 16 + 16)):
-			var row: Dictionary = rows[i]
-			listing += ("%04d   %s" % [i + 1, row.name] if row.has("name") else "%s  %s  %s" % [row.winner, row.score, row.loser]) + "\n"
-		card("PÁGINA %d / %d" % [page + 1, ceili(rows.size() / 16.0)], "Inscritos" if tree_round < 0 else "Resultados oficiais", listing.strip_edges())
-		var pages = HBoxContainer.new()
-		for step in [-1, 1]:
-			var b = button("ANTERIOR" if step < 0 else "SEGUINTE", false)
-			b.disabled = page <= 0 if step < 0 else (page + 1) * 16 >= rows.size()
-			b.pressed.connect(func(): page += step; refresh())
-			pages.add_child(b)
-		content.add_child(pages)
+		tree_view = preload("res://scripts/cup_tree.gd").new()
+		tree_view.cup = cup
+		tree_view.player_skin = player_skin_provider.call() if player_skin_provider.is_valid() else 0
+		tree_view.entry_person = tree_focus
+		tree_focus = ""
+		add_child(tree_view)
 	else:
-		card("RÁDIO AURORA", "A Taça não espera por ti.", "Resultados do Farol e notícias dos outros setores. As manchetes ficam guardadas; repetir uma derrota não muda os resultados.", GOLD)
-		for i in range(cup.headlines.size() - 1, -1, -1):
-			var story: Dictionary = cup.headlines[i]
-			card("ABERTURA" if story.round == 0 else "JORNADA %02d" % story.round, story.title, story.body, GOLD)
+		var journal = preload("res://scripts/cup_journal.gd").new()
+		journal.cup = cup
+		journal.tree_requested.connect(func(who): tree_focus = who; tab = 1; refresh())
+		content.add_child(journal)
 	arrange()
 
 func hero() -> void:
@@ -246,18 +237,3 @@ func hero() -> void:
 	row.add_child(image)
 	image.add_child(render)
 	image.texture = render.get_texture()
-
-func draw_tree(canvas: Control) -> void:
-	var w = canvas.size.x - 20
-	for col in range(11):
-		var count = mini(32, 1024 >> col)
-		var x = 10 + col * w / 10.0
-		var active = col <= cup.rounds.size()
-		for row in range(count):
-			var y = 12 + (row + 0.5) * 136.0 / count
-			canvas.draw_circle(Vector2(x, y), 2.5, MINT if active else Color("38515e"))
-			if col < 10:
-				var next_count = mini(32, 1024 >> (col + 1))
-				var target = mini(next_count - 1, floori(float(row) * next_count / count))
-				canvas.draw_line(Vector2(x + 3, y), Vector2(x + w / 10 - 3, 12 + (target + 0.5) * 136.0 / next_count), Color("38515e"), 1.0)
-		canvas.draw_string(ThemeDB.fallback_font, Vector2(x - 10, 168), str(1024 >> col), HORIZONTAL_ALIGNMENT_LEFT, -1, 11, MUTED)

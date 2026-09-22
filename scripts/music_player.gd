@@ -20,6 +20,8 @@ const TRACKS = {
 const CONFIG_PATH = "user://audio_settings.cfg"
 const FADE_SECONDS = 1.4
 const BASE_DB = -7.0
+# Original boss recordings, with a small playback lift only. No recomposition or re-encoding.
+const BOSS_PRESENCE_DB = 1.25
 const DUCK_DB = {"countdown": -5.0, "goal": -9.0, "finished": -9.0}
 const DUCK_SPEED_DB = 14.0
 var enabled = true
@@ -71,7 +73,8 @@ func follow_phase(phase: String) -> void:
 
 func gain_db(key: String) -> float:
 	# Squared slider gives a more even loudness taper than a linear one.
-	return linear_to_db(maxf(levels[key] * volume * volume, 0.00001)) + BASE_DB + duck_db
+	var presence = BOSS_PRESENCE_DB if key.begins_with("skin_") or key == "cup_boss" else 0.0
+	return linear_to_db(maxf(levels[key] * volume * volume, 0.00001)) + BASE_DB + duck_db + presence
 
 func _process(dt: float) -> void:
 	if suspended:
