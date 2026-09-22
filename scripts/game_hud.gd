@@ -1,4 +1,6 @@
 extends Control
+var cup_difficulty: OptionButton
+var options_scroll: ScrollContainer
 const Skins = preload("res://scripts/skins.gd")
 const GameSettings = preload("res://scripts/game_settings.gd")
 const Campaign = preload("res://scripts/campaign.gd")
@@ -28,6 +30,11 @@ signal video_opened
 signal audio_changed(enabled: bool, volume: float)
 signal layout_changed
 signal skin_selected(index: int)
+signal skin_previewed(index: int)
+signal skin_preview_closed
+signal cup_requested
+var skin_strip: ScrollContainer
+var skin_music_note: Label
 signal difficulty_changed(level: int)
 signal guide_changed(on: bool)
 signal sensitivity_changed(level: int)
@@ -38,10 +45,10 @@ signal power_bought(id: String)
 signal power_equipped(slot: int, id: String)
 signal menu_level_changed(step: int)
 const INK = Color("142b32")
-const BRASS = Color("d2ad73")
+const BRASS = Color("e8bd78")
 const CERAMIC = Color("dedbca")
-const MUTED = Color("8fa8a5")
-const WHITE = Color("ede6d2")
+const MUTED = Color("a6b7bd")
+const WHITE = Color("f2eee4")
 const CYAN = Color("72ddc6")
 const CORAL = Color("ef947e")
 const LIME = Color("dbdf9a")
@@ -275,11 +282,12 @@ func build_skins_menu() -> void:
 	var titles = VBoxContainer.new()
 	titles.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	header.add_child(titles)
-	titles.add_child(label("SKINS", 34, WHITE, true))
-	titles.add_child(label("Arrasta o piloto para o rodar.", 17, MUTED))
+	titles.add_child(label("HANGAR · PILOTOS", 28, WHITE, true))
+	titles.add_child(label("Escolhe um piloto · roda o modelo com o dedo.", 17, MUTED))
 	skins_total = label("", 16, CYAN, true)
 	titles.add_child(skins_total)
 	skins_body = BoxContainer.new()
+	skins_body.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	skins_body.add_theme_constant_override("separation", 16)
 	list.add_child(skins_body)
 	build_skin_viewer()
@@ -287,6 +295,7 @@ func build_skins_menu() -> void:
 	# Name, weapon, palette, ultimate and the thumbnail grid: more than a phone screen
 	# holds, so the column scrolls inside the panel.
 	skins_scroll = ScrollContainer.new()
+	skins_scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	skins_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
 	skins_scroll.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	skins_scroll.custom_minimum_size.y = 420
@@ -322,13 +331,18 @@ func build_skins_menu() -> void:
 	skin_state = label("", 12, MUTED, true)
 	details.add_child(skin_state)
 	var thumbs = GridContainer.new()
-	thumbs.columns = 3
+	thumbs.columns = Skins.CATALOG.size()
 	thumbs.add_theme_constant_override("h_separation", 10)
 	thumbs.add_theme_constant_override("v_separation", 10)
-	details.add_child(thumbs)
+	skin_strip = ScrollContainer.new()
+	skin_strip.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	skin_strip.custom_minimum_size.y = 150
+	list.add_child(skin_strip)
+	list.move_child(skin_strip, 1)
+	skin_strip.add_child(thumbs)
 	for index in range(Skins.CATALOG.size()):
 		var thumb = Button.new()
-		thumb.custom_minimum_size = Vector2(104, 116)
+		thumb.custom_minimum_size = Vector2(126, 134)
 		thumb.focus_mode = Control.FOCUS_NONE
 		thumb.add_theme_stylebox_override("hover", style(Color("1f444c"), Color("496563"), 16))
 		thumb.add_theme_stylebox_override("pressed", style(Color("1f444c"), LIME, 16))
@@ -343,16 +357,18 @@ func build_skins_menu() -> void:
 	# The ultimate this skin brings, outside the scrolling column: it is the reason a player
 	# opens this page, and it used to be the one thing you had to scroll to reach.
 	skin_ultimate_name = label("", 19, BRASS, true)
-	list.add_child(skin_ultimate_name)
+	details.add_child(skin_ultimate_name)
 	skin_ultimate_about = label("", 16, MUTED)
 	skin_ultimate_about.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	list.add_child(skin_ultimate_about)
+	details.add_child(skin_ultimate_about)
 	skin_ultimate_demo = Control.new()
 	skin_ultimate_demo.clip_contents = true
 	skin_ultimate_demo.custom_minimum_size = Vector2(320, 160)
 	skin_ultimate_demo.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	skin_ultimate_demo.draw.connect(func(): draw_demo(skin_ultimate_demo, String(Skins.CATALOG[preview_index].ultimate)))
-	list.add_child(skin_ultimate_demo)
+	details.add_child(skin_ultimate_demo)
+	skin_music_note = label("PRÉ-ESCUTA · tema próprio do piloto", 15, BRASS)
+	list.add_child(skin_music_note)
 	var actions = HBoxContainer.new()
 	actions.add_theme_constant_override("separation", 8)
 	list.add_child(actions)
@@ -583,6 +599,9 @@ func viewer_palette() -> Dictionary:
 
 func preview_skin(index: int) -> void:
 	preview_index = clampi(index, 0, Skins.CATALOG.size() - 1)
+	if skins_overlay.visible:
+		skin_music_note.text = "PRÉ-ESCUTA · " + String(Skins.CATALOG[preview_index].name)
+		skin_previewed.emit(preview_index)
 	viewer_sound_pending = true
 	refresh_skins()
 	build_viewer_pilot()
@@ -594,7 +613,7 @@ func refresh_skins() -> void:
 	var level: int = entry.level
 	var open: bool = skins_progress.is_unlocked(preview_index)
 	var bosses = Skins.CATALOG.size() - 1
-	skins_total.text = "BOSSES DERROTADOS: %d / %d" % [skins_progress.unlocked_count() - 1, bosses]
+	skins_total.text = "COLEÇÃO: %d / %d" % [skins_progress.unlocked_count(), Skins.CATALOG.size()]
 	skin_name.text = entry.name
 	skin_weapon.text = "ARMA  ·  " + entry.weapon.to_upper()
 	skin_bricks.text = "TIJOLOS  ·  " + entry.bricks.to_upper()
@@ -655,6 +674,8 @@ func draw_thumb(canvas: Control, index: int) -> void:
 	portrait(Vector2(canvas.size.x * 0.5, 56), CORAL if locked else CYAN, false, index, canvas, locked)
 	if skins_progress == null:
 		return
+	var short_name = String(Skins.CATALOG[index].name).replace("PILOTO ", "")
+	canvas.draw_string(font_bold, Vector2(5, 113), short_name, HORIZONTAL_ALIGNMENT_CENTER, canvas.size.x - 10, 12, WHITE)
 	var caption = ""
 	var color = MUTED
 	if locked:
@@ -665,7 +686,7 @@ func draw_thumb(canvas: Control, index: int) -> void:
 		color = LIME
 	if caption != "":
 		var width = font_bold.get_string_size(caption, HORIZONTAL_ALIGNMENT_LEFT, -1, 10).x
-		canvas.draw_string(font_bold, Vector2((canvas.size.x - width) * 0.5, 110), caption, HORIZONTAL_ALIGNMENT_LEFT, -1, 10, color)
+		canvas.draw_string(font_bold, Vector2((canvas.size.x - width) * 0.5, 129), caption, HORIZONTAL_ALIGNMENT_LEFT, -1, 10, color)
 
 func open_skins() -> void:
 	reset_touch()
@@ -679,6 +700,7 @@ func open_skins() -> void:
 
 func close_skins() -> void:
 	skins_overlay.hide()
+	skin_preview_closed.emit()
 	clear_viewer_shots()
 
 func announce_unlock(names: Array) -> void:
@@ -820,10 +842,10 @@ func build_menu() -> void:
 	pvp.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	modes.add_child(pvp)
 	pvp.pressed.connect(open_pvp)
-	var level_list = make_button("NÍVEIS", false)
+	var level_list = make_button("TAÇA", false)
 	level_list.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	modes.add_child(level_list)
-	level_list.pressed.connect(open_levels)
+	level_list.pressed.connect(func(): cup_requested.emit())
 	quick_button = make_button("JOGO RÁPIDO", false)
 	quick_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	modes.add_child(quick_button)
@@ -1517,7 +1539,7 @@ func draw_menu_level() -> void:
 	var area = swipe_area()
 	var center_x = area.get_center().x
 	var top = (safe_top + 92) if vertical else 34.0
-	var beaten: bool = skins_progress != null and skins_progress.is_unlocked(level.boss)
+	var beaten: bool = skins_progress != null and int(level.boss) < Skins.CATALOG.size() and skins_progress.is_unlocked(level.boss)
 	centered("NÍVEL %02d / %02d" % [menu_level + 1, total], Vector2(center_x, top + 14), 12, LIME if done else CYAN, true)
 	centered(level.name.to_upper(), Vector2(center_x, top + 42), 26, WHITE, true)
 	var line = level.challenge if open else "BLOQUEADO · vence o nível anterior"
@@ -1526,13 +1548,17 @@ func draw_menu_level() -> void:
 	# The boss of the previewed level, in its fighting red until it has been beaten: in the
 	# empty band over the menu on a phone, in the gap above the panel on a wide screen.
 	var boss_at = Vector2(center_x, dots_y - 132) if vertical else Vector2(menu.position.x + menu.size.x * 0.5, maxf(menu.position.y - 128, 150.0))
-	if true:
-		draw_circle(boss_at + Vector2(0, 4), 52, Color(INK, 0.55), true, -1, smooth)
-		portrait(boss_at, CORAL, false, level.boss, null, not beaten)
-		draw_arc(boss_at, 53, 0, TAU, 56, Color(BRASS, 0.5), 1.4, smooth)
-		draw_arc(boss_at, 53, -PI * 0.78, -PI * 0.22, 20, Color(CERAMIC, 0.35), 1.6, smooth)
-		centered("BOSS", boss_at + Vector2(0, 74), 9, MUTED, true)
-		centered(Skins.CATALOG[level.boss].name, boss_at + Vector2(0, 93), 15, WHITE if beaten else CORAL, true)
+	# A station pilot has no entry in the skins catalogue: it wears a hull numbered past the
+	# end of it and answers to the level's own name.
+	var station: bool = int(level.boss) >= 100
+	var rival_hue: Color = Color(String(level.hue)) if level.has("hue") else CORAL
+	draw_circle(boss_at + Vector2(0, 4), 52, Color(INK, 0.55), true, -1, smooth)
+	portrait(boss_at, rival_hue if station else CORAL, false, level.boss, null, station or not beaten)
+	draw_arc(boss_at, 53, 0, TAU, 56, Color(BRASS, 0.5), 1.4, smooth)
+	draw_arc(boss_at, 53, -PI * 0.78, -PI * 0.22, 20, Color(CERAMIC, 0.35), 1.6, smooth)
+	centered("POSTO" if station else "BOSS", boss_at + Vector2(0, 74), 9, MUTED, true)
+	var rival_label: String = String(level.name).to_upper() if station else String(Skins.CATALOG[level.boss].name)
+	centered(rival_label, boss_at + Vector2(0, 93), 15, rival_hue if station else (WHITE if beaten else CORAL), true)
 	for i in range(total):
 		var dot = Vector2(center_x + (i - (total - 1) * 0.5) * 18, dots_y)
 		if i == menu_level:
@@ -1582,11 +1608,20 @@ func build_video_menu() -> void:
 	video_overlay.add_child(video_panel)
 	var list = VBoxContainer.new()
 	list.add_theme_constant_override("separation", 12)
-	video_panel.add_child(list)
+	options_scroll = ScrollContainer.new()
+	options_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	var option_stack = VBoxContainer.new()
+	option_stack.add_theme_constant_override("separation", 12)
+	video_panel.add_child(option_stack)
+	option_stack.add_child(options_scroll)
+	list.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	options_scroll.add_child(list)
 	list.add_child(label("OPÇÕES", 25, WHITE, true))
 	list.add_child(label("Imagem, som e ajudas de jogo.", 15, MUTED))
+	cup_difficulty = video_option(list, "Dificuldade da IA", ["Fácil", "Normal", "Difícil"])
+	cup_difficulty.item_selected.connect(func(index): difficulty_changed.emit(index))
 	quality_choice = video_option(list, "Qualidade", ["Leve · desempenho móvel", "Equilibrado · mais definição", "Refinado · máxima suavização"])
-	fps_choice = video_option(list, "Limite de FPS", ["60 FPS", "90 FPS", "120 FPS"])
+	fps_choice = video_option(list, "Limite de FPS", ["30 FPS", "60 FPS", "90 FPS"])
 	sync_choice = CheckButton.new()
 	sync_choice.text = "Sincronizar com o ecrã (VSync)"
 	sync_choice.custom_minimum_size.y = 44
@@ -1611,8 +1646,8 @@ func build_video_menu() -> void:
 	video_note.custom_minimum_size = Vector2(470, 63)
 	video_note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	list.add_child(video_note)
-	var done = make_button("VOLTAR AO JOGO", true)
-	list.add_child(done)
+	var done = make_button("FECHAR OPÇÕES", true)
+	option_stack.add_child(done)
 	done.pressed.connect(close_video)
 	quality_choice.item_selected.connect(func(_index): emit_video())
 	fps_choice.item_selected.connect(func(_index): emit_video())
@@ -1662,6 +1697,8 @@ func volume_slider(parent: VBoxContainer, title: String) -> HSlider:
 	return slider
 
 func sync_game(settings) -> void:
+	if is_instance_valid(cup_difficulty):
+		cup_difficulty.selected = settings.difficulty
 	for level in range(difficulty_buttons.size()):
 		difficulty_buttons[level].set_pressed_no_signal(level == settings.difficulty)
 	guide_choice.set_pressed_no_signal(settings.aim_guide)
@@ -1678,15 +1715,15 @@ func emit_audio() -> void:
 	audio_changed.emit(music_choice.button_pressed, music_volume.value / 100.0)
 
 func sync_video(settings) -> void:
-	fps_choice.select([60, 90, 120].find(settings.fps))
+	fps_choice.select([30, 60, 90].find(settings.fps))
 	quality_choice.select(settings.quality)
 	sync_choice.set_pressed_no_signal(settings.vsync)
 	counter_choice.set_pressed_no_signal(settings.show_fps)
 	fps_label.visible = settings.show_fps
-	video_note.text = "Refinado e Equilibrado preservam os gráficos e reduzem apenas 120→90→60 FPS. Só o perfil Leve pode baixar a resolução 3D."
+	video_note.text = "Refinado e Equilibrado preservam os gráficos e reduzem apenas 90→60→30 FPS. Só o perfil Leve pode baixar a resolução 3D."
 
 func emit_video() -> void:
-	video_changed.emit([60, 90, 120][fps_choice.selected], quality_choice.selected, sync_choice.button_pressed, counter_choice.button_pressed)
+	video_changed.emit([30, 60, 90][fps_choice.selected], quality_choice.selected, sync_choice.button_pressed, counter_choice.button_pressed)
 
 func open_video() -> void:
 	reset_touch()
@@ -1723,24 +1760,13 @@ func layout() -> void:
 		back.position = Vector2(size.x - 130, 27 + safe_top)
 		back.size = Vector2(100, 46)
 	skins_body.vertical = size.y > size.x
-	viewer.custom_minimum_size = Vector2(0, 260) if skins_body.vertical else Vector2(420, 400)
-	# The scrolling column keeps the whole panel inside the screen, whatever its height.
-	# The ultimate block sits under the body now and takes its own three hundred, so the
-	# scrolling column has to give that back or the panel grows past the top of the screen.
-	skins_scroll.custom_minimum_size.y = clampf(size.y - 1020, 150, 260) if skins_body.vertical else clampf(size.y - 360, 250, 520)
-	var skins_size = skins_panel.get_combined_minimum_size().max(Vector2(minf(size.x - 48, 640 if skins_body.vertical else 900), 0))
-	# Whatever the sums above say, the panel has to fit: measured once, and any overflow
-	# taken straight off the scrolling column, which is the only part that can give.
-	# Whatever the sums above say, the panel has to fit on the screen: any overflow comes
-	# off the scrolling column, which is the only part that can give, and then the height is
-	# capped outright. The column stretches to fill whatever is left.
-	var room: float = size.y - 28
-	if skins_size.y > room:
-		skins_scroll.custom_minimum_size.y = maxf(skins_scroll.custom_minimum_size.y - (skins_size.y - room), 130)
-		skins_size = skins_panel.get_combined_minimum_size().max(Vector2(minf(size.x - 48, 640 if skins_body.vertical else 900), 0))
-	skins_size.y = minf(skins_size.y, room)
+	var skin_room = size.y - safe_top - safe_bottom - 48
+	viewer.custom_minimum_size = Vector2(0, clampf(skin_room * 0.29, 190, 300)) if skins_body.vertical else Vector2(350, maxf(220, minf(300, skin_room - 430)))
+	skins_scroll.custom_minimum_size.y = maxf(140, skin_room - viewer.custom_minimum_size.y - 520) if skins_body.vertical else maxf(200, skin_room - 430)
+	var skins_size = Vector2(minf(size.x - 48, 640 if skins_body.vertical else 1000), skin_room)
 	skins_panel.size = skins_size
-	skins_panel.position = (size - skins_size) * 0.5
+	skins_panel.position = Vector2((size.x - skins_size.x)*0.5, safe_top + 24)
+	options_scroll.custom_minimum_size = Vector2(510, minf(700, size.y - safe_top - safe_bottom - 184))
 	var panel_size = video_panel.get_combined_minimum_size().max(Vector2(510, 0))
 	video_panel.size = panel_size
 	video_panel.position = (size - panel_size) * 0.5
@@ -2263,7 +2289,7 @@ func player_card(rect: Rect2, side: int, t: int) -> void:
 	panel(rect)
 	var role = "TU" if side == 0 else ("ADVERSÁRIO / IA" if mode == "pve" else "ADVERSÁRIO")
 	if side == 1 and not level_info.is_empty():
-		role = "BOSS · NÍVEL %d" % level_info.number
+		role = ("FINALISTA" if level_info.number == 11 else "QUALIFICATÓRIA") if level_info.get("cup", false) else "BOSS · NÍVEL %d" % level_info.number
 	var pilot = "NOVA" if t == 0 else "EMBER"
 	if side == 1 and not level_info.is_empty():
 		pilot = level_info.boss_name
@@ -2387,12 +2413,12 @@ func _draw() -> void:
 	if vertical:
 		var round_text = "1º A %d GOLOS" % Rules.WIN_SCORE
 		if not level_info.is_empty():
-			round_text = "NÍVEL %d" % level_info.number
+			round_text = ("FINAL" if level_info.number == 11 else "JOGO %d" % level_info.number) if level_info.get("cup", false) else "NÍVEL %d" % level_info.number
 		centered(round_text, Vector2(score_rect.get_center().x, s.y + 19), 10, LIME, true)
 		centered(str(match_data.scores[0]) + "  :  " + str(match_data.scores[1]), Vector2(score_rect.get_center().x, s.y + 44), 26, WHITE, true)
 		var mode_label = "TREINO / PvE" if mode == "pve" else "DUELO / PvP"
 		if not level_info.is_empty():
-			mode_label = "CAMPANHA"
+			mode_label = "TAÇA AURORA" if level_info.get("cup", false) else "CAMPANHA"
 		centered(mode_label, Vector2(score_rect.get_center().x, s.y + 64), 9, MUTED, true)
 	else:
 		draw_circle(s + Vector2(23, 30), 4, CYAN, true, -1, smooth)
@@ -2523,7 +2549,7 @@ func draw_powers() -> void:
 			draw_arc(center, span + 4 - wind * 10, 0, TAU, 48, Color(color, 0.85), 2.6, smooth)
 		draw_circle(center, span - 11, disc, true, -1, smooth)
 		draw_arc(center, span - 11, PI * 1.15, PI * 1.85, 20, Color(CERAMIC, 0.22 if ready else 0.1), 1.2, smooth)
-		power_icon(id, center + Vector2(0, -span * 0.28), WHITE if ready or pressed else Color(WHITE, 0.5), self, span / POWER_RADIUS)
+		power_icon(id, center + Vector2(0, -span * 0.28), INK if ready or pressed else Color(WHITE, 0.75), self, span / POWER_RADIUS)
 		var caption = "PRONTO" if ready else "%d/%d" % [charge, cost]
 		if cool > 0:
 			# Counting down: whole seconds while there is time, tenths in the last one.
@@ -2539,7 +2565,7 @@ func draw_powers() -> void:
 		centered(caption, center + Vector2(0, span * 0.33), roundi(11 * span / POWER_RADIUS), INK if ready or pressed else WHITE, true)
 		# The name goes under the button, not inside it: the ring is forty pixels across, and
 		# with the icon and the charge already in there the name was crossing the rim.
-		centered(Rules.power_label(id), center + Vector2(0, span + 15), roundi(9 * span / POWER_RADIUS), Color(WHITE, 0.85 if ready or pressed else 0.5), true)
+		centered(Rules.power_label(id), center + Vector2(0, span + 15), roundi(11 * span / POWER_RADIUS), Color(WHITE, 0.85 if ready or pressed else 0.5), true)
 
 func match_loadout(t: int, index: int) -> String:
 	# The power on that button: empty while the skin ultimates are still to come.

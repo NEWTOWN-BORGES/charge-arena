@@ -1,6 +1,7 @@
 shader_type spatial;
 render_mode unshaded, cull_disabled;
 varying vec3 world_pos;
+uniform vec4 sector_tint : source_color = vec4(0.15, 0.27, 0.30, 1.0);
 
 void vertex() {
 	world_pos = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
@@ -15,7 +16,7 @@ void fragment() {
 	vec2 p = world_pos.xz;
 	vec3 jade = vec3(0.21, 0.57, 0.51);
 	vec3 coral = vec3(0.66, 0.34, 0.29);
-	vec3 color = mix(vec3(0.095, 0.18, 0.205), vec3(0.15, 0.265, 0.28), 1.0 - smoothstep(0.0, 11.0, length(p)));
+	vec3 color = mix(vec3(0.095, 0.18, 0.205), sector_tint.rgb, 1.0 - smoothstep(0.0, 11.0, length(p)));
 	vec2 cells = abs(fract(p / 1.8 + 0.5) - 0.5);
 	float cell_edge = max(cells.x, cells.y);
 	float seams = smoothstep(0.492 - fwidth(cell_edge), 0.5, cell_edge);
@@ -29,5 +30,11 @@ void fragment() {
 	color = mix(color, vec3(0.49, 0.64, 0.61), min(rings, 1.0) * 0.6);
 	vec3 team = p.y > 0.0 ? jade : coral;
 	color += team * pow(smoothstep(3.2, 6.93, abs(p.y)), 2.0) * 0.21;
+	// Inlaid court markings, antialiased analytically. No texture or extra draw call.
+	float midline = 1.0 - smoothstep(0.012, 0.012 + fwidth(p.y), abs(p.y));
+	float dash = step(0.5, fract(p.x * 1.5));
+	color = mix(color, vec3(0.60, 0.67, 0.65), midline * dash * 0.18);
+	float medallion = ring_line(r, 1.86, 0.007);
+	color = mix(color, vec3(0.80, 0.65, 0.43), medallion * 0.40);
 	ALBEDO = color;
 }

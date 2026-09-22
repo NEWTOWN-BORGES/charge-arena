@@ -72,7 +72,6 @@ func run() -> void:
 	check(minors.all(func(i): return not levels[i].has("minor") or levels[i].minor), "Every station level says so")
 	check(levels[0].boss == 0 and levels[1].boss == 1 and levels[bosses_only[9]].boss == 5 and levels[bosses_only[10]].boss == 10, "Level 1 trains against a copy of the standard pilot, level 2 meets the Faroleiro, the Sentinela is the one before last and the Arconte closes the campaign")
 	check(minors.all(func(i): return levels[i].has("ultimate") and levels[i].has("kit") and levels[i].has("hue")), "A station pilot brings a plain ultimate, a bought kit and a colour of its own")
-	check(minors.all(func(i): return levels[i].boss != 5 and levels[i].boss != 10), "And never wears the hull of the two bosses it leads up to")
 	var hues: Array = minors.map(func(i): return String(levels[i].hue))
 	check(range(1, hues.size()).all(func(i): return not hues.slice(0, i).has(hues[i])), "No two station pilots share a colour")
 	var plain: Array = minors.map(func(i): return String(levels[i].ultimate))
@@ -85,7 +84,13 @@ func run() -> void:
 	check(ultimates == ["volley", "plating", "surge", "sentries", "bloom", "plunder", "thunder", "meteors", "singularity", "sun_ray"], "Every boss brings one of its own, in order: volley, plating, surge, sentries, bloom, plunder, thunder, meteors, singularity, sun ray")
 	check(String(Skins.CATALOG[levels[0].boss].ultimate) == "", "And level 1 is a training match against a copy of the standard pilot, which has none")
 	check(Campaign.level_ultimate(bosses_only[10]) == "", "A boss level names no ultimate of its own: the skin brings it")
-	check(levels.all(func(l): return l.boss >= 0 and l.boss <= 10 and l.challenge != "" and l.tag != ""), "Every level names its challenge and a valid boss skin")
+	# A boss wears one of the eleven shop skins; a station pilot wears a hull of its own,
+	# numbered past the catalogue so the two sets can never be confused for each other.
+	check(levels.all(func(l): return l.challenge != "" and l.tag != ""), "Every level names its challenge")
+	check(bosses_only.all(func(i): return levels[i].boss >= 0 and levels[i].boss <= 10), "A boss wears one of the eleven skins")
+	check(minors.all(func(i): return levels[i].boss >= 100 and levels[i].has("music")), "A station pilot wears a hull of its own and names its own theme")
+	var themes: Array = minors.map(func(i): return Campaign.level_music(i))
+	check(themes.all(func(t): return t >= 1 and t <= 10) and range(1, themes.size()).all(func(i): return not themes.slice(0, i).has(themes[i])), "No two station pilots share a theme")
 	check(range(1, bosses_only.size()).all(func(i): return levels[bosses_only[i]].tier > levels[bosses_only[i - 1]].tier), "Bosses get stronger level by level")
 	var outlines = levels.map(func(l): return l.map.outline)
 	var layouts = levels.map(func(l): return l.map.bricks)

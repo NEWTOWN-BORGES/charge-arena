@@ -1,3 +1,5 @@
+> **Demo 2.3 — Taça Aurora:** o menu inicial agora abre uma campanha de 10 qualificatórias + Faroleiro, com chave paralela de 1 024 participantes, jornal e progresso próprio. Consulte [a documentação atual da demo](docs/TACA-AURORA.md). As secções históricas abaixo descrevem também sistemas e versões anteriores.
+
 # Charge Arena — protótipo Godot para mobile
 
 Projeto 3D em Godot 4.7.1, renderizador Compatibility. Direção visual indie sci-fi: arena flutuante, jade/coral, cerâmica clara e pequenos pilotos robóticos. A arena foi ampliada sem aumentar as colisões dos pilotos, tijolos ou projéteis, e a câmara aproxima o cenário para tornar os acabamentos e efeitos mais legíveis no telemóvel. Modelos, materiais, interface, sons e música são criados por código; o vídeo e screenshots originais continuam intactos na pasta acima.

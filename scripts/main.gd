@@ -8,6 +8,13 @@ const Skins = preload("res://scripts/skins.gd")
 const PowerShop = preload("res://scripts/powers.gd")
 const GameSettings = preload("res://scripts/game_settings.gd")
 const Campaign = preload("res://scripts/campaign.gd")
+const Cup = preload("res://scripts/cup.gd")
+const CupScreen = preload("res://scripts/cup_screen.gd")
+var cup = Cup.new()
+var cup_screen
+var cup_active = false
+var cup_resolved = false
+var skin_music_return = ""
 const PORT = 27940
 var rules = Rules.new()
 var arena
@@ -30,6 +37,7 @@ var tones: Dictionary = {}
 var audio: AudioStreamPlayer
 var audio_voices: Array = []
 var audio_cursor = 0
+var sound_times: Dictionary = {}
 var last_phase = ""
 var last_stuns: Array = [0.0, 0.0]
 var packets_received = 0
@@ -107,6 +115,9 @@ func _ready() -> void:
 	hud.team_tints = arena.unit_tints
 	hud.arena_view = arena
 	hud.skin_selected.connect(select_skin)
+	hud.skin_previewed.connect(preview_skin_music)
+	hud.skin_preview_closed.connect(restore_skin_music)
+	hud.cup_requested.connect(open_cup)
 	hud.sync_skins(skins)
 	dress_pilots(0)
 	game_settings.load_preferences()
@@ -136,6 +147,15 @@ func _ready() -> void:
 	multiplayer.connection_failed.connect(func(): return_to_menu.call_deferred("Não foi possível ligar. Confirma o IP e a rede."))
 	multiplayer.server_disconnected.connect(func(): return_to_menu.call_deferred("O anfitrião saiu da partida."))
 	build_audio()
+	cup.restore()
+	cup_screen = CupScreen.new()
+	cup_screen.cup = cup
+	hud.add_child(cup_screen)
+	hud.move_child(cup_screen, hud.menu.get_index() + 1)
+	cup_screen.action.connect(cup_action)
+	cup_screen.refresh()
+	cup_screen.hide()
+	arena.show()
 	for arg in OS.get_cmdline_user_args():
 		if arg == "--pve":
 			start_pve()
@@ -165,6 +185,7 @@ func charge_ultimates() -> void:
 			rules.powers[team].charge[2] = cost
 
 func start_pve(layout: Dictionary = {}) -> void:
+	close_cup_screen()
 	# Quick play opens on the tall arena, which fills a phone held upright instead of
 	# sitting in a band across the middle of it. Campaign levels bring their own.
 	if layout.is_empty():
@@ -186,6 +207,7 @@ func start_pvp_ai() -> void:
 	start_pve(Rules.pvp_map())
 
 func start_level(index: int) -> void:
+	close_cup_screen()
 	if not campaign.is_unlocked(index):
 		return
 	var level: Dictionary = Campaign.LEVELS[index]
@@ -214,8 +236,10 @@ func start_level(index: int) -> void:
 	hud.show_game(mode, local_team)
 	sync_assist()
 	# The theme follows whoever is on the other side, station pilot or boss, so ten matches
-	# in a row do not share one tune.
-	music.play_skin(level.boss)
+	# in a row do not share one tune. A station hull is numbered past the catalogue, so the
+	# level names its theme instead - left to the hull number they all fell through to the
+	# last track in the list, which is the final boss's.
+	music.play_skin(Campaign.level_music(index))
 
 func leave_campaign(layout: Dictionary = {}) -> void:
 	level_index = -1
@@ -241,14 +265,19 @@ func show_menu_preview() -> void:
 	show_menu_boss()
 
 func show_menu_boss() -> void:
-	# The previewed boss is shown in its own colours, like it fights.
+	# The previewed rival is shown in its own colours, like it fights: a boss in its skin's
+	# palette, a station pilot in the colour its level gives it.
 	var boss: int = Campaign.LEVELS[menu_level].boss
-	arena.set_skin(1, boss)
+	arena.set_skin(1, boss, Campaign.is_minor(menu_level), Campaign.level_hue(menu_level))
+	hud.team_hues = arena.unit_hues
 
 func sync_boss_skins() -> void:
 	# Levels won before boss skins existed still award their skins.
 	var changed = false
 	for index in campaign.completed:
+		# A station pilot has no skin to award: its hull is numbered past the catalogue.
+		if Campaign.is_minor(index):
+			continue
 		changed = skins.defeat(Campaign.LEVELS[index].boss) or changed
 	if changed:
 		save_skins()
@@ -316,6 +345,9 @@ func close_network() -> void:
 	client_blast_spots.clear()
 
 func return_to_menu(message: String = "") -> void:
+	if hud.skins_overlay.visible:
+		hud.close_skins()
+	cup_active = false
 	pve_paused = false
 	close_network()
 	mode = "menu"
@@ -330,6 +362,9 @@ func return_to_menu(message: String = "") -> void:
 	hud.sync_skins(skins)
 	hud.show_menu(message)
 	music.play("menu")
+	if is_instance_valid(cup_screen):
+		cup_screen.hide()
+		arena.show()
 
 func request_menu() -> void:
 	if mode == "pve":
@@ -362,6 +397,7 @@ func _notification(what: int) -> void:
 		request_menu()
 
 func host_game() -> void:
+	close_cup_screen()
 	close_network()
 	mode = "host"
 	local_team = 0
@@ -389,6 +425,7 @@ func host_game() -> void:
 	print("HOST_READY port=", PORT)
 
 func join_game(address: String) -> void:
+	close_cup_screen()
 	if address.is_empty():
 		hud.show_menu("Escreve o IP do telemóvel ou PC que criou a partida.")
 		return
@@ -437,6 +474,9 @@ func peer_disconnected(_id: int) -> void:
 		return_to_menu.call_deferred("O outro jogador desligou-se. Podes criar uma nova partida.")
 
 func replay() -> void:
+	if cup_active:
+		start_cup()
+		return
 	if mode == "pve" and level_index >= 0:
 		start_level(level_index)
 		return
@@ -573,6 +613,8 @@ func change_difficulty(level: int) -> void:
 	rules.ai_level = game_settings.difficulty
 	if level_index >= 0:
 		rules.ai_profile = Campaign.ai_profile(level_index, game_settings.difficulty)
+	if cup_active:
+		rules.ai_profile = cup.profile(game_settings.difficulty)
 	save_game_settings()
 
 func sync_assist() -> void:
@@ -882,6 +924,9 @@ func idle_frame_rate() -> void:
 
 func _process(dt: float) -> void:
 	idle_frame_rate()
+	hud.fps_label.visible = video.show_fps and mode != "menu"
+	if mode == "menu" and is_instance_valid(cup_screen) and cup_screen.visible:
+		return
 	if mode == "menu" and menu_preview_timer >= 0:
 		menu_preview_timer -= dt
 		if menu_preview_timer < 0:
@@ -907,6 +952,9 @@ func _process(dt: float) -> void:
 		if mode != "menu" and video.adapt(get_viewport(), measured):
 			hud.video_note.text = "Ajuste automático ativo: resolução 3D %d%%, limite %d FPS." % [roundi(video.runtime_scale * 100), video.runtime_fps]
 		hud.fps_label.text = "%d FPS  /  alvo %d" % [measured, video.runtime_fps]
+	if rules.phase == "finished" and cup_active and not cup_resolved:
+		cup_resolved = true
+		finish_cup.call_deferred()
 	if rules.phase != last_phase:
 		if rules.phase == "finished" and mode == "pve" and level_index >= 0:
 			finish_level()
@@ -983,7 +1031,8 @@ func build_audio() -> void:
 	# Power cues: a charged thump on release, a bright chime when one fills up and a
 	# low rumble for the blast, all clearly apart from the ricochet tick.
 	tones["power"] = sweep_wave(0.26, 640.0, 250.0, 0.45)
-	tones["ready"] = sweep_wave(0.34, 720.0, 1220.0, 0.0)
+	tones["ready"] = chime_wave(0.48, 587.33)
+	tones["goal"] = chime_wave(0.95, 293.66)
 	tones["blast"] = sweep_wave(0.42, 300.0, 68.0, 0.8)
 	# Ultimates: two seconds of rising charge, a heavy discharge, and one voice each so
 	# the sun ray, the meteors, the storm, the bloom and the plunder never sound alike.
@@ -1089,14 +1138,26 @@ func sweep_wave(seconds: float, from_hz: float, to_hz: float, grit: float) -> Au
 func play_tone(sound: String) -> void:
 	if audio_voices.is_empty() or not tones.has(sound):
 		return
+	var now = Time.get_ticks_msec()
+	var priority = 0 if sound.begins_with("shot_") or sound == "bounce" else (3 if sound in ["charging", "unleash", "goal"] else 2)
+	# Dense combat should not turn one event into a stack of identical loud transients.
+	if priority < 3 and now - int(sound_times.get(sound, -1000)) < 28 and audio_voices.any(func(v): return v.playing and v.stream == tones[sound]):
+		return
+	sound_times[sound] = now
 	var voice: AudioStreamPlayer = null
 	for candidate in audio_voices:
 		if not candidate.playing:
 			voice = candidate
 			break
 	if voice == null:
-		voice = audio_voices[audio_cursor % audio_voices.size()]
-		audio_cursor += 1
+		for candidate in audio_voices:
+			if int(candidate.get_meta("priority", 0)) <= priority and (voice == null or int(candidate.get_meta("started", 0)) < int(voice.get_meta("started", 0))):
+				voice = candidate
+	if voice == null:
+		return
+	voice.set_meta("priority", priority)
+	voice.set_meta("started", now)
+	voice.volume_db = -20 if priority == 0 else (-14 if priority == 3 else -17)
 	voice.stream = tones[sound]
 	voice.play()
 
@@ -1107,3 +1168,85 @@ func capture_preview(path: String) -> void:
 	var error = img.save_png(path)
 	print("CAPTURE_RESULT ", error, " ", path)
 	get_tree().quit(error)
+
+func close_cup_screen() -> void:
+	if hud.skins_overlay.visible:
+		hud.close_skins()
+	cup_active = false
+	arena.show()
+	if is_instance_valid(cup_screen):
+		cup_screen.hide()
+
+func cup_action(id: String) -> void:
+	match id:
+		"play": start_cup()
+		"menu": return_to_menu()
+		"practice": start_pve()
+		"arenas": hud.open_levels()
+		"skins": hud.open_skins()
+		"powers": hud.open_powers()
+		"settings": hud.open_video()
+		"pvp": hud.open_pvp()
+
+func start_cup() -> void:
+	arena.show()
+	if cup.wins >= Cup.DEMO_MATCHES:
+		return
+	close_network()
+	pve_paused = false
+	mode = "pve"
+	local_team = 0
+	network_status = ""
+	level_index = -1
+	var entry = cup.level()
+	use_map(entry.map)
+	rules.ai_profile = cup.profile(game_settings.difficulty)
+	use_loadouts(cup.kit(), 1 if cup.wins == 10 else 0)
+	rules.reset_match()
+	dress_pilots(0)
+	arena.set_skin(1, entry.boss, cup.wins < 10, entry.hue)
+	hud.team_hues = arena.unit_hues
+	hud.level_info = {"number": cup.wins + 1, "cup": true, "name": entry.name, "challenge": "Vence para avançar na Taça Aurora.", "boss_name": cup.opponent(), "has_next": false}
+	hud.level_result = ""
+	hud.show_game(mode, 0)
+	sync_assist()
+	cup_screen.hide()
+	cup_active = true
+	cup_resolved = false
+	last_phase = ""
+	music.play_skin(1 if cup.wins == 10 else cup.wins + 1)
+
+func finish_cup() -> void:
+	var won = rules.winner == 0
+	var rival = cup.opponent()
+	var score = Array(rules.scores).duplicate()
+	bank_bricks()
+	if won:
+		cup.complete(score)
+		if cup.save() != OK:
+			push_warning("Não foi possível guardar a Taça.")
+		if cup.wins == Cup.DEMO_MATCHES:
+			skins.defeat(1)
+			save_skins()
+	cup_screen.result = ("Vitória" if won else "Derrota") + " · %d–%d contra %s" % [score[0], score[1], rival]
+	return_to_menu()
+	open_cup()
+	cup_screen.tab = 2 if won else 0
+	cup_screen.refresh()
+
+func open_cup() -> void:
+	cup_screen.show()
+	cup_screen.refresh()
+	arena.hide()
+
+func preview_skin_music(index: int) -> void:
+	if skin_music_return.is_empty():
+		skin_music_return = music.track
+	music.play_skin(index)
+	if not music.enabled:
+		hud.skin_music_note.text = "MÚSICA DESLIGADA · ativa-a nas Opções"
+
+func restore_skin_music() -> void:
+	if not skin_music_return.is_empty():
+		music.play(skin_music_return)
+		skin_music_return = ""

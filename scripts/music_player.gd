@@ -2,6 +2,8 @@ extends Node
 ## Menu music and one match theme per skin (campaign levels play their boss's theme). Tracks crossfade, dip during
 ## countdowns/goals, and pause while the app is in the background.
 const TRACKS = {
+	"cup": preload("res://audio/music_cup.ogg"),
+	"cup_boss": preload("res://audio/music_skin_1.ogg"),
 	"menu": preload("res://audio/music_menu.ogg"),
 	"match": preload("res://audio/music_match.ogg"),
 	"skin_1": preload("res://audio/music_skin_1.ogg"),

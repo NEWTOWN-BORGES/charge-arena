@@ -96,16 +96,16 @@ func material(color: Color, luminous: bool = false) -> StandardMaterial3D:
 		return materials[key]
 	var mat = StandardMaterial3D.new()
 	mat.albedo_color = color
-	mat.roughness = 0.64
-	mat.metallic = 0.06
+	mat.roughness = 0.52
+	mat.metallic = 0.12
 	if color == CREAM:
 		mat.roughness = 0.48
 		mat.clearcoat_enabled = true
 		mat.clearcoat = 0.22
 		mat.clearcoat_roughness = 0.42
 	elif color == GOLD:
-		mat.metallic = 0.5
-		mat.roughness = 0.4
+		mat.metallic = 0.72
+		mat.roughness = 0.32
 	elif color == DARK:
 		mat.roughness = 0.76
 	if luminous:
@@ -327,6 +327,7 @@ func build(new_map: Dictionary = {}) -> void:
 	var court = platform(walls, 0.0, 0.28, Color.WHITE)
 	var court_mat = ShaderMaterial.new()
 	court_mat.shader = preload("res://shaders/court.gdshader")
+	court_mat.set_shader_parameter("sector_tint", Color(["284551", "344653", "344b49", "414052"][absi(String(map.get("id", "")).hash()) % 4]))
 	court.material_override = court_mat
 	soft_disc(self, Vector3(0, -1.32, 0.3), Vector2(19, 23), Color(0.005, 0.015, 0.025, 0.7))
 	for i in range(walls.size()):
@@ -358,6 +359,12 @@ func build(new_map: Dictionary = {}) -> void:
 			box(self, Vector3(grille_x, -0.17, z), Vector3(0.62, 0.17, 1.55), Color("172f39"))
 			for j in range(8):
 				box(self, Vector3(grille_x, -0.05, z + (j - 3.5) * 0.17), Vector3(0.4, 0.05, 0.085), Color("658079"))
+	# Recessed tournament pylons: opaque, batched and outside the playable contour.
+	for side in [-1, 1]:
+		var px = side * (Rules.outline_x_at(walls, 0) + 0.8)
+		box(self, Vector3(px, -0.1, 0), Vector3(0.48, 0.55, 2.2), DARK, false, 0.1)
+		for mark in range(5):
+			box(self, Vector3(px, 0.2, (mark - 2)*0.32), Vector3(0.20, 0.035, 0.13), GOLD if mark == 2 else CREAM, false, 0.02)
 	# Center insignia, team floor numbers and perimeter print.
 	var bolt = [Vector3(0.27, 0.022, -0.87), Vector3(-0.42, 0.022, 0.05), Vector3(0.38, 0.022, 0.05), Vector3(-0.3, 0.022, 0.85)]
 	for i in range(bolt.size() - 1):
@@ -803,8 +810,16 @@ func build_player(color: Color, team: int, skin: int = 0, parent: Node3D = null,
 		build_corsair(body, palette.body, palette.light, color)
 	elif skin == 10:
 		build_archon(body, palette.body, palette.light, color)
+	elif skin >= STATION_SKIN:
+		build_station_pilot(body, palette.body, palette.light, color, skin - STATION_SKIN)
 	else:
 		build_aurora_pilot(body, color)
+	# Small enamel competition badge and shoulder seams unify the collection without
+	# changing faces, silhouettes, weapon origins or hitboxes.
+	var badge_color = Color("e8bd78") if skin < STATION_SKIN else color.lightened(0.25)
+	box(body, Vector3(-0.20, 0.86, -0.265), Vector3(0.085, 0.12, 0.026), badge_color, false, 0.018)
+	for side in [-1, 1]:
+		box(body, Vector3(side*0.43, 1.00, -0.07), Vector3(0.22, 0.035, 0.24), badge_color, false, 0.015)
 	# Frost: a block of ice around the pilot with crystals standing off it, and a ring of
 	# spikes grown out of the floor. It is the heaviest of the worn effects on purpose -
 	# being frozen is the worst thing that happens to you in a match.
@@ -886,6 +901,67 @@ func set_skin(team: int, skin: int, tint: bool = false, hue: String = "") -> voi
 	# has to stay unmistakable, and make_brick works that out for itself.
 	set_brick_theme(team, skin, tint)
 	old.queue_free()
+
+# Station pilots are addressed from here up, well clear of the eleven skins in the shop.
+const STATION_SKIN = 100
+
+func build_station_pilot(body: Node3D, shell: Color, light: Color, color: Color, variant: int) -> void:
+	# The pilots between the bosses. One chassis, ten heads: nobody here has a name, so the
+	# whole read has to come from the silhouette and the colour. Deliberately plainer than
+	# any shop skin - these are the road, not the destination.
+	var kind: int = clampi(variant, 0, 9)
+	for side in [-1, 1]:
+		var leg = Node3D.new()
+		leg.name = "LegL" if side == -1 else "LegR"
+		leg.position = Vector3(side * 0.23, 0.30, 0)
+		body.add_child(leg)
+		box(leg, Vector3(0, -0.04, 0), Vector3(0.26, 0.36, 0.26), DARK, false, 0.07)
+		box(leg, Vector3(0, -0.22, -0.08), Vector3(0.32, 0.18, 0.46), shell, false, 0.06)
+	# A plated torso with a service band across it, in the pilot's own colour.
+	box(body, Vector3(0, 0.72, 0), Vector3(0.62, 0.64, 0.48), shell, false, 0.1)
+	box(body, Vector3(0, 0.82, -0.25), Vector3(0.5, 0.1, 0.04), light, true)
+	box(body, Vector3(0, 0.62, -0.25), Vector3(0.34, 0.08, 0.04), DARK)
+	box(body, Vector3(0, 0.7, 0.3), Vector3(0.42, 0.44, 0.22), DARK, false, 0.06)
+	for side in [-1, 1]:
+		box(body, Vector3(side * 0.42, 0.9, 0), Vector3(0.18, 0.2, 0.34), DARK, false, 0.05)
+		box(body, Vector3(side * 0.44, 0.62, -0.1), Vector3(0.2, 0.32, 0.2), shell, false, 0.05)
+	# The helmet: four shapes, so a glance at the outline is enough to tell two apart.
+	match kind % 4:
+		0:
+			sphere(body, Vector3(0, 1.22, -0.02), Vector3(0.84, 0.78, 0.78), CREAM)
+		1:
+			box(body, Vector3(0, 1.22, -0.02), Vector3(0.76, 0.72, 0.74), CREAM, false, 0.16)
+		2:
+			cylinder(body, Vector3(0, 1.22, -0.02), 0.42, 0.72, CREAM, false, 14)
+		_:
+			cone(body, Vector3(0, 1.3, -0.02), 0.44, 0.78, CREAM, false, 12)
+	box(body, Vector3(0, 1.24, -0.4), Vector3(0.58, 0.2, 0.06), DARK, false, 0.03)
+	box(body, Vector3(0, 1.24, -0.43), Vector3(0.3, 0.08, 0.02), light, true)
+	# And a crest on top, five of them, so the four helmets make ten pilots between them.
+	match kind % 5:
+		0:
+			cylinder(body, Vector3(0, 1.72, -0.02), 0.035, 0.36, GOLD, false, 8)
+			sphere(body, Vector3(0, 1.92, -0.02), Vector3.ONE * 0.13, light, true)
+		1:
+			box(body, Vector3(0, 1.68, -0.02), Vector3(0.1, 0.3, 0.44), light, true, 0.03)
+		2:
+			for side in [-1, 1]:
+				cone(body, Vector3(side * 0.28, 1.6, -0.02), 0.09, 0.34, GOLD, false, 8).rotation_degrees.z = side * -22
+		3:
+			torus(body, Vector3(0, 1.66, -0.02), 0.3, 0.035, light)
+		_:
+			for step in range(3):
+				box(body, Vector3(0, 1.6, -0.28 + step * 0.22), Vector3(0.36 - step * 0.08, 0.07, 0.1), GOLD, false, 0.02)
+	# The pack on the back, which is where the colour reads from behind.
+	box(body, Vector3(0, 0.86, 0.46), Vector3(0.3, 0.42, 0.16), light, true, 0.04)
+	var gun = Node3D.new()
+	gun.name = "Gun"
+	body.add_child(gun)
+	box(gun, Vector3(0.3, 0.7, -0.44), Vector3(0.3, 0.3, 0.46), shell, false, 0.07)
+	box(gun, Vector3(0.3, 0.7, -0.72), Vector3(0.2, 0.2, 0.16), DARK)
+	sphere(gun, Vector3(0.3, 0.7, -0.82), Vector3(0.12, 0.12, 0.05), light, true)
+	var flash = sphere(gun, Vector3(0.3, 0.7, -0.88), Vector3.ONE * 0.01, Color("fff1c7"), true)
+	flash.name = "Flash"
 
 func build_aurora_pilot(body: Node3D, color: Color) -> void:
 	for side in [-1, 1]:
@@ -2057,13 +2133,18 @@ func scorch(at: Vector2, size: float, color: Color, life: float) -> void:
 	effects.append({"node": mark, "v": Vector3.ZERO, "ttl": life, "life": life, "gravity": false, "base": Vector3.ONE, "keep": true})
 
 func burst(pos: Vector2, color: Color, debris: bool = true) -> void:
-	for i in range(10 if debris else 6):
-		if effects.size() >= effect_limit:
-			break
-		var node = box(self, Vector3(pos.x, 0.5, pos.y), Vector3(0.16, 0.13, 0.13), CREAM if i % 3 == 0 else color, not debris, 0.03)
-		var angle = float(i) * 2.399
-		var life = 0.55 if debris else 0.26
-		effects.append({"node": node, "v": Vector3(cos(angle) * 2, 1.5 + i * 0.08, sin(angle) * 2), "ttl": life, "life": life, "gravity": debris, "base": Vector3.ONE})
+	if effects.size() >= effect_limit:
+		return
+	if debris:
+		for i in range(3 if quality_level == 0 else 5):
+			if effects.size() >= effect_limit:
+				break
+			var node = box(self, Vector3(pos.x, 0.45, pos.y), Vector3(0.13, 0.065, 0.20), CREAM if i % 2 == 0 else color, false, 0.018)
+			var angle = float(i) * 2.399
+			var life = 0.48
+			effects.append({"node": node, "v": Vector3(cos(angle)*1.7, 1.5, sin(angle)*1.7), "ttl": life, "life": life, "gravity": true, "base": Vector3.ONE})
+	if effects.size() < effect_limit:
+		emitter(Vector3(pos.x, 0.48, pos.y), color, 9 if debris else 5, 0.28, 2.8, 72, 0.105, -4.0)
 
 func explosion(pos: Vector2, radius: float) -> void:
 	# The blast radius has to be readable at a glance: a ring that opens to its real size.
@@ -2073,9 +2154,18 @@ func explosion(pos: Vector2, radius: float) -> void:
 		ring.scale = Vector3.ONE * 0.25
 		effects.append({"node": ring, "v": Vector3.ZERO, "ttl": 0.42, "life": 0.42, "gravity": false, "base": Vector3.ONE, "grow": true, "tint": tint})
 	burst(pos, tint, true)
+	if effects.size() + 2 < effect_limit:
+		emitter(Vector3(pos.x, 0.32, pos.y), Color("fff1d4"), 18, 0.35, 5.0, 85.0, 0.13, -7.0)
+		scorch(pos, radius * 1.4, tint, 0.65)
+	shake(0.12)
 
 func power_flash(pos: Vector2, id: String) -> void:
-	burst(pos, Rules.power_color(id), false)
+	var color = Rules.power_color(id)
+	if effects.size() + 2 < effect_limit:
+		var defense = id in ["weld", "rebuild", "mirror", "walls", "bloom", "plating"]
+		var ring = torus(self, Vector3(pos.x, 0.08, pos.y), 0.72, 0.035, Color(color, 0.85), true)
+		effects.append({"node": ring, "v": Vector3.UP * (1.6 if defense else 0.0), "ttl": 0.45, "life": 0.45, "gravity": false, "base": Vector3.ONE, "grow": true, "tint": color})
+	burst(pos, color, false)
 
 func laser_beam(from: Vector2, heading: Vector2, team: int) -> void:
 	# Each bite sparks at the muzzle; the beam itself is drawn every frame below.
@@ -2730,7 +2820,7 @@ func update_power_effects(rules, dt: float) -> void:
 			var glow: Color = Rules.power_color(String(state.ultimate_id))
 			for part in charging.get_children():
 				if part is MeshInstance3D:
-					part.material_override = material(Color(glow, 0.35 + 0.45 * wind), true)
+					part.material_override = material(Color(glow, snappedf(0.35 + 0.45 * wind, 0.05)), true)
 			if fmod(clock, 0.14) < dt:
 				# Embers pulled up into the pilot, faster as the moment approaches.
 				var ring_at = pilot + Vector2(cos(clock * 5.0), sin(clock * 5.0)) * lerpf(2.4, 0.8, wind)
@@ -2896,6 +2986,12 @@ func build_power_effects() -> void:
 		for i in range(4):
 			var angle = i * TAU / 4
 			box(windup, Vector3(cos(angle) * 0.9, 0.5, sin(angle) * 0.9), Vector3(0.14, 0.5, 0.14), Color(GOLD, 0.6), true, 0.02)
+		# Ground seal makes the cast readable before the bright discharge, even from above.
+		torus(windup, Vector3(0, 0.055, 0), 1.04, 0.022, Color(GOLD, 0.7), true)
+		for spoke in range(8):
+			var bearing = spoke * TAU / 8.0
+			var mark = box(windup, Vector3(cos(bearing)*1.04, 0.06, sin(bearing)*1.04), Vector3(0.20, 0.025, 0.035), Color(GOLD, 0.7), true, 0.006)
+			mark.rotation.y = -bearing
 		windup.hide()
 		var beam = Node3D.new()
 		beam.name = "Beam"
