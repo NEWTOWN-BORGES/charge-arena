@@ -65,6 +65,33 @@ const ULTIMATES = [
 	{"id": "plating", "short": "COURACA", "name": "COURACA DE CRISTAL", "kind": "ultimate", "charge": ULTIMATE_CHARGE, "wait": ULTIMATE_WAIT, "price": 0, "color": "8fd8ff",
 		"about": "Sete segundos com a tua muralha blindada a cristal: cada pancada que lhe acerta perde uma vida pelo caminho. O tiro normal deixa de lhe fazer nada, o turbinado tira 1 em vez de 2 e uma ultimate de 3 tira 2."},
 ]
+# The pilots between the bosses are nobody in particular: no skin of their own, no name to
+# remember. What they bring is one of these - a plain ultimate, built out of what the shop
+# already does, tuned down. They are meant to be recognised on sight after the second time,
+# not studied.
+const BASIC_ULTIMATES = [
+	{"id": "b_salvo", "short": "SALVA", "name": "SALVA", "kind": "ultimate", "charge": ULTIMATE_CHARGE, "wait": ULTIMATE_WAIT, "price": 0, "color": "ffc978",
+		"about": "Tres leques seguidos, a metade da rajada do Faroleiro."},
+	{"id": "b_hail", "short": "GRANIZO", "name": "GRANIZO", "kind": "ultimate", "charge": ULTIMATE_CHARGE, "wait": ULTIMATE_WAIT, "price": 0, "color": "cbb2ff",
+		"about": "Cinco pedras pequenas sobre a muralha do rival, uma vida cada."},
+	{"id": "b_spark", "short": "FAISCA", "name": "FAISCA", "kind": "ultimate", "charge": ULTIMATE_CHARGE, "wait": ULTIMATE_WAIT, "price": 0, "color": "7fe6ff",
+		"about": "Tres descargas curtas, duas vidas cada, sem a tempestade a volta."},
+	{"id": "b_patch", "short": "REMENDO", "name": "REMENDO", "kind": "ultimate", "charge": ULTIMATE_CHARGE, "wait": ULTIMATE_WAIT, "price": 0, "color": "8fe0a8",
+		"about": "Uma vida de volta em cada tijolo seu que ja levou pancada."},
+	{"id": "b_bar", "short": "BARREIRA", "name": "BARREIRA", "kind": "ultimate", "charge": ULTIMATE_CHARGE, "wait": ULTIMATE_WAIT, "price": 0, "color": "dbdf9a",
+		"about": "Muralhas a frente dos bancos dele durante nove segundos."},
+	{"id": "b_push", "short": "EMPURRAO", "name": "EMPURRAO", "kind": "ultimate", "charge": ULTIMATE_CHARGE, "wait": ULTIMATE_WAIT, "price": 0, "color": "b9e6ff",
+		"about": "Uma onda limpa o campo de balas e atordoa quem estiver do outro lado."},
+	{"id": "b_slow", "short": "LASTRO", "name": "LASTRO", "kind": "ultimate", "charge": ULTIMATE_CHARGE, "wait": ULTIMATE_WAIT, "price": 0, "color": "a8dcff",
+		"about": "Quatro segundos a arrastar-te: mais lento, mais devagar a disparar e sem kit."},
+	{"id": "b_forge", "short": "FORJA", "name": "FORJA", "kind": "ultimate", "charge": ULTIMATE_CHARGE, "wait": ULTIMATE_WAIT, "price": 0, "color": "7fe6c8",
+		"about": "Quatro segundos com os tiros dele turbinados e ao dobro da cadencia."},
+	{"id": "b_aim", "short": "MIRA", "name": "MIRA", "kind": "ultimate", "charge": ULTIMATE_CHARGE, "wait": ULTIMATE_WAIT, "price": 0, "color": "ffd06b",
+		"about": "Seis segundos com as balas dele a curvar para o teu tijolo mais proximo."},
+	{"id": "b_drill", "short": "FURA", "name": "FURA", "kind": "ultimate", "charge": ULTIMATE_CHARGE, "wait": ULTIMATE_WAIT, "price": 0, "color": "ff8f6b",
+		"about": "Cinco segundos com as balas dele a atravessar o tijolo que partem."},
+]
+
 # The kit every pilot starts with, and how many bought powers it holds. The third slot is
 # always the skin's ultimate, so it is neither bought nor equipped.
 # Saves written by the old unlocked test builds have everything open and a full wallet.
@@ -108,6 +135,9 @@ static func entry(id: String) -> Dictionary:
 	for ultimate in ULTIMATES:
 		if ultimate.id == id:
 			return ultimate
+	for basic in BASIC_ULTIMATES:
+		if basic.id == id:
+			return basic
 	return {}
 
 static func is_ultimate(id: String) -> bool:

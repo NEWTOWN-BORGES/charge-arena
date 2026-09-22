@@ -169,6 +169,10 @@ const SHOCK_FRONT = 3
 const SHOCK_SECOND = 2
 const SHOCK_REST = 1
 const SHOCK_PLAYER = 1
+# A pilot caught by an ultimate is knocked out of the fight for a moment. Two seconds is
+# long enough to be felt - no walking, no firing, no kit - and short enough that it is a
+# blow and not a sentence.
+const ULTIMATE_STUN = 2.0
 # Depths this close together count as the same row of the wall.
 const SHOCK_ROW = 0.2
 # Pilhagem: how long the two walls spend crossing over in the air before they land.
@@ -903,6 +907,15 @@ func step_ultimate(team: int, dt: float) -> void:
 		"volley":
 			state.ultimate_tick = VOLLEY_SECONDS / VOLLEY_WAVES
 			volley_wave(team)
+		"b_salvo":
+			state.ultimate_tick = VOLLEY_SECONDS / VOLLEY_WAVES
+			volley_wave(team)
+		"b_hail":
+			state.ultimate_tick = METEOR_SECONDS / 5.0
+			sky_strike(team, "meteor", 1, METEOR_RADIUS)
+		"b_spark":
+			state.ultimate_tick = THUNDER_SECONDS / 6.0
+			sky_strike(team, "thunder", THUNDER_DAMAGE, THUNDER_RADIUS)
 
 func fire_ultimate(team: int) -> void:
 	var state: Dictionary = powers[team]
@@ -944,6 +957,40 @@ func fire_ultimate(team: int) -> void:
 			state.ultimate_tick = VOLLEY_SECONDS / VOLLEY_WAVES
 			state.ultimate_shots = VOLLEY_WAVES - 1
 			volley_wave(team)
+		"b_salvo":
+			state.ultimate_time = VOLLEY_SECONDS * 0.6
+			state.ultimate_tick = VOLLEY_SECONDS / VOLLEY_WAVES
+			state.ultimate_shots = 2
+			volley_wave(team)
+		"b_hail":
+			state.ultimate_time = METEOR_SECONDS
+			state.ultimate_tick = METEOR_SECONDS / 5.0
+			state.ultimate_shots = 4
+			sky_strike(team, "meteor", 1, METEOR_RADIUS)
+		"b_spark":
+			state.ultimate_time = THUNDER_SECONDS * 0.5
+			state.ultimate_tick = THUNDER_SECONDS / 6.0
+			state.ultimate_shots = 2
+			sky_strike(team, "thunder", THUNDER_DAMAGE, THUNDER_RADIUS)
+		"b_patch":
+			weld_bricks(team)
+		"b_bar":
+			state.walls_time = WALLS_SECONDS * 1.4
+			events.append({"kind": "walls", "team": team, "p": players[team].p})
+		"b_push":
+			shock_pulse(team)
+		"b_slow":
+			powers[1 - team].freeze_time = FREEZE_SECONDS * 0.8
+			events.append({"kind": "freeze", "team": 1 - team, "p": players[1 - team].p, "seconds": FREEZE_SECONDS * 0.8})
+		"b_forge":
+			state.surge_time = SURGE_SECONDS * 0.7
+			players[team].cooldown = 0.0
+			events.append({"kind": "surge", "team": team, "p": players[team].p, "seconds": SURGE_SECONDS * 0.7, "gain": BOOST_DAMAGE - 1})
+		"b_aim":
+			state.magnet_time = MAGNET_SECONDS * 0.85
+			events.append({"kind": "magnet", "team": team, "p": players[team].p, "seconds": MAGNET_SECONDS * 0.85})
+		"b_drill":
+			state.pierce_time = PIERCE_SECONDS * 0.85
 		"plating":
 			state.plating_time = PLATING_SECONDS
 			events.append({"kind": "plating", "team": team, "p": players[team].p, "seconds": PLATING_SECONDS, "gain": PLATING_SOAK})
@@ -968,7 +1015,7 @@ func sun_ray_bite(team: int) -> void:
 	var enemy = 1 - team
 	var to_enemy: Vector2 = players[enemy].p - origin
 	if to_enemy.dot(heading) > 0 and absf(to_enemy.dot(side)) <= SUN_RAY_HALF_WIDTH:
-		damage_player(enemy, SUN_RAY_DAMAGE, players[enemy].p)
+		ultimate_hit_player(enemy, SUN_RAY_DAMAGE, players[enemy].p)
 	events.append({"kind": "sun_ray", "team": team, "p": origin, "heading": heading, "width": SUN_RAY_HALF_WIDTH})
 
 func sky_strike(team: int, kind: String, damage: int, radius: float) -> void:
@@ -1000,7 +1047,7 @@ func sky_hit(team: int, kind: String, damage: int, radius: float, at: Vector2) -
 		if brick.alive and brick.team != team and brick.p.distance_to(at) <= radius + brick_extent.x:
 			damage_brick(index, damage, team, brick.p, true)
 	if players[enemy].p.distance_to(at) <= radius:
-		damage_player(enemy, damage, players[enemy].p)
+		ultimate_hit_player(enemy, damage, players[enemy].p)
 	events.append({"kind": kind, "team": team, "p": at, "radius": radius})
 
 func volley_wave(team: int) -> void:
@@ -1133,7 +1180,7 @@ func shock_wave(team: int) -> void:
 		for index in rows[rank]:
 			marks.append({"p": bricks[index].p, "bite": bite})
 			damage_brick(index, bite, team, bricks[index].p)
-	damage_player(enemy, SHOCK_PLAYER, players[enemy].p)
+	ultimate_hit_player(enemy, SHOCK_PLAYER, players[enemy].p)
 	for ball in balls:
 		if ball.get("held", false):
 			ball.held = false
@@ -1441,6 +1488,14 @@ func damage_brick(index: int, damage: int, owner: int, at: Vector2, mark: bool =
 	if not brick.alive:
 		cached_firing_angles.clear()
 		credit_destroyed_brick(owner)
+
+func ultimate_hit_player(team: int, damage: int, at: Vector2) -> void:
+	# What an ultimate does to a pilot it catches: the damage, and then a moment on the
+	# floor. Worth more than the life it takes, most of the time.
+	damage_player(team, damage, at)
+	if players[team].stun < ULTIMATE_STUN:
+		players[team].stun = ULTIMATE_STUN
+		events.append({"kind": "stun", "p": at, "team": team})
 
 func damage_player(team: int, damage: int, at: Vector2) -> void:
 	if players[team].stun > 0:

@@ -309,19 +309,6 @@ func build_skins_menu() -> void:
 	skin_swatches.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	skin_swatches.draw.connect(draw_swatches)
 	details.add_child(skin_swatches)
-	# The ultimate that comes with this skin, with its own looping demonstration.
-	skin_ultimate_name = label("", 18, BRASS, true)
-	details.add_child(skin_ultimate_name)
-	skin_ultimate_about = label("", 16, MUTED)
-	skin_ultimate_about.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	skin_ultimate_about.custom_minimum_size.x = 320
-	details.add_child(skin_ultimate_about)
-	skin_ultimate_demo = Control.new()
-	skin_ultimate_demo.clip_contents = true
-	skin_ultimate_demo.custom_minimum_size = Vector2(320, 150)
-	skin_ultimate_demo.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	skin_ultimate_demo.draw.connect(func(): draw_demo(skin_ultimate_demo, String(Skins.CATALOG[preview_index].ultimate)))
-	details.add_child(skin_ultimate_demo)
 	skin_progress = ProgressBar.new()
 	skin_progress.show_percentage = false
 	skin_progress.custom_minimum_size.y = 8
@@ -352,6 +339,19 @@ func build_skins_menu() -> void:
 		thumb.add_child(face)
 		thumb.pressed.connect(func(): preview_skin(index))
 		skin_thumbs.append(thumb)
+	# The ultimate this skin brings, outside the scrolling column: it is the reason a player
+	# opens this page, and it used to be the one thing you had to scroll to reach.
+	skin_ultimate_name = label("", 19, BRASS, true)
+	list.add_child(skin_ultimate_name)
+	skin_ultimate_about = label("", 16, MUTED)
+	skin_ultimate_about.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	list.add_child(skin_ultimate_about)
+	skin_ultimate_demo = Control.new()
+	skin_ultimate_demo.clip_contents = true
+	skin_ultimate_demo.custom_minimum_size = Vector2(320, 160)
+	skin_ultimate_demo.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	skin_ultimate_demo.draw.connect(func(): draw_demo(skin_ultimate_demo, String(Skins.CATALOG[preview_index].ultimate)))
+	list.add_child(skin_ultimate_demo)
 	var actions = HBoxContainer.new()
 	actions.add_theme_constant_override("separation", 8)
 	list.add_child(actions)
@@ -1722,10 +1722,22 @@ func layout() -> void:
 		back.position = Vector2(size.x - 130, 27 + safe_top)
 		back.size = Vector2(100, 46)
 	skins_body.vertical = size.y > size.x
-	viewer.custom_minimum_size = Vector2(0, 360) if skins_body.vertical else Vector2(420, 440)
+	viewer.custom_minimum_size = Vector2(0, 260) if skins_body.vertical else Vector2(420, 400)
 	# The scrolling column keeps the whole panel inside the screen, whatever its height.
-	skins_scroll.custom_minimum_size.y = clampf(size.y - (560 if skins_body.vertical else 210), 250, 520)
+	# The ultimate block sits under the body now and takes its own three hundred, so the
+	# scrolling column has to give that back or the panel grows past the top of the screen.
+	skins_scroll.custom_minimum_size.y = clampf(size.y - 1020, 150, 260) if skins_body.vertical else clampf(size.y - 360, 250, 520)
 	var skins_size = skins_panel.get_combined_minimum_size().max(Vector2(minf(size.x - 48, 640 if skins_body.vertical else 900), 0))
+	# Whatever the sums above say, the panel has to fit: measured once, and any overflow
+	# taken straight off the scrolling column, which is the only part that can give.
+	# Whatever the sums above say, the panel has to fit on the screen: any overflow comes
+	# off the scrolling column, which is the only part that can give, and then the height is
+	# capped outright. The column stretches to fill whatever is left.
+	var room: float = size.y - 28
+	if skins_size.y > room:
+		skins_scroll.custom_minimum_size.y = maxf(skins_scroll.custom_minimum_size.y - (skins_size.y - room), 130)
+		skins_size = skins_panel.get_combined_minimum_size().max(Vector2(minf(size.x - 48, 640 if skins_body.vertical else 900), 0))
+	skins_size.y = minf(skins_size.y, room)
 	skins_panel.size = skins_size
 	skins_panel.position = (size - skins_size) * 0.5
 	var panel_size = video_panel.get_combined_minimum_size().max(Vector2(510, 0))

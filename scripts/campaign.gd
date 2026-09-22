@@ -13,6 +13,8 @@ const SAVE_VERSION = 2
 
 # boss: skin worn by the rival (and its bricks), a different one per level; beating it
 # unlocks that skin. tier: 0 (gentle) to 9 (relentless).
+# The hardest tier any level carries. The whole difficulty curve is read against this.
+const TOP_TIER = 9
 const LEVELS = [
 	{"name": "Circuito Aurora", "tag": "Treino", "boss": 0, "tier": 0,
 		"challenge": "A arena de origem, sem obstáculos: aprende o arco, o ricochete e os aceleradores.",
@@ -69,12 +71,72 @@ const LEVELS = [
 			"obstacles": [
 				{"kind": "orbit", "center": Vector2(0, 0), "travel": 2.4, "frequency": 0.36, "phase": 0.0, "radius": 0.43},
 				{"kind": "orbit", "center": Vector2(0, 0), "travel": 2.4, "frequency": 0.36, "phase": PI, "radius": 0.43}]}},
+	{"name": "Posto Sentinela I", "tag": "Piloto de posto", "boss": 0, "tier": 8, "minor": true, "ultimate": "b_salvo", "kit": ["blast", "air"],
+		"challenge": "Um piloto de posto, sem nome e sem skin: traz a sentinela e o que comprou.",
+		"map": {"tall": true, "lean": true, "id": "posto_01", "outline": "octagon", "boosters": true, "bricks": "wall", "lives": 3, "barriers": [],
+			"obstacles": [
+				{"kind": "slide", "center": Vector2(0, -1.9), "axis": Vector2(1, 0), "travel": 3.6, "frequency": 0.6, "phase": 0.0, "radius": 0.42},
+				{"kind": "slide", "center": Vector2(0, 1.9), "axis": Vector2(1, 0), "travel": 3.6, "frequency": 0.6, "phase": PI, "radius": 0.42}]}},
+	{"name": "Posto Sentinela II", "tag": "Piloto de posto", "boss": 0, "tier": 8, "minor": true, "ultimate": "b_hail", "kit": ["rapid", "walls"],
+		"challenge": "Um piloto de posto, sem nome e sem skin: traz a sentinela e o que comprou.",
+		"map": {"tall": true, "lean": true, "id": "posto_02", "outline": "stadium", "boosters": true, "bricks": "arc", "lives": 3, "barriers": [],
+			"obstacles": [
+				{"kind": "slide", "center": Vector2(0, -2.4), "axis": Vector2(1, 0), "travel": 2.8, "frequency": 0.6, "phase": 0.0, "radius": 0.42},
+				{"kind": "slide", "center": Vector2(0, 2.4), "axis": Vector2(1, 0), "travel": 2.8, "frequency": 0.6, "phase": PI, "radius": 0.42}]}},
+	{"name": "Posto Sentinela III", "tag": "Piloto de posto", "boss": 0, "tier": 8, "minor": true, "ultimate": "b_spark", "kit": ["blast", "weld"],
+		"challenge": "Um piloto de posto, sem nome e sem skin: traz a sentinela e o que comprou.",
+		"map": {"tall": true, "lean": true, "id": "posto_03", "outline": "colosseum", "boosters": true, "bricks": "chevron", "lives": 3, "barriers": [],
+			"obstacles": [
+				{"kind": "slide", "center": Vector2(0, -1.9), "axis": Vector2(1, 0), "travel": 3.6, "frequency": 0.6, "phase": 0.0, "radius": 0.42},
+				{"kind": "slide", "center": Vector2(0, 1.9), "axis": Vector2(1, 0), "travel": 3.6, "frequency": 0.6, "phase": PI, "radius": 0.42}]}},
+	{"name": "Posto Sentinela IV", "tag": "Piloto de posto", "boss": 0, "tier": 8, "minor": true, "ultimate": "b_patch", "kit": ["air", "mirror"],
+		"challenge": "Um piloto de posto, sem nome e sem skin: traz a sentinela e o que comprou.",
+		"map": {"tall": true, "lean": true, "id": "posto_04", "outline": "gorge", "boosters": true, "bricks": "islands", "lives": 4, "barriers": [],
+			"obstacles": [
+				{"kind": "slide", "center": Vector2(0, -2.4), "axis": Vector2(1, 0), "travel": 2.8, "frequency": 0.6, "phase": 0.0, "radius": 0.42},
+				{"kind": "slide", "center": Vector2(0, 2.4), "axis": Vector2(1, 0), "travel": 2.8, "frequency": 0.6, "phase": PI, "radius": 0.42}]}},
+	{"name": "Posto Sentinela V", "tag": "Piloto de posto", "boss": 0, "tier": 8, "minor": true, "ultimate": "b_bar", "kit": ["rapid", "stun"],
+		"challenge": "Um piloto de posto, sem nome e sem skin: traz a sentinela e o que comprou.",
+		"map": {"tall": true, "lean": true, "id": "posto_05", "outline": "lens", "boosters": true, "bricks": "banks", "lives": 4, "barriers": [],
+			"obstacles": [
+				{"kind": "slide", "center": Vector2(0, -1.9), "axis": Vector2(1, 0), "travel": 3.6, "frequency": 0.6, "phase": 0.0, "radius": 0.42},
+				{"kind": "slide", "center": Vector2(0, 1.9), "axis": Vector2(1, 0), "travel": 3.6, "frequency": 0.6, "phase": PI, "radius": 0.42}]}},
 	{"name": "Santuário Eclipse", "tag": "Quatro luas", "boss": 5, "tier": 9,
 		"challenge": "Quatro luas guardam os cantos. O centro continua aberto de ponta a ponta.",
 		"map": {"tall": true, "lean": true, "id": "santuario", "outline": "octagon", "boosters": true, "bricks": "fortress", "lives": 4, "barriers": [],
 			"obstacles": [
 				{"kind": "orbit", "center": Vector2(0, 0), "travel": 2.4, "frequency": 0.42, "phase": 0.0, "radius": 0.42},
 				{"kind": "orbit", "center": Vector2(0, 0), "travel": 2.4, "frequency": 0.28, "phase": PI, "radius": 0.42}]}},
+	{"name": "Posto Arconte I", "tag": "Piloto de posto", "boss": 0, "tier": 9, "minor": true, "ultimate": "b_push", "kit": ["blast", "freeze"],
+		"challenge": "Um piloto de posto, sem nome e sem skin: traz a arconte e o que comprou.",
+		"map": {"tall": true, "lean": true, "id": "posto_06", "outline": "stadium", "boosters": true, "bricks": "wall", "lives": 4, "barriers": [],
+			"obstacles": [
+				{"kind": "slide", "center": Vector2(0, -2.4), "axis": Vector2(1, 0), "travel": 2.8, "frequency": 0.6, "phase": 0.0, "radius": 0.42},
+				{"kind": "slide", "center": Vector2(0, 2.4), "axis": Vector2(1, 0), "travel": 2.8, "frequency": 0.6, "phase": PI, "radius": 0.42}]}},
+	{"name": "Posto Arconte II", "tag": "Piloto de posto", "boss": 0, "tier": 9, "minor": true, "ultimate": "b_slow", "kit": ["laser", "walls"],
+		"challenge": "Um piloto de posto, sem nome e sem skin: traz a arconte e o que comprou.",
+		"map": {"tall": true, "lean": true, "id": "posto_07", "outline": "octagon", "boosters": true, "bricks": "arc", "lives": 4, "barriers": [],
+			"obstacles": [
+				{"kind": "slide", "center": Vector2(0, -1.9), "axis": Vector2(1, 0), "travel": 3.6, "frequency": 0.6, "phase": 0.0, "radius": 0.42},
+				{"kind": "slide", "center": Vector2(0, 1.9), "axis": Vector2(1, 0), "travel": 3.6, "frequency": 0.6, "phase": PI, "radius": 0.42}]}},
+	{"name": "Posto Arconte III", "tag": "Piloto de posto", "boss": 0, "tier": 9, "minor": true, "ultimate": "b_forge", "kit": ["pierce", "weld"],
+		"challenge": "Um piloto de posto, sem nome e sem skin: traz a arconte e o que comprou.",
+		"map": {"tall": true, "lean": true, "id": "posto_08", "outline": "lens", "boosters": true, "bricks": "chevron", "lives": 4, "barriers": [],
+			"obstacles": [
+				{"kind": "slide", "center": Vector2(0, -2.4), "axis": Vector2(1, 0), "travel": 2.8, "frequency": 0.6, "phase": 0.0, "radius": 0.42},
+				{"kind": "slide", "center": Vector2(0, 2.4), "axis": Vector2(1, 0), "travel": 2.8, "frequency": 0.6, "phase": PI, "radius": 0.42}]}},
+	{"name": "Posto Arconte IV", "tag": "Piloto de posto", "boss": 0, "tier": 9, "minor": true, "ultimate": "b_aim", "kit": ["rapid", "thorns"],
+		"challenge": "Um piloto de posto, sem nome e sem skin: traz a arconte e o que comprou.",
+		"map": {"tall": true, "lean": true, "id": "posto_09", "outline": "colosseum", "boosters": true, "bricks": "banks", "lives": 4, "barriers": [],
+			"obstacles": [
+				{"kind": "slide", "center": Vector2(0, -1.9), "axis": Vector2(1, 0), "travel": 3.6, "frequency": 0.6, "phase": 0.0, "radius": 0.42},
+				{"kind": "slide", "center": Vector2(0, 1.9), "axis": Vector2(1, 0), "travel": 3.6, "frequency": 0.6, "phase": PI, "radius": 0.42}]}},
+	{"name": "Posto Arconte V", "tag": "Piloto de posto", "boss": 0, "tier": 9, "minor": true, "ultimate": "b_drill", "kit": ["laser", "magnet"],
+		"challenge": "Um piloto de posto, sem nome e sem skin: traz a arconte e o que comprou.",
+		"map": {"tall": true, "lean": true, "id": "posto_10", "outline": "gorge", "boosters": true, "bricks": "islands", "lives": 4, "barriers": [],
+			"obstacles": [
+				{"kind": "slide", "center": Vector2(0, -2.4), "axis": Vector2(1, 0), "travel": 2.8, "frequency": 0.6, "phase": 0.0, "radius": 0.42},
+				{"kind": "slide", "center": Vector2(0, 2.4), "axis": Vector2(1, 0), "travel": 2.8, "frequency": 0.6, "phase": PI, "radius": 0.42}]}},
 	{"name": "Coroa Solar", "tag": "Tudo junto", "boss": 10, "tier": 10,
 		"challenge": "O desafio final: seis corpos em movimento pelas paredes, o centro livre para o teu tiro.",
 		"map": {"tall": true, "lean": true, "id": "coroa", "outline": "stadium", "boosters": true, "bricks": "fortress", "lives": 4,
@@ -101,11 +163,29 @@ const BOSS_KITS = [
 ]
 
 static func boss_kit(index: int) -> Array:
-	return BOSS_KITS[clampi(index, 0, BOSS_KITS.size() - 1)].duplicate()
+	# A station pilot brings the kit written on its own level; a boss brings the one from
+	# the table, which is ordered by boss and not by level number.
+	var level: Dictionary = LEVELS[clampi(index, 0, LEVELS.size() - 1)]
+	if level.has("kit"):
+		return Array(level.kit).duplicate()
+	var seat: int = 0
+	for step in range(clampi(index, 0, LEVELS.size() - 1)):
+		if not LEVELS[step].get("minor", false):
+			seat += 1
+	return BOSS_KITS[clampi(seat, 0, BOSS_KITS.size() - 1)].duplicate()
+
+static func is_minor(index: int) -> bool:
+	# A station pilot: no skin of its own to win, and a plain ultimate.
+	return LEVELS[clampi(index, 0, LEVELS.size() - 1)].get("minor", false)
+
+static func level_ultimate(index: int) -> String:
+	# What the opponent on this level brings in its third key.
+	var level: Dictionary = LEVELS[clampi(index, 0, LEVELS.size() - 1)]
+	return String(level.ultimate) if level.has("ultimate") else ""
 
 static func ai_profile(index: int, difficulty: int) -> Dictionary:
 	# The boss grows stronger level by level; FÁCIL / DIFÍCIL shift the whole curve.
-	var tier = LEVELS[clampi(index, 0, LEVELS.size() - 1)].tier / float(LEVELS.size() - 1)
+	var tier = LEVELS[clampi(index, 0, LEVELS.size() - 1)].tier / float(TOP_TIER)
 	# The campaign starts welcoming and ramps smoothly. Bosses still develop their
 	# own behaviour, but leave time to aim around the scenery.
 	# Powers too: the first bosses save them for a long time, the last ones keep them coming.

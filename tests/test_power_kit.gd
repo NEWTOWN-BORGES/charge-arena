@@ -233,7 +233,10 @@ func run() -> void:
 	check(r.obstacles[0].p.distance_to(moving_again) > 0.01, "The bumpers pick up their route again")
 
 	# ---------------------------------------------------------------- the boss kits
-	check(Campaign.BOSS_KITS.size() == Campaign.LEVELS.size(), "Every campaign level names the boss kit")
+	# One kit per boss in the table; the station pilots carry their own on the level itself.
+	var boss_levels: Array = range(Campaign.LEVELS.size()).filter(func(i): return not Campaign.is_minor(i))
+	check(Campaign.BOSS_KITS.size() == boss_levels.size(), "Every boss names its kit in the table (%d de %d)" % [Campaign.BOSS_KITS.size(), boss_levels.size()])
+	check(range(Campaign.LEVELS.size()).filter(func(i): return Campaign.is_minor(i)).all(func(i): return Campaign.boss_kit(i) == Array(Campaign.LEVELS[i].kit)), "And every station pilot carries its own")
 	check(Campaign.BOSS_KITS.all(func(kit): return kit.size() == Powers.KIT_SIZE and kit.all(func(id): return Powers.index_of(id) >= 0)), "Each kit holds two powers from the catalogue")
 	var early: Array = Campaign.boss_kit(0)
 	var late: Array = Campaign.boss_kit(Campaign.LEVELS.size() - 1)

@@ -3,6 +3,7 @@ extends SceneTree
 # level, the end-of-level flow, and a menu whose main actions sit under the thumb.
 const Rules = preload("res://scripts/arena_rules.gd")
 const Campaign = preload("res://scripts/campaign.gd")
+const Powers = preload("res://scripts/powers.gd")
 const Skins = preload("res://scripts/skins.gd")
 const TMP = "res://tests/campaign-progress.tmp"
 var failures = 0
@@ -62,15 +63,27 @@ func layout_problems(r) -> Array:
 func run() -> void:
 	var levels: Array = Campaign.LEVELS
 	var ids = levels.map(func(l): return l.map.id)
-	check(levels.size() == 11 and ids.all(func(id): return ids.count(id) == 1), "Eleven levels, each on its own arena")
-	check(levels[0].boss == 0 and levels[1].boss == 1 and levels[9].boss == 5 and levels[10].boss == 10, "Level 1 trains against a copy of the standard pilot, level 2 meets the Faroleiro, the Sentinela is the one before last and the Arconte closes the campaign")
-	var bosses = levels.slice(1).map(func(l): return l.boss)
+	# Eleven bosses, and between the last two runs of them the station pilots: five before
+	# the Sentinela and five before the Arconte.
+	var bosses_only: Array = range(levels.size()).filter(func(i): return not Campaign.is_minor(i))
+	var minors: Array = range(levels.size()).filter(func(i): return Campaign.is_minor(i))
+	check(levels.size() == 21 and ids.all(func(id): return ids.count(id) == 1), "Twenty-one levels, each on its own arena (%d)" % levels.size())
+	check(bosses_only.size() == 11 and minors.size() == 10, "Eleven of them are bosses and ten are station pilots")
+	check(minors.all(func(i): return not levels[i].has("minor") or levels[i].minor), "Every station level says so")
+	check(levels[0].boss == 0 and levels[1].boss == 1 and levels[bosses_only[9]].boss == 5 and levels[bosses_only[10]].boss == 10, "Level 1 trains against a copy of the standard pilot, level 2 meets the Faroleiro, the Sentinela is the one before last and the Arconte closes the campaign")
+	check(minors.all(func(i): return levels[i].boss == 0 and levels[i].has("ultimate") and levels[i].has("kit")), "A station pilot flies the standard hull and brings a plain ultimate and a bought kit")
+	var plain: Array = minors.map(func(i): return String(levels[i].ultimate))
+	check(plain.size() == 10 and plain.all(func(u): return Powers.BASIC_ULTIMATES.any(func(e): return e.id == u)), "And those ultimates all come from the plain set")
+	check(range(1, plain.size()).all(func(i): return not plain.slice(0, i).has(plain[i])), "No two station pilots bring the same one")
+	var bosses = bosses_only.slice(1).map(func(i): return levels[i].boss)
 	check(bosses.size() == 10 and bosses.all(func(b): return bosses.count(b) == 1), "Every boss skin has a level of its own")
 	var ultimates: Array = bosses.map(func(b): return String(Skins.CATALOG[b].ultimate))
+	check(Campaign.boss_kit(bosses_only[10]) == Campaign.BOSS_KITS[10], "A boss still gets its kit from the table, whatever its level number is now")
 	check(ultimates == ["volley", "plating", "surge", "sentries", "bloom", "plunder", "thunder", "meteors", "singularity", "sun_ray"], "Every boss brings one of its own, in order: volley, plating, surge, sentries, bloom, plunder, thunder, meteors, singularity, sun ray")
 	check(String(Skins.CATALOG[levels[0].boss].ultimate) == "", "And level 1 is a training match against a copy of the standard pilot, which has none")
+	check(Campaign.level_ultimate(bosses_only[10]) == "", "A boss level names no ultimate of its own: the skin brings it")
 	check(levels.all(func(l): return l.boss >= 0 and l.boss <= 10 and l.challenge != "" and l.tag != ""), "Every level names its challenge and a valid boss skin")
-	check(range(1, 11).all(func(i): return levels[i].tier > levels[i - 1].tier), "Bosses get stronger level by level")
+	check(range(1, bosses_only.size()).all(func(i): return levels[bosses_only[i]].tier > levels[bosses_only[i - 1]].tier), "Bosses get stronger level by level")
 	var outlines = levels.map(func(l): return l.map.outline)
 	var layouts = levels.map(func(l): return l.map.bricks)
 	# Every campaign arena has a broad flat end behind the goals, which is what gives the
@@ -201,7 +214,7 @@ func run() -> void:
 	swipe.call(middle - Vector2(120, 0), middle + Vector2(120, 0))
 	swipe.call(middle - Vector2(120, 0), middle + Vector2(120, 0))
 	check(game.menu_level == 0, "Swiping right goes back and stops at level 1")
-	for i in range(13):
+	for i in range(Campaign.LEVELS.size() + 3):
 		game.step_menu_level(1)
 	check(game.menu_level == Campaign.LEVELS.size() - 1, "Browsing stops at the last level")
 	game.step_menu_level(-(Campaign.LEVELS.size() - 1))

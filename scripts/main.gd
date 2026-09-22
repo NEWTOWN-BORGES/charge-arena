@@ -144,13 +144,14 @@ func _ready() -> void:
 		if arg.begins_with("--capture="):
 			capture_preview(arg.trim_prefix("--capture="))
 
-func use_loadouts(boss_kit: Array, boss_skin: int = 0) -> void:
+func use_loadouts(boss_kit: Array, boss_skin: int = 0, rival_ultimate: String = "") -> void:
 	# Two bought powers plus the ultimate that comes with each pilot's skin. The local
 	# pilot is not always team 0 — in PvP the guest plays team 1 — so the kits are placed
 	# by side. Built the other way round, the guest walked in with the host's ultimate in
 	# its keys and none of its own.
 	var mine: Array = power_shop.loadout(String(Skins.CATALOG[skins.selected].ultimate))
-	var theirs: Array = boss_kit + [String(Skins.CATALOG[boss_skin].ultimate)]
+	# A station pilot has no skin to bring one, so its level names the ultimate instead.
+	var theirs: Array = boss_kit + [rival_ultimate if rival_ultimate != "" else String(Skins.CATALOG[boss_skin].ultimate)]
 	rules.loadouts = [mine, theirs] if local_team == 0 else [theirs, mine]
 	credited_bricks = 0
 	if PowerShop.START_WITH_ULTIMATE_FOR_TESTS:
@@ -198,12 +199,15 @@ func start_level(index: int) -> void:
 	hud.sync_menu_level(index)
 	use_map(level.map)
 	rules.ai_profile = Campaign.ai_profile(index, game_settings.difficulty)
-	use_loadouts(Campaign.boss_kit(index), level.boss)
+	use_loadouts(Campaign.boss_kit(index), level.boss, Campaign.level_ultimate(index))
 	rules.reset_match()
 	dress_pilots(local_team)
-	# The boss wears its own skin and its own bricks, in the colours they were drawn in.
-	arena.set_skin(1, level.boss)
-	hud.level_info = {"number": index + 1, "name": level.name, "challenge": level.challenge, "boss_name": Skins.CATALOG[level.boss].name, "has_next": index + 1 < Campaign.LEVELS.size()}
+	# The boss wears its own skin and its own bricks, in the colours they were drawn in. A
+	# station pilot has none: it flies the standard hull in the rival's colour, which is how
+	# you know at a glance that there is no skin to win here.
+	arena.set_skin(1, level.boss, Campaign.is_minor(index))
+	var rival_name: String = String(level.name).to_upper() if Campaign.is_minor(index) else String(Skins.CATALOG[level.boss].name)
+	hud.level_info = {"number": index + 1, "name": level.name, "challenge": level.challenge, "boss_name": rival_name, "has_next": index + 1 < Campaign.LEVELS.size()}
 	hud.level_result = ""
 	hud.level_skin = ""
 	hud.show_game(mode, local_team)
@@ -278,13 +282,14 @@ func finish_level() -> void:
 		opened = campaign.complete(level_index)
 		if campaign.save_preferences() != OK:
 			push_warning("Could not save campaign progress to " + campaign.config_path)
-		if skins.defeat(boss):
+		# Nothing to win from a station pilot but the way through.
+		if not Campaign.is_minor(level_index) and skins.defeat(boss):
 			save_skins()
 			hud.sync_skins(skins)
 			hud.level_skin = Skins.CATALOG[boss].name
 			hud.announce_unlock([hud.level_skin])
-		# Beaten, the boss drops the red and shows its own colours.
-		arena.set_skin(1, boss, false)
+		if not Campaign.is_minor(level_index):
+			arena.set_skin(1, boss, false)
 	hud.level_result = "won" if won else "lost"
 	hud.level_opened = opened
 	hud.sync_campaign(campaign)
