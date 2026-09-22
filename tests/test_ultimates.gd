@@ -78,7 +78,7 @@ func run() -> void:
 	check(String(Skins.CATALOG[0].ultimate) == "", "The standard pilot is the one without: it is the training opponent, not a boss")
 	var ids: Array = carriers.map(func(s): return String(s.ultimate))
 	ids.sort()
-	check(ids.size() == Powers.ULTIMATES.size() and range(1, ids.size()).all(func(i): return ids[i] != ids[i - 1]), "Every ultimate in the catalogue belongs to exactly one skin")
+	check(Powers.ULTIMATES.all(func(u): return ids.count(u.id) == 1) and ids.count("b_forge") == 1 and range(1, ids.size()).all(func(i): return ids[i] != ids[i - 1]), "Each boss has its ultimate and Aurel carries Forge")
 	check(Skins.CATALOG[10].ultimate == "sun_ray" and Skins.CATALOG[2].ultimate == "meteors" and Skins.CATALOG[7].ultimate == "thunder" and Skins.CATALOG[3].ultimate == "bloom" and Skins.CATALOG[9].ultimate == "plunder", "Arconte, Astrónomo, Caça-Trovões, Jardineiro and Corsário, each with its own")
 
 	# ---------------------------------------------------------------- every ultimate glows first

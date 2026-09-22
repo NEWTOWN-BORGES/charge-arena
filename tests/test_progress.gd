@@ -45,9 +45,8 @@ func fresh_shop():
 
 func run() -> void:
 	# ---------------------------------------------------------------- the demo starts closed
-	# Open or closed, never half: a build that unlocked the levels but not the powers, or
-	# the other way round, would be a mess nobody could reason about.
-	check(Campaign.UNLOCK_ALL_FOR_TESTS == Skins.UNLOCK_ALL_FOR_TESTS and Skins.UNLOCK_ALL_FOR_TESTS == Powers.UNLOCK_ALL_FOR_TESTS, "The three test unlocks move together")
+	# This test APK exposes the sandbox arenas and powers, while keeping skin prizes earned.
+	check(not Skins.UNLOCK_ALL_FOR_TESTS and Campaign.UNLOCK_ALL_FOR_TESTS and Powers.UNLOCK_ALL_FOR_TESTS, "Skin rewards progress while sandbox arenas and powers remain open")
 	check(not Powers.START_WITH_ULTIMATE_FOR_TESTS, "And a match still starts with the ultimate keys cold, open build or not")
 	var campaign = fresh_campaign()
 	var skins = fresh_skins()
@@ -70,7 +69,7 @@ func run() -> void:
 	for level in range(2, Campaign.LEVELS.size() + 1):
 		if Skins.boss_skin(level) >= 0:
 			reachable += 1
-	check(reachable == Skins.CATALOG.size() - 1, "Every pilot but the starter is the prize of a level (%d)" % reachable)
+	check(reachable == Skins.CATALOG.filter(func(s): return s.level > 0).size(), "Every pilot but the starter is the prize of a level (%d)" % reachable)
 
 	# ---------------------------------------------------------------- the wallet pays for the shop
 	var cheapest = 99999

@@ -8,6 +8,24 @@ O menu 3D com carrossel de mapas e adversários voltou a ser a entrada principal
 
 # Taça Aurora — demo 2.3
 
+## Percurso pessoal sem spoilers
+
+PERCURSO mostra apenas a história do protagonista: a consequência de vencer no topo,
+o confronto atual confirmado, o piloto equipado em «TU ESTÁS AQUI» e, abaixo,
+as vitórias do histórico guardado, da mais recente à primeira, com os seus resultados.
+O último derrotado fica imediatamente atrás do jogador. Notícias e percursos de
+outros participantes permanecem no Jornal e na Árvore.
+
+As qualificatórias revelam somente o adversário da ronda atual. O rival da final
+de setor só aparece quando a chave tem um vencedor único e o resultado da final
+o confirma. Enquanto esse resultado não existir, aparece «ADVERSÁRIO A DEFINIR»
+e não é possível iniciar esse combate. Nenhum nome futuro é antecipado.
+Conquistar o setor encerra esta demo; o Percurso não promete uma etapa ainda indisponível.
+
+Validação dedicada: `tests/test_cup_path.gd` (todas as etapas, ausência de spoilers,
+resultados, ordem do histórico, adversário pendente e restauro). Capturas vertical
+e horizontal: `tests/capture_path.gd`, gravadas em `user://path-*.png`.
+
 ## O que esta versão entrega
 
 Uma demo com dez qualificatórias contra Téo, Mavi, Bento, Suri, Orion, Nila, Dário, Íris, Zeno e Vésper, seguida da final contra o Faroleiro. As arenas aproveitam as geometrias já verificadas do jogo; a dificuldade da IA sobe ao longo do percurso. O grau Fácil/Normal/Difícil está nas Opções.

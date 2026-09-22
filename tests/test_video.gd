@@ -51,7 +51,7 @@ func run() -> void:
 	check(root.scaling_3d_scale < Settings.RENDER_SCALES[0], "Only Leve may reduce 3D resolution on a weak phone")
 	settings.configure(90, 2, true, true)
 	game.hud.sync_video(settings)
-	check(game.hud.fps_choice.selected == 1 and game.hud.quality_choice.selected == 2 and game.hud.fps_label.visible, "Settings menu and real FPS counter reflect selected preferences")
+	check(game.hud.fps_choice.selected == Settings.FPS_OPTIONS.find(90) and game.hud.quality_choice.selected == 2 and game.hud.fps_label.visible, "Settings menu and real FPS counter reflect selected preferences")
 	game.start_pve()
 	game.hud.move_vector = Vector2.RIGHT
 	game.mouse_firing = true

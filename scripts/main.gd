@@ -148,6 +148,12 @@ func _ready() -> void:
 	multiplayer.server_disconnected.connect(func(): return_to_menu.call_deferred("O anfitrião saiu da partida."))
 	build_audio()
 	cup.restore()
+	# Reconcile earned rewards when upgrading an older tournament save.
+	for reward in cup.defeated_bosses():
+		skins.defeat(reward)
+	if cup.wins == Cup.FULL_MATCHES:
+		skins.defeat(11)
+	save_skins()
 	cup_screen = CupScreen.new()
 	cup_screen.cup = cup
 	cup_screen.player_skin_provider = func(): return skins.selected
@@ -156,6 +162,13 @@ func _ready() -> void:
 	cup_screen.action.connect(cup_action)
 	cup_screen.refresh()
 	cup_screen.hide()
+	var scroll_gestures = preload("res://scripts/ui_scroll.gd").new()
+	scroll_gestures.name = "ScrollGestures"
+	scroll_gestures.surface = func():
+		for overlay in [hud.pause_overlay, hud.video_overlay, hud.powers_overlay, hud.skins_overlay, hud.levels_overlay, hud.pvp_overlay]:
+			if overlay.visible: return overlay
+		return cup_screen if cup_screen.visible else hud.menu
+	hud.add_child(scroll_gestures)
 	arena.show()
 	for arg in OS.get_cmdline_user_args():
 		if arg == "--pve":
@@ -1190,9 +1203,9 @@ func cup_action(id: String) -> void:
 		"pvp": hud.open_pvp()
 
 func start_cup() -> void:
-	arena.show()
-	if cup.wins >= Cup.DEMO_MATCHES:
+	if cup.confirmed_match().is_empty():
 		return
+	arena.show()
 	close_network()
 	pve_paused = false
 	mode = "pve"
@@ -1202,10 +1215,10 @@ func start_cup() -> void:
 	var entry = cup.level()
 	use_map(entry.map)
 	rules.ai_profile = cup.profile(game_settings.difficulty)
-	use_loadouts(cup.kit(), 1 if cup.wins == 10 else 0)
+	use_loadouts(cup.kit(), cup.boss_id() if cup.local_wins() == 10 else 0, cup.ultimate())
 	rules.reset_match()
 	dress_pilots(0)
-	arena.set_skin(1, entry.boss, cup.wins < 10, entry.hue)
+	arena.set_skin(1, entry.boss, cup.local_wins() < 10, entry.hue)
 	hud.team_hues = arena.unit_hues
 	hud.level_info = {"number": cup.wins + 1, "cup": true, "name": entry.name, "challenge": "Vence para avançar na Taça Aurora.", "boss_name": cup.opponent(), "has_next": false}
 	hud.level_result = ""
@@ -1215,21 +1228,28 @@ func start_cup() -> void:
 	cup_active = true
 	cup_resolved = false
 	last_phase = ""
-	music.play_skin(1 if cup.wins == 10 else cup.wins + 1)
+	music.play_skin(cup.boss_id() if cup.local_wins() == 10 else cup.local_wins() + 1)
 
 func finish_cup() -> void:
 	var won = rules.winner == 0
 	var rival = cup.opponent()
+	var reward_skin = cup.boss_id() if cup.local_wins() == 10 else 0
 	var score = Array(rules.scores).duplicate()
 	bank_bricks()
 	if won:
 		cup.complete(score)
 		if cup.save() != OK:
 			push_warning("Não foi possível guardar a Taça.")
-		if cup.wins == Cup.DEMO_MATCHES:
-			skins.defeat(1)
-			save_skins()
+		if reward_skin > 0:
+			skins.defeat(reward_skin)
+		if cup.wins == Cup.FULL_MATCHES:
+			skins.defeat(11)
+		save_skins()
 	cup_screen.result = ("Vitória" if won else "Derrota") + " · %d–%d contra %s" % [score[0], score[1], rival]
+	if won and reward_skin > 0:
+		cup_screen.result += " · SKIN DESBLOQUEADA: " + Skins.CATALOG[reward_skin].name
+	if won and cup.wins == Cup.FULL_MATCHES:
+		cup_screen.result += " · PRÉMIO DA TAÇA: AUREL"
 	return_to_menu()
 	open_cup()
 	cup_screen.tab = 2 if won else 0

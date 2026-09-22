@@ -22,7 +22,7 @@ func floor_glow(projectile: Node3D) -> Color:
 	return Color.BLACK
 
 func run() -> void:
-	check(Skins.CATALOG.size() == 11, "Catalog has eleven skins")
+	check(Skins.CATALOG.size() == 12, "Catalog has ten bosses, Aurora and the Aurel prize")
 	check(Skins.CATALOG[0].level == 0 and Skins.CATALOG[0].name == "PILOTO AURORA", "First skin is the default Aurora pilot")
 	check(Skins.boss_skin(1) == -1, "Level 1 trains against the standard pilot, so it carries no skin")
 	check(range(2, 12).all(func(lvl): return Skins.boss_skin(lvl) > 0), "Every campaign level from 2 to 11 has a boss skin of its own")
@@ -130,9 +130,9 @@ func run() -> void:
 	hud.preview_skin(2)
 	await process_frame
 	check(hud.viewer_skin == 2 and hud.viewer_pilot.has_node("Body/OrbitTilt/Orbit") and hud.skin_name.text == "ASTRÓNOMO", "Previewing Astrónomo updates 3D model and name")
-	check(hud.skin_thumbs.size() == 11 and hud.viewer_bricks.size() == 2, "Shows all eleven skins and two exhibition bricks")
-	check(hud.skin_action.disabled and hud.skin_action.text.begins_with("VENCE O NÍVEL") and hud.skin_state.text.begins_with("BLOQUEADA"), "Locked skin displays required level and disabled action")
-	check(hud.skins_button.text == "SKINS  1/11", "Menu counts one unlocked skin")
+	check(hud.skin_thumbs.size() == Skins.CATALOG.size() and hud.viewer_bricks.size() == 2, "Shows all eleven skins and two exhibition bricks")
+	check(hud.skin_action.disabled and hud.skin_action.text == "VENCE ESTE PILOTO" and hud.skin_state.text.begins_with("BLOQUEADA"), "Locked skin displays victory requirement and disabled action")
+	check(hud.skins_button.text == "SKINS  1/12", "Menu counts one unlocked skin")
 
 	var drag = InputEventMouseMotion.new()
 	drag.button_mask = MOUSE_BUTTON_MASK_LEFT
@@ -155,7 +155,7 @@ func run() -> void:
 	check(game.skins.is_unlocked(6), "Winning the level unlocks the boss skin")
 	check(hud.level_skin == "RELOJOEIRO", "HUD announces the unlocked boss skin")
 	check(game.arena.unit_tints[1] == false, "After victory the boss drops the red tint and displays true colours")
-	check(hud.skins_button.text == "SKINS  2/11", "Skins button updates count to 2/11")
+	check(hud.skins_button.text.begins_with("SKINS  2/12"), "Skins button updates count to 2/12")
 
 	# Return to menu to equip newly unlocked skin
 	game.return_to_menu()

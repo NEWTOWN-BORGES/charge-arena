@@ -11,7 +11,7 @@ func run() -> void:
 	var rival = Data.profile(cup, "Vértice")
 	assert(rival.wins == 7 and rival.history.back().loser == "Lira")
 	assert(Data.profile(cup, "Tu").wins == 7)
-	assert(Data.profile(cup, "Nadir").confirmed_only)
+	assert(Data.profile(cup, "Aurel").state == "CHAMPION")
 	var screen = preload("res://scripts/cup_screen.gd").new()
 	screen.cup = cup
 	root.add_child(screen)

@@ -31,10 +31,12 @@ const CATALOG = [
 		"body": "2c3a4d", "light": "ff5c8a", "shot": "ff4f7e"},
 	{"name": "ARCONTE SOLAR", "ultimate": "sun_ray", "weapon": "Cetro Solar", "bricks": "Obeliscos solares", "about": "Senhor do circuito: coroa de raios de sol, manto real e cetro com um sol em miniatura.", "level": 11,
 		"body": "5a2e4f", "light": "ffe45c", "shot": "fff06a"},
+	{"name": "AUREL", "ultimate": "b_forge", "weapon": "Manopla Imperial", "bricks": "Emblemas do Penta", "about": "Quatro títulos, um nome nas capas. Armadura de marfim e ouro, quatro insígnias e o brasão do tetracampeão.", "level": 0, "cup_reward": true,
+		"body": "e4dfce", "light": "ffd477", "shot": "ffd477"},
 ]
 # Testing build: every skin can be worn without beating its boss first. Set to false to
 # earn them again; the bosses you have beaten are saved either way.
-const UNLOCK_ALL_FOR_TESTS = true
+const UNLOCK_ALL_FOR_TESTS = false
 # Saves written by the old unlocked test builds have every pilot already won. The demo
 # refuses to read them, so a run starts with the standard pilot alone.
 const SAVE_VERSION = 2
@@ -65,7 +67,7 @@ static func boss_skin(level: int) -> int:
 	return -1
 
 func is_unlocked(index: int) -> bool:
-	return index >= 0 and index < CATALOG.size() and (unlock_all or CATALOG[index].level == 0 or defeated.has(index))
+	return index >= 0 and index < CATALOG.size() and (unlock_all or index == 0 or defeated.has(index))
 
 func unseen() -> Array:
 	# Won and not yet looked at. The starter pilot is never news.

@@ -16,6 +16,7 @@ const TRACKS = {
 	"skin_8": preload("res://audio/music_skin_8.ogg"),
 	"skin_9": preload("res://audio/music_skin_9.ogg"),
 	"skin_10": preload("res://audio/music_skin_10.ogg"),
+	"skin_11": preload("res://audio/music_cup.ogg"),
 }
 const CONFIG_PATH = "user://audio_settings.cfg"
 const FADE_SECONDS = 1.4
@@ -66,7 +67,7 @@ func play(key: String) -> void:
 		track = key
 
 func play_skin(index: int) -> void:
-	play("match" if index <= 0 else "skin_%d" % clampi(index, 1, 10))
+	play("match" if index <= 0 else "skin_%d" % clampi(index, 1, 11))
 
 func follow_phase(phase: String) -> void:
 	duck_target_db = DUCK_DB.get(phase, 0.0)

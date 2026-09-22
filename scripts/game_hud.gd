@@ -151,6 +151,8 @@ var power_demo: Control
 var skin_ultimate_name: Label
 var skin_ultimate_about: Label
 var skin_ultimate_demo: Control
+var viewer_column: VBoxContainer
+var viewer_zoom = 1.0
 var skins_scroll: ScrollContainer
 # Seconds into the looping demonstration of the previewed power.
 var demo_clock = 0.0
@@ -283,7 +285,7 @@ func build_skins_menu() -> void:
 	titles.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	header.add_child(titles)
 	titles.add_child(label("HANGAR · PILOTOS", 28, WHITE, true))
-	titles.add_child(label("Escolhe um piloto · roda o modelo com o dedo.", 17, MUTED))
+	titles.add_child(label("Roda com o dedo · usa + e − para ver os detalhes.", 17, MUTED))
 	skins_total = label("", 16, CYAN, true)
 	titles.add_child(skins_total)
 	skins_body = BoxContainer.new()
@@ -291,7 +293,22 @@ func build_skins_menu() -> void:
 	skins_body.add_theme_constant_override("separation", 16)
 	list.add_child(skins_body)
 	build_skin_viewer()
-	skins_body.add_child(viewer)
+	viewer_column = VBoxContainer.new()
+	viewer_column.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	viewer_column.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	skins_body.add_child(viewer_column)
+	viewer.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	viewer_column.add_child(viewer)
+	var zoom_controls = HBoxContainer.new()
+	zoom_controls.add_theme_constant_override("separation", 8)
+	viewer_column.add_child(zoom_controls)
+	for item in [["−", 0.16], ["ENQUADRAR", 0.0], ["+", -0.16]]:
+		var zoom_button = make_button(item[0], false)
+		zoom_button.custom_minimum_size.y = 44
+		zoom_button.add_theme_font_size_override("font_size", 16)
+		zoom_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		zoom_button.pressed.connect(func(): zoom_viewer(item[1]))
+		zoom_controls.add_child(zoom_button)
 	# Name, weapon, palette, ultimate and the thumbnail grid: more than a phone screen
 	# holds, so the column scrolls inside the panel.
 	skins_scroll = ScrollContainer.new()
@@ -428,9 +445,9 @@ func frame_viewer(tall: float) -> void:
 		return
 	var middle: float = tall * 0.5
 	# What half an image has to cover, plus a little air, converted into a distance.
-	var reach: float = maxf(middle + 0.35, 0.95)
+	var reach: float = maxf(middle + 0.12, 0.85)
 	var back: float = reach / tan(deg_to_rad(viewer_camera.fov) * 0.5)
-	viewer_camera.transform = Transform3D(Basis(), Vector3(0, middle + 0.55, back + 1.4)).looking_at(Vector3(0, middle, 0), Vector3.UP)
+	viewer_camera.transform = Transform3D(Basis(), Vector3(0, middle + 0.55, (back + 0.15) * viewer_zoom)).looking_at(Vector3(0, middle, 0), Vector3.UP)
 
 func measure_viewer_pilot() -> float:
 	# How tall the model standing on the turntable actually is, in world units.
@@ -481,7 +498,14 @@ func build_viewer_pilot() -> void:
 	viewer_locked = locked
 	viewer_fire_timer = 0.35
 
+func zoom_viewer(amount: float) -> void:
+	viewer_zoom = 1.0 if is_zero_approx(amount) else clampf(viewer_zoom + amount, 0.55, 1.55)
+	frame_viewer(measure_viewer_pilot())
+
 func viewer_input(event: InputEvent) -> void:
+	if event is InputEventMouseButton and event.pressed:
+		if event.button_index == MOUSE_BUTTON_WHEEL_UP: zoom_viewer(-0.1)
+		elif event.button_index == MOUSE_BUTTON_WHEEL_DOWN: zoom_viewer(0.1)
 	# Touch arrives as emulated mouse motion, so one path serves phones and PC.
 	if event is InputEventMouseMotion and event.button_mask & MOUSE_BUTTON_MASK_LEFT:
 		viewer_yaw += event.relative.x * 0.012
@@ -622,12 +646,14 @@ func refresh_skins() -> void:
 	skin_progress.visible = level > 0
 	skin_progress.max_value = bosses
 	skin_progress.value = skins_progress.unlocked_count() - 1
-	if level == 0:
+	if entry.get("cup_reward", false):
+		skin_state.text = "PRÉMIO DA TAÇA · DESBLOQUEADO" if open else "SKIN DE PRÉMIO · CONQUISTA A TAÇA"
+	elif level == 0:
 		skin_state.text = "DE SÉRIE"
 	elif open:
 		skin_state.text = "DESBLOQUEADA  ·  BOSS DO NÍVEL %d" % level
 	else:
-		skin_state.text = "BLOQUEADA  ·  DERROTA O BOSS DO NÍVEL %d" % level
+		skin_state.text = "BLOQUEADA  ·  VENCE ESTE PILOTO NA TAÇA OU NO NÍVEL %d" % level
 	skin_state.add_theme_color_override("font_color", LIME if open else MUTED)
 	var ultimate: Dictionary = Powers.entry(String(entry.ultimate))
 	skin_ultimate_name.text = ("ULTIMATE  ·  " + String(ultimate.name)) if not ultimate.is_empty() else "ULTIMATE  ·  EM BREVE"
@@ -639,7 +665,7 @@ func refresh_skins() -> void:
 	elif open:
 		skin_action.text = "EQUIPAR"
 	else:
-		skin_action.text = "VENCE O NÍVEL %d" % level
+		skin_action.text = "CONQUISTA A TAÇA" if entry.get("cup_reward", false) else "VENCE ESTE PILOTO"
 	skin_action.disabled = skins_progress.selected == preview_index or not open
 	for index in range(skin_thumbs.size()):
 		var thumb: Button = skin_thumbs[index]
@@ -662,7 +688,7 @@ func draw_swatches() -> void:
 		skin_swatches.draw_string(font_bold, at + Vector2(17, 5), items[i][0], HORIZONTAL_ALIGNMENT_LEFT, -1, 11, WHITE)
 	var note = "Paleta própria · ombros na cor da equipa"
 	if locked:
-		note = "Cores originais reveladas ao derrotar o boss"
+		note = "Roda o piloto para veres todos os detalhes"
 	elif entry.body == "" and entry.shot == "":
 		note = "Cores da equipa: jade ou coral"
 	elif entry.body == "":
@@ -680,7 +706,7 @@ func draw_thumb(canvas: Control, index: int) -> void:
 	var color = MUTED
 	if locked:
 		canvas.draw_circle(Vector2(canvas.size.x * 0.5, 56), 47, Color(0.02, 0.05, 0.06, 0.45), true, -1, smooth)
-		caption = "BOSS NÍVEL %d" % Skins.CATALOG[index].level
+		caption = "PRÉMIO DA TAÇA" if Skins.CATALOG[index].get("cup_reward", false) else "BOSS NÍVEL %d" % Skins.CATALOG[index].level
 	elif skins_progress.selected == index:
 		caption = "EQUIPADA"
 		color = LIME
@@ -1761,9 +1787,10 @@ func layout() -> void:
 		back.size = Vector2(100, 46)
 	skins_body.vertical = size.y > size.x
 	var skin_room = size.y - safe_top - safe_bottom - 48
-	viewer.custom_minimum_size = Vector2(0, clampf(skin_room * 0.29, 190, 300)) if skins_body.vertical else Vector2(350, maxf(220, minf(300, skin_room - 430)))
-	skins_scroll.custom_minimum_size.y = maxf(140, skin_room - viewer.custom_minimum_size.y - 520) if skins_body.vertical else maxf(200, skin_room - 430)
-	var skins_size = Vector2(minf(size.x - 48, 640 if skins_body.vertical else 1000), skin_room)
+	viewer.custom_minimum_size = Vector2(0, clampf(skin_room * 0.42, 300, 520)) if skins_body.vertical else Vector2(480, maxf(240, skin_room - 380))
+	viewer_column.custom_minimum_size.x = 0 if skins_body.vertical else 480
+	skins_scroll.custom_minimum_size.y = maxf(120, skin_room - viewer.custom_minimum_size.y - 560) if skins_body.vertical else maxf(200, skin_room - 430)
+	var skins_size = Vector2(minf(size.x - 48, 680 if skins_body.vertical else 1140), skin_room)
 	skins_panel.size = skins_size
 	skins_panel.position = Vector2((size.x - skins_size.x)*0.5, safe_top + 24)
 	options_scroll.custom_minimum_size = Vector2(510, minf(700, size.y - safe_top - safe_bottom - 184))

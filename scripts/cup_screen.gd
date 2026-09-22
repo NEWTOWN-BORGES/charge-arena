@@ -124,6 +124,11 @@ func arrange() -> void:
 	footer.size = Vector2(w, 204)
 	scroll.position = Vector2(x, top + 156)
 	scroll.size = Vector2(w, maxf(100, footer.position.y - scroll.position.y - 18))
+	if wide and tab == 0 and w >= 900:
+		# Keep the protagonist visible beside the actions on a short desktop window.
+		footer.position.x = x + w - 400
+		footer.size.x = 400
+		scroll.size = Vector2(w - 424, size.y - scroll.position.y - 28)
 	if is_instance_valid(tree_view):
 		tree_view.position = scroll.position
 		tree_view.size = scroll.size
@@ -158,22 +163,14 @@ func refresh() -> void:
 		content.remove_child(child)
 		child.queue_free()
 	scroll.scroll_vertical = 0
-	play.disabled = cup.wins >= cup.DEMO_MATCHES
-	play.text = "DEMO CONCLUÍDA" if play.disabled else ("DISPUTAR A FINAL  →" if cup.wins == 10 else "JOGAR QUALIFICATÓRIA %02d  →" % (cup.wins + 1))
+	var next_match: Dictionary = cup.confirmed_match()
+	play.disabled = next_match.is_empty()
+	subtitle.text = "TAÇA AURORA   /   " + cup.sector_label()
+	play.text = "TAÇA CONQUISTADA" if cup.wins >= cup.DEMO_MATCHES else ("AGUARDANDO ADVERSÁRIO" if play.disabled else ("DISPUTAR A FINAL  →" if next_match.is_final else "JOGAR RONDA %02d  →" % next_match.round))
 	for i in range(nav.get_child_count()):
 		nav.get_child(i).modulate = WHITE if tab == i else MUTED
 	if tab == 0:
-		if not result.is_empty():
-			card("ÚLTIMO COMBATE", result, "O teu progresso está guardado. Consulta o Jornal para acompanhar o outro lado da Taça.", GOLD)
-		hero()
-		card("%02d / 11 VITÓRIAS   ·   SETOR DO FAROL" % cup.wins, "A tua história começa aqui." if cup.wins == 0 else ("Setor conquistado." if cup.wins >= 11 else "O próximo passo é teu."), "Dez qualificatórias. Uma final de setor. Enquanto jogas, 1 024 pilotos disputam a chave que vai entregar o teu primeiro boss.")
-		var path_text = ""
-		for i in range(11):
-			var name_value = cup.NAMES[i] if i < 10 else "FAROLEIRO · FINAL"
-			path_text += "%s  %02d   %s\n" % ["✓" if i < cup.wins else ("›" if i == cup.wins else "·"), i + 1, name_value]
-		card("O TEU PERCURSO", "Cada vitória abre a seguinte", path_text.strip_edges())
-		var story: Dictionary = cup.headlines.back()
-		card("ÚLTIMA HORA", story.title, story.body, GOLD)
+		journey(next_match)
 	elif tab == 1:
 		tree_view = preload("res://scripts/cup_tree.gd").new()
 		tree_view.cup = cup
@@ -188,19 +185,73 @@ func refresh() -> void:
 		content.add_child(journal)
 	arrange()
 
-func hero() -> void:
-	var frame = PanelContainer.new()
-	frame.add_theme_stylebox_override("panel", panel_style(Color("20343e"), Color("71634c")))
-	content.add_child(frame)
+func journey(next_match: Dictionary) -> void:
+	var done: bool = cup.wins >= cup.DEMO_MATCHES
+	if not done:
+		var reward = "AVANÇAS PARA A PRÓXIMA RONDA"
+		var detail = "Mais uma vitória na tua caminhada pela Taça Aurora."
+		if cup.local_wins() == 9:
+			reward = "CLASSIFICAS-TE PARA A FINAL DO SETOR"
+			detail = "O adversário depende do resultado da chave do setor."
+		elif cup.local_wins() == 10:
+			reward = "CAMPEÃO DO SETOR"
+			detail = "Ganhas a skin do adversário e avanças para o próximo setor."
+			if cup.wins == cup.FULL_MATCHES - 1:
+				reward = "CAMPEÃO DA TAÇA AURORA"
+				detail = "Conquistas a Taça e as skins de prémio da final."
+		path_node("↑", "SE VENCER", reward, detail, GOLD)
+		if next_match.is_empty():
+			path_node("?", "PRÓXIMO CONFRONTO", "ADVERSÁRIO A DEFINIR", "Aguardando o resultado oficial da chave.", GOLD)
+		else:
+			var heading = ("GRANDE FINAL · CONFIRMADA" if next_match.grand_final else "FINAL DO SETOR · CONFIRMADA") if next_match.is_final else "PRÓXIMO CONFRONTO CONFIRMADO"
+			path_node("VS", heading, next_match.name.to_upper(), "RONDA %02d · TU vs %s" % [next_match.round, next_match.name], GOLD)
+	var current = path_node("★", "TU ESTÁS AQUI", "TAÇA CONQUISTADA" if done else "RONDA %02d" % (cup.wins + 1), "%02d vitórias · O caminho que construíste." % cup.wins, MINT, true)
+	var skin = int(player_skin_provider.call()) if player_skin_provider.is_valid() else 0
+	portrait(current, {"boss": skin, "hue": "81d9c4"})
+	if not result.is_empty():
+		path_node("·", "ÚLTIMO COMBATE", result, "O teu progresso está guardado.", MUTED)
+	for i in range(cup.history.size() - 1, -1, -1):
+		var bout: Dictionary = cup.history[i]
+		var caption = "ACABOU DE FICAR PARA TRÁS" if i == cup.history.size() - 1 else "CONFRONTO VENCIDO"
+		path_node("✓", "%s · RONDA %02d" % [caption, bout.round], bout.opponent, "Vitória %d–%d" % [bout.score[0], bout.score[1]], MUTED)
+	path_node("○", "INÍCIO", "A tua história começa aqui.", "As tuas vitórias vão ficando nesta estrada." if cup.history.is_empty() else "Cada vitória trouxe-te até aqui.", MUTED)
+
+func path_node(marker: String, kicker: String, headline: String, body: String, accent: Color, present: bool = false) -> HBoxContainer:
 	var row = HBoxContainer.new()
-	frame.add_child(row)
+	row.add_theme_constant_override("separation", 12)
+	content.add_child(row)
+	var rail = VBoxContainer.new()
+	rail.custom_minimum_size.x = 36
+	rail.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	row.add_child(rail)
+	var dot = text(marker, 19, accent)
+	dot.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	rail.add_child(dot)
+	var line = ColorRect.new()
+	line.color = accent.darkened(0.6)
+	line.custom_minimum_size = Vector2(2, 20)
+	line.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	line.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	line.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	rail.add_child(line)
+	var frame = PanelContainer.new()
+	frame.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	frame.add_theme_stylebox_override("panel", panel_style(Color("203e43") if present else Color("142630"), accent if present else Color("2a414c")))
+	row.add_child(frame)
+	var inside = HBoxContainer.new()
+	frame.add_child(inside)
 	var words = VBoxContainer.new()
 	words.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	words.alignment = BoxContainer.ALIGNMENT_CENTER
-	row.add_child(words)
-	words.add_child(text("O TEU PRÓXIMO RIVAL" if cup.wins < 11 else "SETOR CONQUISTADO", 12, GOLD))
-	words.add_child(text(cup.opponent().to_upper() if cup.wins < 11 else "FAROLEIRO", 31, WHITE))
-	words.add_child(text("FINAL DO FAROL" if cup.wins >= 10 else "QUALIFICATÓRIA %02d" % (cup.wins + 1), 14, MINT))
+	words.add_theme_constant_override("separation", 6)
+	inside.add_child(words)
+	for entry in [[kicker, 12, accent], [headline, 23 if present else 20, WHITE], [body, 15, MUTED]]:
+		var label = text(entry[0], entry[1], entry[2])
+		label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		words.add_child(label)
+	return inside
+
+func portrait(parent: Control, entry: Dictionary) -> void:
 	var render = SubViewport.new()
 	render.size = Vector2i(240, 240)
 	render.transparent_bg = true
@@ -209,7 +260,6 @@ func hero() -> void:
 	render.render_target_update_mode = SubViewport.UPDATE_ONCE
 	var model = ArenaView.new()
 	render.add_child(model)
-	var entry: Dictionary = cup.level()
 	var pilot = model.build_player(Color(entry.hue) if entry.hue != "" else Color("81d9c4"), 1, entry.boss)
 	pilot.position = Vector3.ZERO
 	pilot.rotation.y = 0.28
@@ -231,9 +281,9 @@ func hero() -> void:
 	render.add_child(cam)
 	cam.transform = cam.transform.looking_at(Vector3(0, 0.95, 0))
 	var image = TextureRect.new()
-	image.custom_minimum_size = Vector2(164, 164)
+	image.custom_minimum_size = Vector2(100, 100)
 	image.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	image.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-	row.add_child(image)
+	parent.add_child(image)
 	image.add_child(render)
 	image.texture = render.get_texture()

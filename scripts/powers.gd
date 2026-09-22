@@ -141,7 +141,7 @@ static func entry(id: String) -> Dictionary:
 	return {}
 
 static func is_ultimate(id: String) -> bool:
-	return ULTIMATES.any(func(entry_data): return entry_data.id == id)
+	return ULTIMATES.any(func(entry_data): return entry_data.id == id) or BASIC_ULTIMATES.any(func(entry_data): return entry_data.id == id)
 
 func affordable() -> Array:
 	# Powers the wallet already pays for and the pilot does not own: what the menu points at.

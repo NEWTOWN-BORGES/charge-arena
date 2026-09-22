@@ -128,49 +128,36 @@ func show_level(value: int) -> void:
 	map.fit()
 	map.queue_redraw()
 func overview() -> void:
-	caption.text = "1 024 NO FAROL · arrasta, amplia e toca nos pilotos"
-	add_node("future", "TAÇA AURORA", Vector2(340, 0), "Grande final · por decidir", "OS DOIS PERCURSOS AINDA ESTÃO ABERTOS", GOLD, Vector2(380, 150))
-	add_node("sector", "O TEU LADO", Vector2(20, 220), "Farol · primeiro setor", "TOCAR PARA EXPLORAR", MINT, Vector2(380, 150))
-	add_node("distant", "OUTRO LADO", Vector2(600, 220), "Setores distantes", "ENCONTROS FUTUROS NÃO CONFIRMADOS", GOLD, Vector2(380, 150))
-	edge("future", "sector", true); edge("future", "distant")
-	person("Tu", Vector2(20, 450)); person("Aurel", Vector2(600, 450))
-	edge("sector", "Tu", true); edge("distant", "Aurel")
-	person("Faroleiro", Vector2(20, 720)); person("Nadir", Vector2(600, 720))
-	edge("sector", "Faroleiro"); edge("distant", "Nadir")
-	person("Lira", Vector2(20, 990)); person("Vértice", Vector2(20, 1240))
-	edge("sector", "Lira"); edge("Lira", "Vértice", true) if cup.wins >= 7 else edge("sector", "Vértice")
-	for i in range(5):
-		var who: String = ["Mineiro", "Astrónomo", "Sentinela", "Jardineiro", "Relojoeiro"][i]
-		person(who, Vector2(600, 990 + i * 250))
-		edge("distant", who)
-	add_node("entrants", "1 024 INSCRITOS", Vector2(20, 1500), "%d ainda na chave" % (1024 >> mini(cup.wins, 10)), "FIGURANTES AGRUPADOS · ABRIR SETOR", MINT, Vector2(380, 150))
+	caption.text = "TAÇA AURORA · pilotos e resultados confirmados"
+	add_node("future", "TAÇA AURORA", Vector2(340, 0), "110 combates · dez etapas", "CADA LUGAR É CONQUISTADO EM CAMPO", GOLD, Vector2(400, 150))
+	person("Tu", Vector2(20, 230)); person("Aurel", Vector2(600, 230))
+	edge("future", "Tu", true); edge("future", "Aurel")
+	var names = ["Faroleiro", "Sentinela", "Lira", "Arconte Solar", "Vértice", "Mineiro", "Astrónomo", "Jardineiro", "Relojoeiro", "Corsário", "Caça-Trovões", "Alquimista"]
+	for i in range(names.size()):
+		person(names[i], Vector2(20 + (i % 2) * 580, 500 + (i / 2) * 250))
+	add_node("entrants", "EXPLORAR O TEU SETOR", Vector2(20, 2100), cup.sector_label(), "PERCURSO E CHAVE REGIONAL", MINT, Vector2(420, 150))
 func sector() -> void:
-	caption.text = "FAROL · verde: percurso vencido · ramos próximos: final possível"
+	caption.text = cup.sector_label() + " · percurso e participantes em prova"
 	var y = 0.0
 	for i in range(cup.history.size()):
 		var record: Dictionary = cup.history[i]
-		add_node("past:%d" % i, "✓ " + record.opponent, Vector2(20, y), "%s–%s · vitória tua" % record.score, "QUALIFICATÓRIA %02d" % (i + 1) if i < 10 else "FINAL DO SETOR", MINT, Vector2(380, 132))
+		add_node("past:%d" % i, "✓ " + record.opponent, Vector2(20, y), "%s–%s · vitória tua" % record.score, "RONDA %03d" % record.round, MINT, Vector2(380, 132))
 		if i > 0: edge("past:%d" % (i - 1), "past:%d" % i, true)
 		y += 186
 	person("Tu", Vector2(20, y))
 	if not cup.history.is_empty(): edge("past:%d" % (cup.history.size() - 1), "Tu", true)
-	if cup.wins < 10:
-		add_node("next", cup.opponent().to_upper(), Vector2(20, y + 250), "Proxima qualificatória", "ENCONTRO CONFIRMADO", MINT, Vector2(380, 154))
-		edge("Tu", "next", true)
-	add_node("future", "FINAL DO SETOR" if cup.wins < 11 else "SETOR CONQUISTADO", Vector2(310, y + 530), "Rival ainda por decidir" if cup.wins < 10 else ("TU × FAROLEIRO" if cup.wins == 10 else "TU · vencedor"), "SÓ QUEM SOBREVIVER CHEGA ATÉ AQUI", GOLD, Vector2(390, 154))
-	edge("next" if cup.wins < 10 else "Tu", "future", cup.wins >= 10)
-	person("Faroleiro", Vector2(600, y))
-	person("Lira", Vector2(600, y + 250))
-	person("Vértice", Vector2(600, y + 780))
-	add_node("matches", "CHAVE PARALELA", Vector2(600, maxf(0, y - 210)), "%d de 1 024 em prova" % (1024 >> mini(cup.wins, 10)), "ABRIR CONFRONTOS", GOLD, Vector2(380, 150))
-	edge("matches", "Faroleiro")
-	if cup.wins < 7:
-		edge("Lira", "future"); edge("Vértice", "future")
-	else:
-		add_node("upset", "VÉRTICE → AVANÇOU", Vector2(600, y + 530), str(Data.profile(cup, "Lira").history.back().score) + " contra Lira · ronda 7", "TOCAR PARA VER A ELIMINAÇÃO", Color("e19a83"), Vector2(380, 154))
-		edge("Lira", "upset"); edge("upset", "Vértice", true)
-		edge("Vértice", "future", cup.wins < 10)
-	edge("Faroleiro", "future", cup.wins >= 10)
+	var next_match: Dictionary = cup.confirmed_match()
+	if not next_match.is_empty():
+		person(next_match.name, Vector2(20, y + 260))
+		edge("Tu", next_match.name, true)
+	var played: Array = cup.stage_rounds()
+	var alive = 1024 if played.is_empty() else played.back().winners.size()
+	add_node("matches", "CHAVE DO SETOR", Vector2(600, y), "%d de 1 024 em prova" % alive, "ABRIR RESULTADOS", GOLD, Vector2(380, 150))
+	var public_pilots = [cup.entrants[0].name, cup.entrants[512].name, cup.entrants[576].name]
+	for i in range(public_pilots.size()):
+		if not next_match.is_empty() and public_pilots[i] == next_match.name: continue
+		person(public_pilots[i], Vector2(600, y + 250 + i * 250))
+		edge("matches", public_pilots[i])
 func confrontations() -> void:
 	caption.text = "CONFRONTOS · resultados oficiais · oito encontros por página"
 	if cup.rounds.is_empty():
@@ -195,7 +182,7 @@ func locate_player() -> void:
 	show_level(1)
 	map.locate("Tu")
 func select_node(key: String) -> void:
-	if Data.CAST.has(key): open_person(key)
+	if map.nodes.any(func(node): return node.key == key and node.has("person")): open_person(key)
 	elif key in ["sector", "entrants"]: show_level(1)
 	elif key == "distant": map.locate("Aurel")
 	elif key == "matches": round_index = maxi(0, cup.rounds.size() - 1); page = 0; show_level(2)
@@ -284,7 +271,7 @@ func make_portrait(who: String) -> void:
 	add_child(render)
 	var model = Models.new()
 	render.add_child(model)
-	var cast: Array = Data.CAST[who]
+	var cast: Array = Data.portrait_spec(cup, who)
 	var pilot = model.build_player(Color(cast[1]), 0, player_skin if who == "Tu" else cast[0])
 	pilot.position = Vector3.ZERO
 	pilot.rotation.y = -0.15

@@ -4,8 +4,7 @@ const Models = preload("res://scripts/indie_arena_view.gd")
 var stage: Node3D
 var model
 func pilot(who: String, pos: Vector3, turn: float = 0.0) -> Node3D:
-	var cast = {"Tu": [0, "81d9c4"], "Aurel": [10, "e8bd78"], "Nadir": [105, "839da7"], "Lira": [103, "bd9ee0"], "Vértice": [108, "d28263"], "Faroleiro": [1, "81d9c4"], "Mineiro": [4, "b99668"], "Astrónomo": [2, "aaa7ed"], "Sentinela": [5, "8dbbd7"]}
-	var entry: Array = cast.get(who, [101, "719ba3"])
+	var entry: Array = preload("res://scripts/cup_tree_data.gd").CAST.get(who, [101, "719ba3"])
 	var p = model.build_player(Color(entry[1]), 0, entry[0], stage)
 	p.position = pos
 	p.rotation.y = turn
@@ -68,7 +67,7 @@ func setup(story: Dictionary) -> void:
 		main.position.x = -1.6
 		main.rotation.y = -0.9
 		pilot(story.get("personagemSecundario", "Tu"), Vector3(1.6, 0, -0.2), 0.9)
-		sign_text("F I N A L   D O   F A R O L", Vector3(0, 2.6, 2))
+		sign_text("T A Ç A   A U R O R A", Vector3(0, 2.6, 2))
 	elif scene in ["UPSET", "ARENA_VICTORY", "CROWD_CELEBRATION", "ARENA_DEFEAT"]:
 		var loser = pilot(story.get("personagemSecundario", "") if not str(story.get("personagemSecundario", "")).is_empty() else "Lira", Vector3(2, 0, 0.8), 0.65)
 		loser.get_node("Body").rotation.z = -0.25
@@ -107,6 +106,9 @@ func setup(story: Dictionary) -> void:
 	var camera = Camera3D.new()
 	camera.position = Vector3(-2.5, 2.1, -5.5) if quiet else Vector3(0.5, 2.2, -6.6)
 	camera.fov = 43
-	camera.transform = camera.transform.looking_at(Vector3(0, 1.15, 0.6))
+	if press:
+		camera.position = Vector3(-0.2, 1.65, -4.2)
+		camera.fov = 38
+	camera.transform = camera.transform.looking_at(Vector3(-0.65, 1.0, -0.2) if press else Vector3(0, 1.15, 0.6))
 	add_child(camera)
 

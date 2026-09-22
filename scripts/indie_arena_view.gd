@@ -810,6 +810,10 @@ func build_player(color: Color, team: int, skin: int = 0, parent: Node3D = null,
 		build_corsair(body, palette.body, palette.light, color)
 	elif skin == 10:
 		build_archon(body, palette.body, palette.light, color)
+	elif skin == 11:
+		build_station_pilot(body, palette.body, palette.light, color, 7)
+		for badge in range(4):
+			sphere(body, Vector3(-0.24 + badge * 0.16, 1.17, -0.27), Vector3(0.07, 0.07, 0.045), Color("ffd477"), true)
 	elif skin >= STATION_SKIN:
 		build_station_pilot(body, palette.body, palette.light, color, skin - STATION_SKIN)
 	else:
