@@ -102,7 +102,7 @@ const STARTER_KIT = ["blast", "air"]
 const KIT_SIZE = 2
 # Testing build: every power is already bought, with a full wallet, so the whole kit can
 # be tried out. Set to false to sell them one by one again; purchases are saved either way.
-const UNLOCK_ALL_FOR_TESTS = false
+const UNLOCK_ALL_FOR_TESTS = true
 const TEST_WALLET = 5000
 # Testing build: the ultimate starts a match already charged, so it can be tried out
 # without farming twenty bricks first.

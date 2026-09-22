@@ -34,7 +34,7 @@ const CATALOG = [
 ]
 # Testing build: every skin can be worn without beating its boss first. Set to false to
 # earn them again; the bosses you have beaten are saved either way.
-const UNLOCK_ALL_FOR_TESTS = false
+const UNLOCK_ALL_FOR_TESTS = true
 # Saves written by the old unlocked test builds have every pilot already won. The demo
 # refuses to read them, so a run starts with the standard pilot alone.
 const SAVE_VERSION = 2

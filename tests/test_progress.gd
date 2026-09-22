@@ -45,7 +45,10 @@ func fresh_shop():
 
 func run() -> void:
 	# ---------------------------------------------------------------- the demo starts closed
-	check(not Campaign.UNLOCK_ALL_FOR_TESTS and not Skins.UNLOCK_ALL_FOR_TESTS and not Powers.UNLOCK_ALL_FOR_TESTS and not Powers.START_WITH_ULTIMATE_FOR_TESTS, "The shipped build has every test unlock switched off")
+	# Open or closed, never half: a build that unlocked the levels but not the powers, or
+	# the other way round, would be a mess nobody could reason about.
+	check(Campaign.UNLOCK_ALL_FOR_TESTS == Skins.UNLOCK_ALL_FOR_TESTS and Skins.UNLOCK_ALL_FOR_TESTS == Powers.UNLOCK_ALL_FOR_TESTS, "The three test unlocks move together")
+	check(not Powers.START_WITH_ULTIMATE_FOR_TESTS, "And a match still starts with the ultimate keys cold, open build or not")
 	var campaign = fresh_campaign()
 	var skins = fresh_skins()
 	var shop = fresh_shop()

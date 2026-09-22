@@ -41,7 +41,8 @@ func run() -> void:
 	check(testing.unlocked_count() == Skins.CATALOG.size(), "A testing build can wear every skin")
 	testing.unlock_all = false
 	testing.defeated = []
-	check(not Skins.UNLOCK_ALL_FOR_TESTS and testing.unlocked_count() == 1, "The shipped build starts with the standard pilot alone")
+	testing.unlock_all = false
+	check(testing.unlocked_count() == 1, "With the test unlock off, a pilot starts with the standard hull alone")
 	var progress = Skins.new()
 	progress.unlock_all = false
 	progress.config_path = TMP

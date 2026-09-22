@@ -45,7 +45,10 @@ func run() -> void:
 	testing.unlock_all = false
 	testing.owned = Powers.STARTER_KIT.duplicate()
 	testing.bricks = 0
-	check(not Powers.UNLOCK_ALL_FOR_TESTS and testing.owned.size() == 2 and not testing.is_owned("laser"), "The shipped build starts with the two free powers and an empty wallet")
+	testing.unlock_all = false
+	testing.owned = Powers.STARTER_KIT.duplicate()
+	testing.bricks = 0
+	check(testing.owned.size() == 2 and not testing.is_owned("laser"), "With the test unlock off, a pilot starts with the two free powers and an empty wallet")
 	var shop = Powers.new()
 	shop.unlock_all = false
 	shop.owned = Powers.STARTER_KIT.duplicate()

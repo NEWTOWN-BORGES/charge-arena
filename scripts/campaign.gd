@@ -5,7 +5,11 @@ extends RefCounted
 const Rules = preload("res://scripts/arena_rules.gd")
 const CONFIG_PATH = "user://campaign.cfg"
 # A single match victory unlocks the next arena. Progress is saved on device.
-const UNLOCK_ALL_FOR_TESTS = false
+# TESTING BUILD: every level, skin and power is open from the start, so the whole game can
+# be walked through without playing up to it. The three switches move together - a build is
+# open or closed, never half - and there is a test that says so. Set all three back to
+# false to ship a build that has to be earned.
+const UNLOCK_ALL_FOR_TESTS = true
 # Saves written by the old unlocked test builds have everything open and a full wallet.
 # The demo refuses to read them: a stored file without this stamp is left behind and the
 # run starts from nothing, which is the whole point of a progression build.

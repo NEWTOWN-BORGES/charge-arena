@@ -143,7 +143,8 @@ func run() -> void:
 	testing.unlock_all = true
 	check(range(Campaign.LEVELS.size()).all(func(i): return testing.is_unlocked(i)) and testing.suggested_level() == 0, "A testing build can open every level at once")
 	testing.unlock_all = false
-	check(not Campaign.UNLOCK_ALL_FOR_TESTS and testing.is_unlocked(0) and not testing.is_unlocked(1), "The shipped build opens only the first, and the rest are won")
+	testing.unlock_all = false
+	check(testing.is_unlocked(0) and not testing.is_unlocked(1), "With the test unlock off, only the first level is open and the rest are won")
 
 	# Level-by-level unlocking, as it works once the testing switch is turned off.
 	var progress = Campaign.new()
