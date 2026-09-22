@@ -55,6 +55,8 @@ var effect_limit = 112
 const NUMBER_ALLOWANCE = 30
 # How high above the floor the storm and the meteors come from.
 const SKY_TOP = 8.4
+# And how tall the bolt itself is drawn.
+const BOLT_TOP = 5.4
 var trail_interval = 0.035
 var brick_instances: Array = []
 var brick_batches: Array = []
@@ -2144,45 +2146,50 @@ func meteor_impact(at: Vector2, radius: float, color: Color, hot: Color) -> void
 	effects.append({"node": crater, "v": Vector3.ZERO, "ttl": 0.45, "life": 0.45, "gravity": false, "base": Vector3.ONE * 2.1, "grow": true, "tint": color})
 
 func thunder_bolt(at: Vector2, radius: float) -> void:
-	# A strike you can see coming. First the floor lights up where it will land, so the eye
-	# is already there; then the bolt comes down out of the dark in two strokes, top half
-	# and bottom half a blink apart, which is what makes it read as falling rather than as
-	# appearing; then the ground takes it. Drawing all eight at once, stuttering, turned
-	# the storm into noise.
+	# A straight column of light dropped on the spot, not a drawn zigzag. It is built from
+	# a stack of segments of different thicknesses, so the line has a shape of its own
+	# without ever leaving the vertical, and it strobes: on, off, on, gone. A bolt that
+	# hangs around reads as scenery; one that is over before you can follow it reads as
+	# lightning.
 	var color = Rules.power_color("thunder")
 	var hot = Color("f2fbff")
 	if effects.size() + 8 >= effect_limit + NUMBER_ALLOWANCE:
 		return
 	var mark = torus(self, Vector3(at.x, 0.06, at.y), radius * 1.5, 0.05, Color(hot, 0.85), true)
 	mark.scale = Vector3.ONE * 1.6
-	effects.append({"node": mark, "v": Vector3.ZERO, "ttl": 0.28, "life": 0.28, "gravity": false, "base": Vector3.ONE * 0.9, "grow": false, "tint": color})
-	# The same jagged path for both halves, so they line up when the second one lands.
-	var path: Array = [Vector3(at.x + randf_range(-0.8, 0.8), SKY_TOP, at.y + randf_range(-0.8, 0.8))]
-	var steps = 9
-	for step in range(steps):
-		var reach = float(steps - step - 1) / steps
-		var next = Vector3(at.x + randf_range(-1.05, 1.05) * reach, SKY_TOP - (step + 1) * (SKY_TOP - 0.12) / steps, at.y + randf_range(-1.05, 1.05) * reach)
-		if step == steps - 1:
-			next = Vector3(at.x, 0.12, at.y)
-		path.append(next)
-	pending.append({"time": 0.16, "call": func(): thunder_stroke(path, 0, 5, color, hot, 0.3)})
-	pending.append({"time": 0.21, "call": func(): thunder_stroke(path, 4, steps, color, hot, 0.26)})
-	pending.append({"time": 0.24, "call": func(): thunder_land(at, radius, color, hot)})
+	effects.append({"node": mark, "v": Vector3.ZERO, "ttl": 0.26, "life": 0.26, "gravity": false, "base": Vector3.ONE * 0.9, "grow": false, "tint": color})
+	# Three flashes, each thinner and shorter than the one before it.
+	# Long enough to be seen at sixty frames a second, short enough that it is gone before
+	# the eye settles on it. Below a tenth of a second a phone dropping frames never draws
+	# it at all.
+	pending.append({"time": 0.14, "call": func(): thunder_stroke(at, color, hot, 1.0, 0.11)})
+	pending.append({"time": 0.27, "call": func(): thunder_stroke(at, color, hot, 0.62, 0.08)})
+	pending.append({"time": 0.37, "call": func(): thunder_stroke(at, color, hot, 0.34, 0.06)})
+	pending.append({"time": 0.16, "call": func(): thunder_land(at, radius, color, hot)})
 
-func thunder_stroke(path: Array, from_step: int, to_step: int, color: Color, hot: Color, life: float) -> void:
-	# One half of the bolt: a wide soft halo with a hard white core inside it, and a single
-	# fork off the middle. No stutter - it stands, then it is gone.
-	if effects.size() >= effect_limit:
+func thunder_stroke(at: Vector2, color: Color, hot: Color, weight: float, life: float) -> void:
+	# One flash of the column. The thicknesses run heavy at the top and fine at the ground,
+	# with a couple of swellings on the way down, and a hard white core the whole length.
+	# It draws on the same reserve as the numbers: the bolt is the ultimate, and it was
+	# being dropped in exactly the frames where the storm had filled the pool.
+	if effects.size() >= effect_limit + NUMBER_ALLOWANCE:
 		return
 	var bolt = Node3D.new()
 	add_child(bolt)
-	for step in range(from_step, mini(to_step, path.size() - 1)):
-		segment(bolt, path[step], path[step + 1], 0.46, 0.46, Color(color, 0.26), true)
-		segment(bolt, path[step], path[step + 1], 0.17, 0.17, Color(hot, 1.0), true)
-		if step == to_step - 2 and from_step == 0:
-			var fork = path[step + 1] + Vector3(randf_range(-2.0, 2.0), -2.4, randf_range(-2.0, 2.0))
-			segment(bolt, path[step + 1], fork, 0.28, 0.28, Color(color, 0.2), true)
-			segment(bolt, path[step + 1], fork, 0.1, 0.1, Color(hot, 0.85), true)
+	var widths: Array = [0.62, 0.3, 0.5, 0.2, 0.4, 0.16, 0.3, 0.12]
+	var floor_y := 0.12
+	# Three and a half units, not the whole eight: seen from this camera a column as tall
+	# as the sky projects clean out of the top of the arena and reads as something floating
+	# in the dark rather than as a bolt landing on that spot.
+	var span: float = (BOLT_TOP - floor_y) / float(widths.size())
+	# Boxes standing on end, not segments: `segment` lays its length along X and only turns
+	# about Y, so a vertical one comes out lying flat on the floor.
+	for step in range(widths.size()):
+		var low := floor_y + step * span
+		var wide: float = float(widths[widths.size() - 1 - step]) * weight
+		box(bolt, Vector3(at.x, low + span * 0.5, at.y), Vector3(wide, span, wide), Color(color, 0.32), true, 0.02)
+	var core: float = 0.15 * weight
+	box(bolt, Vector3(at.x, (floor_y + BOLT_TOP) * 0.5, at.y), Vector3(core, BOLT_TOP - floor_y, core), Color(hot, 1.0), true, 0.01)
 	effects.append({"node": bolt, "v": Vector3.ZERO, "ttl": life, "life": life, "gravity": false, "base": Vector3.ONE, "keep": true})
 
 func thunder_land(at: Vector2, radius: float, color: Color, hot: Color) -> void:
