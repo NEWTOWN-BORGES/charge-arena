@@ -353,7 +353,8 @@ func run() -> void:
 	check(empty.power_id(0, 2) == "" and not empty.can_activate_power(0, 2), "A skin without an ultimate leaves the slot dead")
 	var spent = playing("thunder")
 	launch(spent)
-	check(spent.powers[0].charge[2] == 0 and spent.power_charge_cost(0, 2) == Powers.ULTIMATE_CHARGE, "It costs %d bricks of charge, and spends them" % Powers.ULTIMATE_CHARGE)
+	check(spent.power_charge_cost(0, 2) == Powers.ULTIMATE_CHARGE and spent.powers[0].charge[2] == Powers.ULTIMATE_CHARGE, "It costs %d bricks to open, and they are not taken back" % Powers.ULTIMATE_CHARGE)
+	check(is_equal_approx(spent.powers[0].cool[2], Powers.ULTIMATE_WAIT) and not spent.can_activate_power(0, 2), "And then it sits out %d seconds before it can be called again" % Powers.ULTIMATE_WAIT)
 
 	# --------------------------------------- the three that open the campaign
 	# Sobrecarga, now the Alquimista's: turbocharged rounds, twice as fast, while it lasts.

@@ -50,7 +50,9 @@ func run() -> void:
 		# Read durable state, not the one-tick events: a 20 ms sampler misses a 16 ms event
 		# by luck alone, and that is a flaw in the test, not in the game.
 		for team in range(2):
-			var spent: bool = asked_power and int(game.rules.powers[team].charge[0]) < game.rules.power_charge_cost(team, 0)
+			# The charge is no longer spent on use - it opens the power once and stays. What
+			# says a power went off is its own clock starting to run.
+			var spent: bool = asked_power and float(game.rules.powers[team].cool[0]) > 0.0
 			var casting: bool = float(game.rules.powers[team].ultimate_windup) > 0.0 or float(game.rules.powers[team].ultimate_time) > 0.0
 			if team == mine:
 				seen_local_power = seen_local_power or spent

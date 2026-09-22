@@ -119,7 +119,10 @@ func run() -> void:
 	check(not r.can_activate_power(0, 0), "Powers stay locked outside play")
 	r.phase = "play"
 	check(r.activate_power(0, 1) and not r.can_activate_power(0, 0), "A running burst blocks the other powers")
-	check(r.powers[0].charge == [5, 0, 12], "Using a power spends only its own charge")
+	# The charge is not spent: the bricks opened the power once, and from then on it is the
+	# clock that decides when it comes back.
+	check(r.powers[0].charge == [5, 10, 12] and r.powers[0].cool[1] > 0 and r.powers[0].cool[0] == 0, "Using a power starts its own clock and leaves the charges alone")
+	check(is_equal_approx(r.powers[0].cool[1], Powers.wait_of(r.power_id(0, 1))), "And the clock is that power's own wait (%.1f s)" % r.powers[0].cool[1])
 
 	# Area blast: the direct hit plus every enemy brick inside the radius.
 	r = playing()
@@ -336,7 +339,7 @@ func run() -> void:
 	hud.request_power(1)
 	game._physics_process(1.0 / 60)
 	var pellets: int = game.rules.balls.filter(func(b): return b.power == 3).size()
-	check(game.rules.powers[0].charge[1] == 0 and pellets == Rules.AIR_PELLETS, "A button press fires the power in the match (%d balas do leque)" % pellets)
+	check(game.rules.powers[0].cool[1] > 0 and pellets == Rules.AIR_PELLETS, "A button press fires the power in the match (%d balas do leque)" % pellets)
 	check(Rules.power_label("") == "ULTIMATE" and Rules.power_label("sun_ray") == "SOL", "An empty third slot reads ULTIMATE; a skin with one names it")
 	check(game.audio_voices.any(func(v): return v.playing and v.stream == game.tones.power), "Using a power has its own sound")
 	for voice in game.audio_voices:
@@ -344,7 +347,7 @@ func run() -> void:
 	check(game.tones.has("blast") and game.tones.has("ready") and game.tones.blast != game.tones.power and game.tones.ready != game.tones.power, "The blast and the ready chime are separate sounds")
 
 	hud.update_match(game.rules, "")
-	check(hud.match_data.has("powers") and hud.match_data.powers[0].charge[1] == 0 and hud.match_loadout(0, 1) == "air", "The HUD reads the charges and the kit from the match")
+	check(hud.match_data.has("powers") and hud.match_data.powers[0].cool[1] > 0 and hud.match_loadout(0, 1) == "air", "The HUD reads the clocks and the kit from the match")
 	game.arena.explosion(Vector2(0.2, 0.4), Rules.EXPLOSION_RADIUS)
 	check(game.arena.effects.any(func(e): return e.get("grow", false)), "The blast draws an expanding ring")
 	game.arena.update_state(game.rules, 0, 1.0 / 60)

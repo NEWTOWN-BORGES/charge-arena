@@ -2463,7 +2463,11 @@ func draw_powers() -> void:
 		var id = match_loadout(team, index)
 		var cost: int = int(Powers.entry(id).get("charge", 0))
 		var charge: int = clampi(state.charge[index], 0, maxi(cost, 1))
-		var ready: bool = cost > 0 and charge >= cost
+		# Two things can hold a power back: the bricks that open it the first time, and the
+		# clock that runs after every use. The clock takes the button once it is running.
+		var cool: float = state.cool[index] if state.has("cool") else 0.0
+		var wait: float = maxf(Powers.wait_of(id), 0.001)
+		var ready: bool = cost > 0 and charge >= cost and cool <= 0
 		var color: Color = Rules.power_color(id)
 		var running: bool = (id == "rapid" and state.rapid_time > 0) or (id == "laser" and state.laser_time > 0)
 		var charging: bool = Powers.is_ultimate(id) and state.get("ultimate_windup", 0.0) > 0
@@ -2471,9 +2475,12 @@ func draw_powers() -> void:
 		draw_circle(center, POWER_RADIUS, Color(0.08, 0.15, 0.16, 0.92), true, -1, smooth)
 		draw_arc(center, POWER_RADIUS - 1.5, 0, TAU, 56, Color(BRASS, 0.55 if cost > 0 else 0.25), 1.3, smooth)
 		draw_arc(center, POWER_RADIUS - 4, 0, TAU, 56, Color(color, 0.18), 1.2, smooth)
-		if charge > 0 and cost > 0:
+		# The ring is whichever of the two is still counting: the bricks before the first
+		# use, the clock after it.
+		var filled: float = (1.0 - cool / wait) if cool > 0 else (float(charge) / maxi(cost, 1))
+		if filled > 0 and cost > 0:
 			# Fills clockwise from the top, so a glance is enough to read the progress.
-			draw_arc(center, POWER_RADIUS - 4, -PI * 0.5, -PI * 0.5 + TAU * (float(charge) / cost), 56, Color(color, 0.95 if ready else 0.5), 3.6, smooth)
+			draw_arc(center, POWER_RADIUS - 4, -PI * 0.5, -PI * 0.5 + TAU * clampf(filled, 0, 1), 56, Color(color, 0.95 if ready else 0.5), 3.6, smooth)
 		var pressed: bool = power_flash[index] > 0
 		var disc = color.darkened(0.0 if pressed else (0.2 if ready else 0.62))
 		if ready or pressed:
@@ -2488,6 +2495,9 @@ func draw_powers() -> void:
 		draw_arc(center, POWER_RADIUS - 11, PI * 1.15, PI * 1.85, 20, Color(CERAMIC, 0.22 if ready else 0.1), 1.2, smooth)
 		power_icon(id, center + Vector2(0, -11), WHITE if ready or pressed else Color(WHITE, 0.5))
 		var caption = "PRONTO" if ready else "%d/%d" % [charge, cost]
+		if cool > 0:
+			# Counting down: whole seconds while there is time, tenths in the last one.
+			caption = ("%.0f s" % ceilf(cool)) if cool >= 1.0 else ("%.1f s" % cool)
 		if cost <= 0:
 			caption = "EM BREVE"
 		elif charging:

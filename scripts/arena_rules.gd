@@ -192,7 +192,7 @@ const PIERCE_SECONDS = 6.0
 const THORNS_SECONDS = 8.0
 const THORNS_BITE = 1
 # How many numbers each side's power state takes in a network packet.
-const POWER_FIELDS = 18
+const POWER_FIELDS = 21
 # A shot ends on a target or after MAX_BOUNCES ricochets: walls, shields, boosters,
 # barriers and bumpers all reflect it. This lifetime is only a safety net for a shot caught in a repeating path
 # that would otherwise bounce for the rest of the match.
@@ -480,7 +480,9 @@ func reset_match() -> void:
 	reset_round()
 
 static func new_power_state() -> Dictionary:
-	return {"charge": [0, 0, 0], "destroyed": 0, "rapid_time": 0.0, "ghost_time": 0.0,
+	# charge: bricks broken towards opening this power the first time in the match.
+	# cool: seconds it still has to sit out after being fired.
+	return {"charge": [0, 0, 0], "cool": [0.0, 0.0, 0.0], "destroyed": 0, "rapid_time": 0.0, "ghost_time": 0.0,
 		"laser_time": 0.0, "laser_tick": 0.0, "mirror_time": 0.0, "walls_time": 0.0,
 		"surge_time": 0.0, "plating_time": 0.0, "plunder_time": 0.0,
 		"freeze_time": 0.0, "magnet_time": 0.0, "pierce_time": 0.0, "thorns_time": 0.0,
@@ -498,6 +500,9 @@ func power_id(team: int, index: int) -> String:
 	# The power on that button, or "" for a slot the pilot has not filled.
 	var kit: Array = loadouts[team] if team >= 0 and team < loadouts.size() else []
 	return String(kit[index]) if index >= 0 and index < kit.size() else ""
+
+func power_wait(team: int, index: int) -> float:
+	return Powers.wait_of(power_id(team, index))
 
 func power_charge_cost(team: int, index: int) -> int:
 	var entry: Dictionary = Powers.entry(power_id(team, index))
@@ -521,6 +526,7 @@ func reset_round() -> void:
 		state.surge_time = 0.0
 		state.plating_time = 0.0
 		state.plunder_time = 0.0
+		state.cool = [0.0, 0.0, 0.0]
 		carrying = false
 		state.freeze_time = 0.0
 		state.magnet_time = 0.0
@@ -713,6 +719,8 @@ func step(dt: float, commands: Array) -> void:
 			if powers[team].plunder_time <= 0:
 				plunder_bricks(team)
 				events.append({"kind": "plunder_land", "team": team, "p": players[team].p})
+		for slot in range(POWER_SLOTS):
+			powers[team].cool[slot] = maxf(0.0, powers[team].cool[slot] - dt)
 		step_laser(team, dt)
 		step_ultimate(team, dt)
 		p.cooldown = maxf(0, p.cooldown - dt)
@@ -782,13 +790,17 @@ func can_activate_power(team: int, index: int) -> bool:
 		return false
 	if phase != "play" or players[team].stun > 0 or running_power(team):
 		return false
+	# The bricks open it once; after that it is the clock that says when it comes back.
+	if powers[team].cool[index] > 0:
+		return false
 	return powers[team].charge[index] >= power_charge_cost(team, index)
 
 func activate_power(team: int, index: int) -> bool:
 	if not can_activate_power(team, index):
 		return false
 	var id = power_id(team, index)
-	powers[team].charge[index] = 0
+	# The charge stays where it is: it was paid for once and it is not asked for again.
+	powers[team].cool[index] = power_wait(team, index)
 	var p: Dictionary = players[team]
 	var heading = forward_direction(team, p.angle)
 	events.append({"kind": "power", "power": index, "id": id, "team": team, "p": p.p})
@@ -1981,7 +1993,7 @@ func network_snapshot() -> Dictionary:
 		ball_data.append_array([ball.id, ball.owner, ball.p.x, ball.p.y, ball.v.x, ball.v.y, ball.bounces, 1.0 if ball.get("boosted", false) else 0.0, ball.get("damage", 1), ball.ttl, ball.get("power", 0), 1.0 if ball.get("ghost", false) else 0.0, 1.0 if ball.get("held", false) else 0.0])
 	var power_data = PackedFloat32Array()
 	for state in powers:
-		power_data.append_array([state.charge[0], state.charge[1], state.charge[2], state.destroyed, state.rapid_time,
+		power_data.append_array([state.charge[0], state.charge[1], state.charge[2], state.cool[0], state.cool[1], state.cool[2], state.destroyed, state.rapid_time,
 			state.ghost_time, state.laser_time, state.mirror_time, state.walls_time, state.surge_time, state.plating_time,
 			state.plunder_time, state.freeze_time, state.magnet_time, state.pierce_time, state.thorns_time,
 			state.ultimate_windup, state.ultimate_time])
@@ -2020,21 +2032,23 @@ func apply_network_snapshot(data: Dictionary) -> bool:
 		var base = team * POWER_FIELDS
 		for index in range(POWER_SLOTS):
 			powers[team].charge[index] = clampi(int(power_data[base + index]), 0, maxi(power_charge_cost(team, index), 0))
-		powers[team].destroyed = maxi(0, int(power_data[base + 3]))
-		powers[team].rapid_time = clampf(power_data[base + 4], 0, RAPID_SECONDS)
-		powers[team].ghost_time = clampf(power_data[base + 5], 0, GHOST_SECONDS)
-		powers[team].laser_time = clampf(power_data[base + 6], 0, LASER_SECONDS)
-		powers[team].mirror_time = clampf(power_data[base + 7], 0, MIRROR_SECONDS)
-		powers[team].walls_time = clampf(power_data[base + 8], 0, WALLS_SECONDS)
-		powers[team].surge_time = clampf(power_data[base + 9], 0, SURGE_SECONDS)
-		powers[team].plating_time = clampf(power_data[base + 10], 0, PLATING_SECONDS)
-		powers[team].plunder_time = clampf(power_data[base + 11], 0, PLUNDER_SWAP)
-		powers[team].freeze_time = clampf(power_data[base + 12], 0, FREEZE_SECONDS)
-		powers[team].magnet_time = clampf(power_data[base + 13], 0, MAGNET_SECONDS)
-		powers[team].pierce_time = clampf(power_data[base + 14], 0, PIERCE_SECONDS)
-		powers[team].thorns_time = clampf(power_data[base + 15], 0, THORNS_SECONDS)
-		powers[team].ultimate_windup = clampf(power_data[base + 16], 0, ULTIMATE_WINDUP)
-		powers[team].ultimate_time = clampf(power_data[base + 17], 0, maxf(THUNDER_SECONDS, SINGULARITY_PULL))
+		for slot in range(POWER_SLOTS):
+			powers[team].cool[slot] = maxf(0.0, power_data[base + 3 + slot])
+		powers[team].destroyed = maxi(0, int(power_data[base + 6]))
+		powers[team].rapid_time = clampf(power_data[base + 7], 0, RAPID_SECONDS)
+		powers[team].ghost_time = clampf(power_data[base + 8], 0, GHOST_SECONDS)
+		powers[team].laser_time = clampf(power_data[base + 9], 0, LASER_SECONDS)
+		powers[team].mirror_time = clampf(power_data[base + 10], 0, MIRROR_SECONDS)
+		powers[team].walls_time = clampf(power_data[base + 11], 0, WALLS_SECONDS)
+		powers[team].surge_time = clampf(power_data[base + 12], 0, SURGE_SECONDS)
+		powers[team].plating_time = clampf(power_data[base + 13], 0, PLATING_SECONDS)
+		powers[team].plunder_time = clampf(power_data[base + 14], 0, PLUNDER_SWAP)
+		powers[team].freeze_time = clampf(power_data[base + 15], 0, FREEZE_SECONDS)
+		powers[team].magnet_time = clampf(power_data[base + 16], 0, MAGNET_SECONDS)
+		powers[team].pierce_time = clampf(power_data[base + 17], 0, PIERCE_SECONDS)
+		powers[team].thorns_time = clampf(power_data[base + 18], 0, THORNS_SECONDS)
+		powers[team].ultimate_windup = clampf(power_data[base + 19], 0, ULTIMATE_WINDUP)
+		powers[team].ultimate_time = clampf(power_data[base + 20], 0, maxf(THUNDER_SECONDS, SINGULARITY_PULL))
 		powers[team].ultimate_id = power_id(team, 2)
 		var angle = clampf(player_data[team * 4], -track_limit, track_limit)
 		players[team].angle = angle

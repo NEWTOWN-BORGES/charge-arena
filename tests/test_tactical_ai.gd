@@ -15,6 +15,10 @@ func check(ok: bool, message: String) -> void:
 func active():
 	var r = Rules.new()
 	r.phase = "play"
+	# A fixed seed: the ninety second run below measures the AI, and the powers it now uses
+	# scatter where they land. Left unseeded, one run in five had the boss finish the wall
+	# a few seconds late and the whole suite failed on the roll of a die.
+	r.power_rng.seed = 20260922
 	return r
 
 func projectile(r, owner: int, position: Vector2, velocity: Vector2, damage: int = 1) -> Dictionary:
