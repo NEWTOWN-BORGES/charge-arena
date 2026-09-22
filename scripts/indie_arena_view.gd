@@ -71,6 +71,8 @@ var unit_skins: Array = [0, 0]
 var power_nodes: Array = []
 # Campaign bosses wear their team's red until beaten (see Skins.colors).
 var unit_tints: Array = [false, false]
+# A colour that replaces the team's on the pilot itself, for opponents with no palette.
+var unit_hues: Array = ["", ""]
 var shot_colors: Array = [CYAN, CORAL]
 var aim_guide: Node3D
 var guide_dots: Array = []
@@ -864,12 +866,15 @@ func build_player(color: Color, team: int, skin: int = 0, parent: Node3D = null,
 	root.set_meta("last_cooldown", 0.0)
 	return root
 
-func set_skin(team: int, skin: int, tint: bool = false) -> void:
-	# `tint`: dress the skin in the team colour, as campaign bosses fight until beaten.
-	if unit_skins[team] == skin and unit_tints[team] == tint:
+func set_skin(team: int, skin: int, tint: bool = false, hue: String = "") -> void:
+	# `tint`: dress the skin in a single colour instead of its own palette. `hue`: which
+	# colour, when it is not the team's - that is how the station pilots each get a look of
+	# their own out of hulls that already exist.
+	if unit_skins[team] == skin and unit_tints[team] == tint and unit_hues[team] == hue:
 		return
 	var old: Node3D = units[team]
-	var team_color = CYAN if team == 0 else CORAL
+	var team_color: Color = Color(hue) if hue != "" else (CYAN if team == 0 else CORAL)
+	unit_hues[team] = hue
 	var fresh = build_player(team_color, team, skin, null, tint)
 	fresh.transform = old.transform
 	fresh.set_meta("last_cooldown", old.get_meta("last_cooldown"))
@@ -877,6 +882,8 @@ func set_skin(team: int, skin: int, tint: bool = false) -> void:
 	unit_skins[team] = skin
 	unit_tints[team] = tint
 	shot_colors[team] = Skins.colors(skin, team_color, tint).shot
+	# The wall keeps the team colour whatever the pilot is wearing: whose bricks are whose
+	# has to stay unmistakable, and make_brick works that out for itself.
 	set_brick_theme(team, skin, tint)
 	old.queue_free()
 

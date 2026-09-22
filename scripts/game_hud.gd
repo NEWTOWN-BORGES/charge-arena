@@ -179,6 +179,7 @@ var viewer_bricks: Array = []
 # Skin worn by each team; main.gd shares the arena's own array.
 var team_skins: Array = [0, 0]
 var team_tints: Array = [false, false]
+var team_hues: Array = ["", ""]
 var unlock_text = ""
 var unlock_timer = 0.0
 var pause_panel: PanelContainer
@@ -1986,6 +1987,10 @@ func update_match(rules, status: String) -> void:
 	place_result_buttons()
 	ask_redraw()
 
+func pilot_hue(team: int, fallback: Color) -> Color:
+	# The card shows the pilot in the colour it is actually flying in.
+	return Color(String(team_hues[team])) if team < team_hues.size() and String(team_hues[team]) != "" else fallback
+
 func portrait(center: Vector2, color: Color, stunned: bool, skin: int = 0, canvas: CanvasItem = null, tint: bool = false) -> void:
 	# `canvas` lets the skins panel draw the same avatar inside its own preview controls.
 	var c: CanvasItem = canvas if canvas != null else self
@@ -2285,7 +2290,7 @@ func player_card(rect: Rect2, side: int, t: int) -> void:
 		# The pilot's face is what the eye goes to, so it gets the room.
 		draw_circle(avatar_center, 40.0, Color(INK, 0.45), true, -1, smooth)
 		draw_set_transform(avatar_center, 0.0, Vector2(0.88, 0.88))
-		portrait(Vector2.ZERO, color, stunned, team_skins[t], null, team_tints[t])
+		portrait(Vector2.ZERO, pilot_hue(t, color), stunned, team_skins[t], null, team_tints[t])
 		draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 
 		var disp_name = pilot
@@ -2309,7 +2314,7 @@ func player_card(rect: Rect2, side: int, t: int) -> void:
 			draw_style_box(style(color.darkened((3 - data.hp) * 0.22) if alive else Color("284349"), Color.TRANSPARENT, 1), brick)
 		var center = at.x + 100
 		write(role, at + Vector2(17, 24), 10, MUTED, true)
-		portrait(Vector2(center, at.y + 85), color, stunned, team_skins[t], null, team_tints[t])
+		portrait(Vector2(center, at.y + 85), pilot_hue(t, color), stunned, team_skins[t], null, team_tints[t])
 		centered(pilot, Vector2(center, at.y + 146), 22, WHITE, true)
 		player_life_bar(Vector2(center - 47, at.y + 158), match_data.players[t].hp, color)
 		centered(status, Vector2(center, at.y + 210), 10, status_color, true)

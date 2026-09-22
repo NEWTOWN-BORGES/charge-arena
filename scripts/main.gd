@@ -205,13 +205,16 @@ func start_level(index: int) -> void:
 	# The boss wears its own skin and its own bricks, in the colours they were drawn in. A
 	# station pilot has none: it flies the standard hull in the rival's colour, which is how
 	# you know at a glance that there is no skin to win here.
-	arena.set_skin(1, level.boss, Campaign.is_minor(index))
+	arena.set_skin(1, level.boss, Campaign.is_minor(index), Campaign.level_hue(index))
+	hud.team_hues = arena.unit_hues
 	var rival_name: String = String(level.name).to_upper() if Campaign.is_minor(index) else String(Skins.CATALOG[level.boss].name)
 	hud.level_info = {"number": index + 1, "name": level.name, "challenge": level.challenge, "boss_name": rival_name, "has_next": index + 1 < Campaign.LEVELS.size()}
 	hud.level_result = ""
 	hud.level_skin = ""
 	hud.show_game(mode, local_team)
 	sync_assist()
+	# The theme follows whoever is on the other side, station pilot or boss, so ten matches
+	# in a row do not share one tune.
 	music.play_skin(level.boss)
 
 func leave_campaign(layout: Dictionary = {}) -> void:
