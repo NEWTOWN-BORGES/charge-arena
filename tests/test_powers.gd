@@ -290,13 +290,16 @@ func run() -> void:
 		screen = Rect2(Vector2.ZERO, hud.size)
 		var tag = "%dx%d: " % [orientation.x, orientation.y]
 		var fps_rect: Rect2 = hud.fps_label.get_rect()
-		var stun_rect = Rect2(hud.size.x * 0.5 - 130, hud.size.y - 77, 260, 36)
+		# Asked of the HUD rather than written down here: the banner sits over the thumb band
+		# on a phone and under the score on a wide screen, and the copy here only knew one.
+		var stun_rect: Rect2 = hud.stun_banner_rect()
 		var stadium: Rect2 = drawn_arena(game)
 		for index in range(3):
 			var spot: Vector2 = hud.power_centers[index]
-			var button = Rect2(spot - Vector2.ONE * hud.POWER_RADIUS, Vector2.ONE * hud.POWER_RADIUS * 2)
+			var span: float = hud.power_button_radius(index)
+			var button = Rect2(spot - Vector2.ONE * span, Vector2.ONE * span * 2)
 			check(screen.encloses(button), tag + "Power %d stays on screen" % index)
-			check(spot.distance_to(hud.move_home) > hud.STICK_RADIUS + hud.POWER_RADIUS, tag + "Power %d never covers the movement stick" % index)
+			check(spot.distance_to(hud.move_home) > hud.STICK_RADIUS + span, tag + "Power %d never covers the movement stick" % index)
 			check(not button.intersects(fps_rect) and not button.intersects(stun_rect), tag + "Power %d leaves the FPS and stun lines clear" % index)
 			check(not button.intersects(hud.card_rects[0]) and not button.intersects(hud.card_rects[1]), tag + "Power %d stays clear of the player cards" % index)
 			check(not button.intersects(stadium), tag + "Power %d never covers the stadium" % index)

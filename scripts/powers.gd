@@ -30,7 +30,7 @@ const CATALOG = [
 	{"id": "thorns", "short": "ESPINHOS", "name": "ESPINHOS", "kind": "defesa", "charge": 9, "wait": 19, "price": 240, "color": "e8a0ff",
 		"about": "Oito segundos de espinhos na tua muralha: cada bala do rival que parta um tijolo teu tira uma vida ao piloto que a disparou. Quanto mais ele insistir, mais caro lhe fica."},
 	{"id": "freeze", "short": "GELO", "name": "GELO", "kind": "debuff", "charge": 8, "wait": 17, "price": 300, "color": "a8dcff",
-		"about": "Cinco segundos de gelo no rival: anda a menos de metade da velocidade e demora o dobro do tempo entre tiros. Não o atordoa — deixa-o lento, que é pior para quem precisa de apontar."},
+		"about": "Cinco segundos de gelo no rival: anda a menos de metade da velocidade, demora o dobro do tempo entre tiros e não pode usar nenhuma abilidade nem a ultimate enquanto durar. Não o atordoa — deixa-o lento e desarmado, que é pior para quem precisa de apontar."},
 	{"id": "magnet", "short": "ÍMAN", "name": "ÍMAN", "kind": "buff", "charge": 8, "wait": 15, "price": 340, "color": "ffd06b",
 		"about": "Sete segundos com as tuas balas a curvar na direcção do tijolo inimigo mais próximo da rota delas. Salva o tiro que ia passar de raspão; não dispara por ti, uma bala apontada ao lado errado continua errada."},
 	{"id": "pierce", "short": "PERFURA", "name": "PERFURANTE", "kind": "ataque", "charge": 10, "wait": 17, "price": 400, "color": "ff8f6b",

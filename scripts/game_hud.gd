@@ -5,7 +5,13 @@ const Campaign = preload("res://scripts/campaign.gd")
 const Rules = preload("res://scripts/arena_rules.gd")
 const STICK_RADIUS = 62.0
 # Power buttons sit in the free band between the two thumb controls, above the FPS line.
-const POWER_RADIUS = 40.0
+# The two bought powers, and then the ultimate, which is the one you are waiting for all
+# match and deserves to look like it.
+const POWER_RADIUS = 48.0
+const ULTIMATE_RADIUS = 62.0
+
+func power_button_radius(index: int) -> float:
+	return ULTIMATE_RADIUS if index == Rules.POWER_SLOTS - 1 else POWER_RADIUS
 const POWER_GAP = 100.0
 const POWER_RISE = 176.0
 const Powers = preload("res://scripts/powers.gd")
@@ -1770,11 +1776,15 @@ func layout() -> void:
 	# Powers: a row between the thumb controls on a phone, where the band under the arena is
 	# free; on a wide screen that band is the stadium itself, so they take the pocket under
 	# your own card, clear of the arena on the right and of the movement stick below.
+	# Laid out end to end from their own sizes, so the bigger ultimate key cannot land on
+	# top of its neighbour or walk into the stick.
+	var reach: float = (16.0 if vertical else card_rects[0].position.x + 8.0)
+	var row_y: float = move_home.y if vertical else card_rects[0].end.y + 62
 	for index in range(power_centers.size()):
-		if vertical:
-			power_centers[index] = Vector2(size.x * (0.14 + index * 0.15), move_home.y)
-		else:
-			power_centers[index] = Vector2(card_rects[0].position.x + 58 + index * 80, card_rects[0].end.y + 54)
+		var button: float = power_button_radius(index)
+		reach += button
+		power_centers[index] = Vector2(reach, row_y)
+		reach += button + 14.0
 	for result_button in [next_button, replay, levels_button]:
 		result_button.size = Vector2(260, 50)
 	place_result_buttons()
@@ -1890,7 +1900,7 @@ func reset_touch() -> void:
 
 func power_at(point: Vector2) -> int:
 	for index in range(power_centers.size()):
-		if point.distance_to(power_centers[index]) <= POWER_RADIUS + 8:
+		if point.distance_to(power_centers[index]) <= power_button_radius(index) + 8:
 			return index
 	return -1
 
@@ -2460,6 +2470,7 @@ func draw_powers() -> void:
 	var state: Dictionary = match_data.powers[team]
 	for index in range(power_centers.size()):
 		var center: Vector2 = power_centers[index]
+		var span: float = power_button_radius(index)
 		var id = match_loadout(team, index)
 		var cost: int = int(Powers.entry(id).get("charge", 0))
 		var charge: int = clampi(state.charge[index], 0, maxi(cost, 1))
@@ -2467,47 +2478,51 @@ func draw_powers() -> void:
 		# clock that runs after every use. The clock takes the button once it is running.
 		var cool: float = state.cool[index] if state.has("cool") else 0.0
 		var wait: float = maxf(Powers.wait_of(id), 0.001)
-		var ready: bool = cost > 0 and charge >= cost and cool <= 0
+		# Frost shuts the whole kit, so no button reads as ready while it holds.
+		var frozen: float = state.freeze_time if state.has("freeze_time") else 0.0
+		var ready: bool = cost > 0 and charge >= cost and cool <= 0 and frozen <= 0
 		var color: Color = Rules.power_color(id)
 		var running: bool = (id == "rapid" and state.rapid_time > 0) or (id == "laser" and state.laser_time > 0)
 		var charging: bool = Powers.is_ultimate(id) and state.get("ultimate_windup", 0.0) > 0
-		draw_circle(center + Vector2(0, 3), POWER_RADIUS, Color(0.01, 0.04, 0.05, 0.5), true, -1, smooth)
-		draw_circle(center, POWER_RADIUS, Color(0.08, 0.15, 0.16, 0.92), true, -1, smooth)
-		draw_arc(center, POWER_RADIUS - 1.5, 0, TAU, 56, Color(BRASS, 0.55 if cost > 0 else 0.25), 1.3, smooth)
-		draw_arc(center, POWER_RADIUS - 4, 0, TAU, 56, Color(color, 0.18), 1.2, smooth)
+		draw_circle(center + Vector2(0, 3), span, Color(0.01, 0.04, 0.05, 0.5), true, -1, smooth)
+		draw_circle(center, span, Color(0.08, 0.15, 0.16, 0.92), true, -1, smooth)
+		draw_arc(center, span - 1.5, 0, TAU, 56, Color(BRASS, 0.55 if cost > 0 else 0.25), 1.6, smooth)
+		draw_arc(center, span - 4, 0, TAU, 56, Color(color, 0.18), 1.4, smooth)
 		# The ring is whichever of the two is still counting: the bricks before the first
 		# use, the clock after it.
-		var filled: float = (1.0 - cool / wait) if cool > 0 else (float(charge) / maxi(cost, 1))
+		var filled: float = (1.0 - frozen / Rules.FREEZE_SECONDS) if frozen > 0 else ((1.0 - cool / wait) if cool > 0 else (float(charge) / maxi(cost, 1)))
 		if filled > 0 and cost > 0:
 			# Fills clockwise from the top, so a glance is enough to read the progress.
-			draw_arc(center, POWER_RADIUS - 4, -PI * 0.5, -PI * 0.5 + TAU * clampf(filled, 0, 1), 56, Color(color, 0.95 if ready else 0.5), 3.6, smooth)
+			draw_arc(center, span - 4, -PI * 0.5, -PI * 0.5 + TAU * clampf(filled, 0, 1), 56, Color(color, 0.95 if ready else 0.5), 4.2, smooth)
 		var pressed: bool = power_flash[index] > 0
 		var disc = color.darkened(0.0 if pressed else (0.2 if ready else 0.62))
 		if ready or pressed:
 			# A ready power glows, so it is caught out of the corner of the eye.
-			draw_circle(center, POWER_RADIUS - 6, Color(color, 0.18), true, -1, smooth)
+			draw_circle(center, span - 6, Color(color, 0.18), true, -1, smooth)
 		if charging:
 			# Winding up: a ring closes on the key while the pilot glows on the field.
 			var wind = 1.0 - state.ultimate_windup / Rules.ULTIMATE_WINDUP
-			draw_circle(center, POWER_RADIUS - 6, Color(color, 0.12 + 0.3 * wind), true, -1, smooth)
-			draw_arc(center, POWER_RADIUS + 4 - wind * 10, 0, TAU, 48, Color(color, 0.85), 2.6, smooth)
-		draw_circle(center, POWER_RADIUS - 11, disc, true, -1, smooth)
-		draw_arc(center, POWER_RADIUS - 11, PI * 1.15, PI * 1.85, 20, Color(CERAMIC, 0.22 if ready else 0.1), 1.2, smooth)
-		power_icon(id, center + Vector2(0, -11), WHITE if ready or pressed else Color(WHITE, 0.5))
+			draw_circle(center, span - 6, Color(color, 0.12 + 0.3 * wind), true, -1, smooth)
+			draw_arc(center, span + 4 - wind * 10, 0, TAU, 48, Color(color, 0.85), 2.6, smooth)
+		draw_circle(center, span - 11, disc, true, -1, smooth)
+		draw_arc(center, span - 11, PI * 1.15, PI * 1.85, 20, Color(CERAMIC, 0.22 if ready else 0.1), 1.2, smooth)
+		power_icon(id, center + Vector2(0, -span * 0.28), WHITE if ready or pressed else Color(WHITE, 0.5), self, span / POWER_RADIUS)
 		var caption = "PRONTO" if ready else "%d/%d" % [charge, cost]
 		if cool > 0:
 			# Counting down: whole seconds while there is time, tenths in the last one.
 			caption = ("%.0f s" % ceilf(cool)) if cool >= 1.0 else ("%.1f s" % cool)
+		if frozen > 0:
+			caption = "GELADO"
 		if cost <= 0:
 			caption = "EM BREVE"
 		elif charging:
 			caption = "%.1f s" % state.ultimate_windup
 		elif running:
 			caption = "%.1f s" % (state.laser_time if id == "laser" else state.rapid_time)
-		centered(caption, center + Vector2(0, 13), 9, INK if ready or pressed else WHITE, true)
+		centered(caption, center + Vector2(0, span * 0.33), roundi(11 * span / POWER_RADIUS), INK if ready or pressed else WHITE, true)
 		# The name goes under the button, not inside it: the ring is forty pixels across, and
 		# with the icon and the charge already in there the name was crossing the rim.
-		centered(Rules.power_label(id), center + Vector2(0, POWER_RADIUS + 14), 8, Color(WHITE, 0.85 if ready or pressed else 0.5), true)
+		centered(Rules.power_label(id), center + Vector2(0, span + 15), roundi(9 * span / POWER_RADIUS), Color(WHITE, 0.85 if ready or pressed else 0.5), true)
 
 func match_loadout(t: int, index: int) -> String:
 	# The power on that button: empty while the skin ultimates are still to come.
@@ -2516,9 +2531,15 @@ func match_loadout(t: int, index: int) -> String:
 		return String(kits[t][index])
 	return ""
 
-func power_icon(id: String, center: Vector2, color: Color, canvas: CanvasItem = null) -> void:
-	# One sigil per power, all drawn at the same weight inside a 26 px circle.
+func power_icon(id: String, center: Vector2, color: Color, canvas: CanvasItem = null, scale_value: float = 1.0) -> void:
+	# One sigil per power, all drawn at the same weight inside a 26 px circle. `scale_value`
+	# blows the whole drawing up for the bigger keys without redrawing any of it.
 	var c: CanvasItem = canvas if canvas != null else self
+	if not is_equal_approx(scale_value, 1.0):
+		c.draw_set_transform(center, 0.0, Vector2.ONE * scale_value)
+		power_icon(id, Vector2.ZERO, color, c)
+		c.draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+		return
 	var brass = Color(BRASS, 0.85)
 	match id:
 		"blast":

@@ -103,8 +103,14 @@ func run() -> void:
 	frost.players[1].cooldown = 0.0
 	frost.shoot(1)
 	check(frost.players[1].cooldown > Rules.FIRE_INTERVAL * 1.5, "Gelo: and waits far longer between rounds")
+	# And the whole kit is shut while it holds: that is what the frost is paid for.
+	for slot in range(Rules.POWER_SLOTS):
+		frost.powers[1].charge[slot] = frost.power_charge_cost(1, slot)
+		frost.powers[1].cool[slot] = 0.0
+	check(not range(Rules.POWER_SLOTS).any(func(i): return frost.can_activate_power(1, i)), "Gelo: and it cannot reach for a single power while frozen")
 	wait(frost, Rules.FREEZE_SECONDS)
 	check(frost.powers[1].freeze_time <= 0, "Gelo: five seconds and the frost is gone")
+	check(frost.can_activate_power(1, 0), "Gelo: and the kit answers again the moment it lifts")
 
 	# ------------------------------------------------------------------------ iman
 	var pull = playing("magnet")

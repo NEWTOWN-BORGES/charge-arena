@@ -790,6 +790,10 @@ func can_activate_power(team: int, index: int) -> bool:
 		return false
 	if phase != "play" or players[team].stun > 0 or running_power(team):
 		return false
+	# Frozen solid: the pilot still walks and still shoots, both at half of nothing, but
+	# the kit is shut. Five seconds without a power is what makes the frost worth its cost.
+	if powers[team].freeze_time > 0:
+		return false
 	# The bricks open it once; after that it is the clock that says when it comes back.
 	if powers[team].cool[index] > 0:
 		return false

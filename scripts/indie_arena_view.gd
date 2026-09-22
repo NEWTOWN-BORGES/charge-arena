@@ -53,6 +53,8 @@ var effect_limit = 112
 # they cost almost nothing, and they were the first thing dropped in a crowded frame -
 # which is the frame where the player most needs to know what just happened.
 const NUMBER_ALLOWANCE = 30
+# How high above the floor the storm and the meteors come from.
+const SKY_TOP = 8.4
 var trail_interval = 0.035
 var brick_instances: Array = []
 var brick_batches: Array = []
@@ -2142,51 +2144,53 @@ func meteor_impact(at: Vector2, radius: float, color: Color, hot: Color) -> void
 	effects.append({"node": crater, "v": Vector3.ZERO, "ttl": 0.45, "life": 0.45, "gravity": false, "base": Vector3.ONE * 2.1, "grow": true, "tint": color})
 
 func thunder_bolt(at: Vector2, radius: float) -> void:
-	# A forked bolt with a white core inside a wider halo, a hard flash and sparks that
-	# crawl outwards along the floor.
+	# A strike you can see coming. First the floor lights up where it will land, so the eye
+	# is already there; then the bolt comes down out of the dark in two strokes, top half
+	# and bottom half a blink apart, which is what makes it read as falling rather than as
+	# appearing; then the ground takes it. Drawing all eight at once, stuttering, turned
+	# the storm into noise.
 	var color = Rules.power_color("thunder")
 	var hot = Color("f2fbff")
-	if effects.size() + 6 >= effect_limit + NUMBER_ALLOWANCE:
+	if effects.size() + 8 >= effect_limit + NUMBER_ALLOWANCE:
+		return
+	var mark = torus(self, Vector3(at.x, 0.06, at.y), radius * 1.5, 0.05, Color(hot, 0.85), true)
+	mark.scale = Vector3.ONE * 1.6
+	effects.append({"node": mark, "v": Vector3.ZERO, "ttl": 0.28, "life": 0.28, "gravity": false, "base": Vector3.ONE * 0.9, "grow": false, "tint": color})
+	# The same jagged path for both halves, so they line up when the second one lands.
+	var path: Array = [Vector3(at.x + randf_range(-0.8, 0.8), SKY_TOP, at.y + randf_range(-0.8, 0.8))]
+	var steps = 9
+	for step in range(steps):
+		var reach = float(steps - step - 1) / steps
+		var next = Vector3(at.x + randf_range(-1.05, 1.05) * reach, SKY_TOP - (step + 1) * (SKY_TOP - 0.12) / steps, at.y + randf_range(-1.05, 1.05) * reach)
+		if step == steps - 1:
+			next = Vector3(at.x, 0.12, at.y)
+		path.append(next)
+	pending.append({"time": 0.16, "call": func(): thunder_stroke(path, 0, 5, color, hot, 0.3)})
+	pending.append({"time": 0.21, "call": func(): thunder_stroke(path, 4, steps, color, hot, 0.26)})
+	pending.append({"time": 0.24, "call": func(): thunder_land(at, radius, color, hot)})
+
+func thunder_stroke(path: Array, from_step: int, to_step: int, color: Color, hot: Color, life: float) -> void:
+	# One half of the bolt: a wide soft halo with a hard white core inside it, and a single
+	# fork off the middle. No stutter - it stands, then it is gone.
+	if effects.size() >= effect_limit:
 		return
 	var bolt = Node3D.new()
 	add_child(bolt)
-	var previous = Vector3(at.x + randf_range(-0.7, 0.7), 8.4, at.y + randf_range(-0.7, 0.7))
-	var steps = 7
-	for step in range(steps):
-		var reach = float(steps - step - 1) / steps
-		var next = Vector3(at.x + randf_range(-0.9, 0.9) * reach, 8.4 - (step + 1) * (8.2 / steps), at.y + randf_range(-0.9, 0.9) * reach)
-		if step == steps - 1:
-			next = Vector3(at.x, 0.12, at.y)
-		segment(bolt, previous, next, 0.4, 0.4, Color(color, 0.3), true)
-		segment(bolt, previous, next, 0.14, 0.14, Color(hot, 1.0), true)
-		# A fork half way down gives the bolt its shape.
-		if step == 3:
-			var fork = next + Vector3(randf_range(-1.6, 1.6), -1.8, randf_range(-1.6, 1.6))
-			segment(bolt, next, fork, 0.09, 0.09, Color(hot, 0.85), true)
-		previous = next
-	effects.append({"node": bolt, "v": Vector3.ZERO, "ttl": 0.36, "life": 0.36, "gravity": false, "base": Vector3.ONE, "keep": true, "blink": true})
-	# Two more bolts falling around it, for the look alone: the storm is eight strikes in
-	# two seconds and, drawn one at a time, it came out as a slideshow of single flashes.
-	for extra in range(2):
-		if effects.size() >= effect_limit:
-			break
-		var side = Node3D.new()
-		add_child(side)
-		var drift = Vector2(randf_range(-2.6, 2.6), randf_range(-2.2, 2.2))
-		var walk = Vector3(at.x + drift.x, 8.4, at.y + drift.y)
-		for step in range(5):
-			var next = Vector3(at.x + drift.x + randf_range(-0.8, 0.8), 8.4 - (step + 1) * 1.7, at.y + drift.y + randf_range(-0.8, 0.8))
-			segment(side, walk, next, 0.2, 0.2, Color(color, 0.22), true)
-			segment(side, walk, next, 0.07, 0.07, Color(hot, 0.7), true)
-			walk = next
-		effects.append({"node": side, "v": Vector3.ZERO, "ttl": 0.2 + extra * 0.08, "life": 0.2 + extra * 0.08, "gravity": false, "base": Vector3.ONE, "keep": true, "blink": true})
-	# And a sheet of light in the sky over the whole half, so the storm has a ceiling.
-	if effects.size() < effect_limit:
-		var sheet = box(self, Vector3(0, 7.4, at.y * 0.8), Vector3(16.0, 0.1, 9.0), Color(color, 0.16), true, 0.05)
-		effects.append({"node": sheet, "v": Vector3.ZERO, "ttl": 0.3, "life": 0.3, "gravity": false, "base": Vector3.ONE, "keep": true, "blink": true})
-	var ring = torus(self, Vector3(at.x, 0.12, at.y), radius * 0.8, 0.075, Color(hot, 0.95), true)
-	ring.scale = Vector3.ONE * 0.25
-	effects.append({"node": ring, "v": Vector3.ZERO, "ttl": 0.5, "life": 0.5, "gravity": false, "base": Vector3.ONE * 2.3, "grow": true, "tint": color})
+	for step in range(from_step, mini(to_step, path.size() - 1)):
+		segment(bolt, path[step], path[step + 1], 0.46, 0.46, Color(color, 0.26), true)
+		segment(bolt, path[step], path[step + 1], 0.17, 0.17, Color(hot, 1.0), true)
+		if step == to_step - 2 and from_step == 0:
+			var fork = path[step + 1] + Vector3(randf_range(-2.0, 2.0), -2.4, randf_range(-2.0, 2.0))
+			segment(bolt, path[step + 1], fork, 0.28, 0.28, Color(color, 0.2), true)
+			segment(bolt, path[step + 1], fork, 0.1, 0.1, Color(hot, 0.85), true)
+	effects.append({"node": bolt, "v": Vector3.ZERO, "ttl": life, "life": life, "gravity": false, "base": Vector3.ONE, "keep": true})
+
+func thunder_land(at: Vector2, radius: float, color: Color, hot: Color) -> void:
+	# What the ground does about it.
+	if effects.size() + 2 < effect_limit:
+		var ring = torus(self, Vector3(at.x, 0.12, at.y), radius * 0.8, 0.08, Color(hot, 0.95), true)
+		ring.scale = Vector3.ONE * 0.25
+		effects.append({"node": ring, "v": Vector3.ZERO, "ttl": 0.5, "life": 0.5, "gravity": false, "base": Vector3.ONE * 2.6, "grow": true, "tint": color})
 	emitter(Vector3(at.x, 0.2, at.y), hot, 30, 0.45, 8.5, 78.0, 0.24, -12.0, Vector3.UP)
 	emitter(Vector3(at.x, 0.1, at.y), color, 16, 0.7, 5.0, 90.0, 0.22, -3.0, Vector3.UP)
 	dust(Vector3(at.x, 0.12, at.y), Color("b9cdd4"), 8, 0.9, 1.2, 0.6)

@@ -40,7 +40,8 @@ func control_rects(hud) -> Array:
 	var stick = hud.STICK_RADIUS
 	var rects = [Rect2(hud.move_home - Vector2(stick, stick), Vector2(stick * 2, stick + 124))]
 	for spot in hud.power_centers:
-		rects.append(Rect2(spot - Vector2.ONE * hud.POWER_RADIUS, Vector2.ONE * hud.POWER_RADIUS * 2))
+		var span: float = hud.power_button_radius(hud.power_centers.find(spot))
+		rects.append(Rect2(spot - Vector2.ONE * span, Vector2.ONE * span * 2))
 	return rects
 
 func touch(hud, id: int, position: Vector2, down: bool) -> void:
