@@ -92,7 +92,7 @@ func run() -> void:
 	# Charges: one per destroyed enemy brick, capped at each power's own cost.
 	var r = playing()
 	check(r.powers.size() == 2 and r.powers[0].charge == [0, 0, 0] and r.powers[0].destroyed == 0, "A match starts with every power empty")
-	check([cost(r, 0), cost(r, 1), cost(r, 2)] == [5, 10, 12] and Powers.CATALOG.size() == 14, "The fourteen powers charge at their own cost: blast 5, machine gun 10, air burst 12")
+	check([cost(r, 0), cost(r, 1), cost(r, 2)] == [4, 6, 7] and Powers.CATALOG.size() == 14, "The fourteen powers charge at their own cost: blast 4, machine gun 6, air burst 7")
 	for i in range(3):
 		var index = first_brick(r, 1)
 		r.damage_brick(index, Rules.BRICK_LIVES, 0, r.bricks[index].p)
@@ -103,7 +103,7 @@ func run() -> void:
 	for i in range(20):
 		var index = first_brick(r, 1)
 		r.damage_brick(index, Rules.BRICK_LIVES, 0, r.bricks[index].p)
-	check(r.powers[0].charge == [5, 10, 12] and r.powers[0].destroyed == 23, "Charges stop at the cost of each power")
+	check(r.powers[0].charge == [4, 6, 7] and r.powers[0].destroyed == 23, "Charges stop at the cost of each power")
 	check(r.events.any(func(e): return e.kind == "power_ready" and e.power == 2 and e.team == 0), "Filling a power announces it")
 
 	# Gating: enough charge, alive, playing, and one power at a time.
@@ -255,7 +255,7 @@ func run() -> void:
 	host.balls = [{"id": 5, "owner": 0, "p": Vector2(0.4, 0.2), "v": Vector2(0, 12), "bounces": 0, "boosted": false, "damage": 1, "ttl": 3.0, "power": 1}]
 	var client = playing()
 	check(client.apply_network_snapshot(host.network_snapshot()), "The power state travels in the match packet")
-	check(client.powers[0].charge == [3, 7, 12] and client.powers[0].destroyed == 25 and is_equal_approx(client.powers[1].rapid_time, 0.75), "Charges, totals and the burst timer arrive intact")
+	check(client.powers[0].charge == [3, 6, 7] and client.powers[0].destroyed == 25 and is_equal_approx(client.powers[1].rapid_time, 0.75), "Charges, totals and the burst timer arrive intact")
 	check(client.balls.size() == 1 and client.balls[0].power == 1, "The client knows which round is explosive")
 	var packet: Dictionary = host.network_snapshot()
 	var tampered: PackedFloat32Array = packet.b

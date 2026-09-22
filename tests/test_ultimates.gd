@@ -476,6 +476,16 @@ func run() -> void:
 	check(landing.any(func(e): return e.kind == "plunder_land"), "Pilhagem: they land together")
 	check(team_health(raid, 0) == stolen and team_health(raid, 1) == given, "Pilhagem: and that is when the two walls change hands")
 	check(raid.bricks.all(func(b): return b.p.is_equal_approx(b.home)), "Pilhagem: every brick back on a spot of its own")
+	# The wall has to come down again whatever ends the flight, not only a clean landing.
+	for ending in ["goal", "finished", "countdown"]:
+		var cut = playing("plunder")
+		launch(cut)
+		wait(cut, Rules.ULTIMATE_WINDUP + Rules.PLUNDER_SWAP * 0.5)
+		check(cut.bricks.any(func(b): return b.p.distance_to(b.home) > 0.3), "Pilhagem: half way over, the wall is in the air (%s)" % ending)
+		cut.phase = ending
+		cut.timer = 1.0
+		wait(cut, 0.5)
+		check(cut.bricks.all(func(b): return b.p.is_equal_approx(b.home)), "Pilhagem: and it lands back home when the round turns to %s" % ending)
 
 	print("ULTIMATES_RESULT failures=", failures)
 	quit(failures)

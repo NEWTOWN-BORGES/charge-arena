@@ -521,6 +521,7 @@ func reset_round() -> void:
 		state.surge_time = 0.0
 		state.plating_time = 0.0
 		state.plunder_time = 0.0
+		carrying = false
 		state.freeze_time = 0.0
 		state.magnet_time = 0.0
 		state.pierce_time = 0.0
@@ -675,6 +676,12 @@ func step(dt: float, commands: Array) -> void:
 	events.clear()
 	elapsed += dt
 	if phase != "play":
+		# The wall comes back down even when the round is over. A plunder still in the air
+		# when the match ended left every brick parked on the far side for good: the flight
+		# is driven from here, and here is where the clock stops running.
+		for state in powers:
+			state.plunder_time = 0.0
+		carry_bricks()
 		if phase == "finished":
 			return
 		timer -= dt
@@ -1659,7 +1666,10 @@ func advance_ball(ball: Dictionary, dt: float, sweep_obstacles: bool = false, pr
 					remaining *= 1.0 - best
 					continue
 				var was_alive: bool = bricks[target].alive
-				damage_brick(target, int(ball.get("damage", 1)), ball.owner, ball.p)
+				# A round thrown by a power, or turbocharged by a bumper, says what it took;
+				# a plain shot does not, or every round would drag a number behind it.
+				var spoken: bool = int(ball.get("power", 0)) > 0 or ball.get("boosted", false)
+				damage_brick(target, int(ball.get("damage", 1)), ball.owner, ball.p, spoken)
 				if not preview and powers[bricks[target].team].thorns_time > 0:
 					# Thorns: breaking against this wall costs the pilot that threw it.
 					damage_player(ball.owner, THORNS_BITE, ball.p)

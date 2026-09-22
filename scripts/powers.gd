@@ -6,38 +6,40 @@ const CONFIG_PATH = "user://powers.cfg"
 # charge: enemy bricks to destroy in the match before it can be fired.
 # price: tijolos accumulated across matches to buy it in the shop.
 const CATALOG = [
-	{"id": "blast", "short": "EXPLOSÃO", "name": "EXPLOSÃO", "kind": "ataque", "charge": 5, "price": 0, "color": "ffb36b",
+	{"id": "blast", "short": "EXPLOSÃO", "name": "EXPLOSÃO", "kind": "ataque", "charge": 4, "price": 0, "color": "ffb36b",
 		"about": "Uma bala que rebenta ao acertar: 2 de dano a tudo o que for inimigo à volta."},
-	{"id": "rapid", "short": "METRALHA", "name": "METRALHADORA", "kind": "ataque", "charge": 10, "price": 200, "color": "ffe978",
+	{"id": "rapid", "short": "METRALHA", "name": "METRALHADORA", "kind": "ataque", "charge": 6, "price": 120, "color": "ffe978",
 		"about": "Uma rajada de 10 balas seguidas, umas atrás das outras, sem tirar o dedo do botão."},
-	{"id": "air", "short": "LEQUE", "name": "RAJADA DE AR", "kind": "ataque", "charge": 12, "price": 0, "color": "90e6ff",
+	{"id": "air", "short": "LEQUE", "name": "RAJADA DE AR", "kind": "ataque", "charge": 7, "price": 0, "color": "90e6ff",
 		"about": "Cinco balas de uma vez num leque à frente do piloto, cada uma com 2 de dano."},
-	{"id": "ghost", "short": "FANTASMA", "name": "BALAS FANTASMA", "kind": "ataque", "charge": 4, "price": 250, "color": "c8a8ff",
+	{"id": "ghost", "short": "FANTASMA", "name": "BALAS FANTASMA", "kind": "ataque", "charge": 3, "price": 150, "color": "c8a8ff",
 		"about": "Oito segundos com as balas a atravessar pilares, barreiras e obstáculos. As paredes continuam a reflectir."},
-	{"id": "laser", "short": "LASER", "name": "RAIO LASER", "kind": "ataque", "charge": 18, "price": 800, "color": "ff6b7a",
+	{"id": "laser", "short": "LASER", "name": "RAIO LASER", "kind": "ataque", "charge": 11, "price": 420, "color": "ff6b7a",
 		"about": "Uma lança contínua durante 3 segundos, que morde a cada meio segundo e **dobra uma vez na parede**: com o ângulo certo apanha a muralha de frente e ainda leva o resto do feixe para outro lado. Atravessa bumpers e barreiras, e enquanto está acesa a pistola cala-se."},
-	{"id": "rebuild", "short": "REPOR", "name": "RECONSTRUÇÃO", "kind": "defesa", "charge": 15, "price": 600, "color": "9fe37a",
+	{"id": "rebuild", "short": "REPOR", "name": "RECONSTRUÇÃO", "kind": "defesa", "charge": 9, "price": 320, "color": "9fe37a",
 		"about": "Sete tijolos teus voltam inteiros ao campo, os mais próximos da baliza primeiro, cada um dentro de um anel de luz."},
-	{"id": "mirror", "short": "ESPELHO", "name": "CAPA ESPELHO", "kind": "defesa", "charge": 12, "price": 700, "color": "7fe6ff",
+	{"id": "mirror", "short": "ESPELHO", "name": "CAPA ESPELHO", "kind": "defesa", "charge": 7, "price": 360, "color": "7fe6ff",
 		"about": "4,5 segundos de capa nos teus tijolos: a bala inimiga volta como bala de boost — mais rápida, 2 de dano e sem ricochete."},
-	{"id": "walls", "short": "MURALHA", "name": "MURALHAS", "kind": "defesa", "charge": 10, "price": 300, "color": "dbdf9a",
+	{"id": "walls", "short": "MURALHA", "name": "MURALHAS", "kind": "defesa", "charge": 6, "price": 180, "color": "dbdf9a",
 		"about": "Muralhas sobem à frente de cada banco de tijolos teus durante 6,5 segundos e voltam à terra. Deixam frestas: o rival ainda acerta, mas tem de apontar."},
-	{"id": "stun", "short": "CHOQUE", "name": "PULSO DE CHOQUE", "kind": "defesa", "charge": 15, "price": 500, "color": "b9e6ff",
+	{"id": "stun", "short": "CHOQUE", "name": "PULSO DE CHOQUE", "kind": "defesa", "charge": 9, "price": 280, "color": "b9e6ff",
 		"about": "Uma onda limpa todas as balas do campo e deixa o rival — e os obstáculos móveis — atordoados 4,5 segundos."},
-	{"id": "weld", "short": "SOLDA", "name": "SOLDA RÁPIDA", "kind": "vida", "charge": 8, "price": 350, "color": "8fe0a8",
+	{"id": "weld", "short": "SOLDA", "name": "SOLDA RÁPIDA", "kind": "vida", "charge": 5, "price": 200, "color": "8fe0a8",
 		"about": "Uma vida de volta em cada tijolo teu que já levou pancada. Não levanta os que caíram — para isso é a Reconstrução — mas é barata e rápida, e uma muralha inteira a meia vida fica outra vez inteira."},
-	{"id": "thorns", "short": "ESPINHOS", "name": "ESPINHOS", "kind": "defesa", "charge": 14, "price": 450, "color": "e8a0ff",
+	{"id": "thorns", "short": "ESPINHOS", "name": "ESPINHOS", "kind": "defesa", "charge": 9, "price": 240, "color": "e8a0ff",
 		"about": "Oito segundos de espinhos na tua muralha: cada bala do rival que parta um tijolo teu tira uma vida ao piloto que a disparou. Quanto mais ele insistir, mais caro lhe fica."},
-	{"id": "freeze", "short": "GELO", "name": "GELO", "kind": "debuff", "charge": 12, "price": 550, "color": "a8dcff",
+	{"id": "freeze", "short": "GELO", "name": "GELO", "kind": "debuff", "charge": 8, "price": 300, "color": "a8dcff",
 		"about": "Cinco segundos de gelo no rival: anda a menos de metade da velocidade e demora o dobro do tempo entre tiros. Não o atordoa — deixa-o lento, que é pior para quem precisa de apontar."},
-	{"id": "magnet", "short": "ÍMAN", "name": "ÍMAN", "kind": "buff", "charge": 13, "price": 600, "color": "ffd06b",
+	{"id": "magnet", "short": "ÍMAN", "name": "ÍMAN", "kind": "buff", "charge": 8, "price": 340, "color": "ffd06b",
 		"about": "Sete segundos com as tuas balas a curvar na direcção do tijolo inimigo mais próximo da rota delas. Salva o tiro que ia passar de raspão; não dispara por ti, uma bala apontada ao lado errado continua errada."},
-	{"id": "pierce", "short": "PERFURA", "name": "PERFURANTE", "kind": "ataque", "charge": 16, "price": 750, "color": "ff8f6b",
+	{"id": "pierce", "short": "PERFURA", "name": "PERFURANTE", "kind": "ataque", "charge": 10, "price": 400, "color": "ff8f6b",
 		"about": "Seis segundos com as balas a atravessar o tijolo que partem e a seguir caminho. Contra uma muralha de quatro fileiras, um tiro certeiro abre um corredor em vez de uma mossa."},
 ]
 # One ultimate per skin (see Skins.CATALOG["ultimate"]). They are never bought: the skin
 # brings its own, in the third slot, and all of them spend two seconds charging up first.
-const ULTIMATE_CHARGE = 20
+# Thirteen and not twenty: a whole match now destroys thirty to forty-five bricks, and at
+# twenty the ultimate was arriving once, near the end, or not at all.
+const ULTIMATE_CHARGE = 13
 const ULTIMATES = [
 	{"id": "sun_ray", "short": "SOL", "name": "COROA SOLAR", "kind": "ultimate", "charge": ULTIMATE_CHARGE, "price": 0, "color": "ffe45c",
 		"about": "Um raio de sol grosso que atravessa a arena e segue para lá dela: 2 de dano em tudo o que apanha, largo o bastante para quatro tijolos em fila."},

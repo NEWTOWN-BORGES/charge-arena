@@ -59,7 +59,7 @@ func run() -> void:
 	check(not shop.can_buy("laser") and not shop.buy("laser"), "A power cannot be bought without bricks")
 	shop.add_bricks(300)
 	check(not shop.can_buy("laser") and shop.can_buy("ghost"), "Only what the wallet covers can be bought (%d tijolos)" % shop.bricks)
-	check(shop.buy("ghost") and shop.bricks == 50 and shop.is_owned("ghost"), "Buying pays the price and keeps the power")
+	check(shop.buy("ghost") and shop.bricks == 150 and shop.is_owned("ghost"), "Buying pays the price and keeps the power")
 	check(not shop.buy("ghost") and not shop.buy("nada"), "A power is bought once, and an unknown id never")
 	check(not shop.equip(0, "laser") and shop.kit == Powers.STARTER_KIT, "A power that is not owned cannot be equipped")
 	check(shop.equip(1, "ghost") and shop.kit == ["blast", "ghost"], "Equipping fills that slot")
@@ -71,7 +71,7 @@ func run() -> void:
 	restored.unlock_all = false
 	restored.config_path = TMP
 	restored.load_preferences()
-	check(restored.bricks == 50 and restored.owned == ["blast", "air", "ghost"] and restored.kit == ["ghost", "blast"], "Wallet, purchases and kit survive a restart")
+	check(restored.bricks == 150 and restored.owned == ["blast", "air", "ghost"] and restored.kit == ["ghost", "blast"], "Wallet, purchases and kit survive a restart")
 	var edited = ConfigFile.new()
 	edited.load(TMP)
 	edited.set_value("powers", "owned", ["blast", "air", "inventado"])
@@ -84,7 +84,7 @@ func run() -> void:
 
 	# ---------------------------------------------------------------- ghost rounds
 	var r = playing(["ghost", "blast", ""])
-	check(r.power_charge_cost(0, 0) == 4, "The ghost rounds are the cheapest power to charge")
+	check(r.power_charge_cost(0, 0) == 3, "The ghost rounds are the cheapest power to charge")
 	use(r, 0)
 	check(r.powers[0].ghost_time == Rules.GHOST_SECONDS, "They last %.0f seconds" % Rules.GHOST_SECONDS)
 	r.step(1.0 / 60, [{"move": Vector2.ZERO, "fire": true}, idle])
@@ -117,7 +117,7 @@ func run() -> void:
 
 	# ---------------------------------------------------------------- laser
 	r = playing(["laser", "blast", ""])
-	check(r.power_charge_cost(0, 0) == 18, "The laser is the dearest power to charge")
+	check(r.power_charge_cost(0, 0) == 11 and Powers.CATALOG.all(func(e): return e.charge <= 11), "The laser is the dearest power to charge")
 	# An angle whose straight beam crosses the rival's bank; a ball there would ricochet first.
 	r.players[0].angle = -0.34
 	r.players[0].p = Rules.track_position(0, -0.34)
@@ -237,7 +237,7 @@ func run() -> void:
 	check(Campaign.BOSS_KITS.all(func(kit): return kit.size() == Powers.KIT_SIZE and kit.all(func(id): return Powers.index_of(id) >= 0)), "Each kit holds two powers from the catalogue")
 	var early: Array = Campaign.boss_kit(0)
 	var late: Array = Campaign.boss_kit(Campaign.LEVELS.size() - 1)
-	check(early == ["blast", "air"] and late.has("laser") and late.has("stun"), "The first boss only shoots; the last one brings the laser and the pulse")
+	check(early == ["blast", "air"] and late.has("laser") and late.has("magnet"), "The first boss only shoots; the last one brings the laser and the magnet")
 	check(Campaign.BOSS_KITS.any(func(kit): return kit.any(func(id): return Powers.entry(id).kind == "defesa")), "Later bosses defend as well as attack")
 	var defended = playing(["blast", "rebuild", ""])
 	defended.ai_level = 2

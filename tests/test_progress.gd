@@ -77,11 +77,11 @@ func run() -> void:
 			cheapest = mini(cheapest, int(entry.price))
 			dearest = maxi(dearest, int(entry.price))
 	# A match is worth about eighty bricks, measured against the campaign bosses.
-	check(cheapest <= 240 and dearest <= 1000, "The first power costs about three matches (%d) and the dearest about ten (%d)" % [cheapest, dearest])
+	check(cheapest <= 140 and dearest <= 450, "The first power costs about three matches (%d) and the dearest about ten (%d)" % [cheapest, dearest])
 	shop.bricks = cheapest - 1
-	check(not shop.buy("rapid") or cheapest != 200, "A power cannot be bought without the bricks for it")
+	check(not shop.buy("rapid") or cheapest != 120, "A power cannot be bought without the bricks for it")
 	shop.bricks = dearest
-	check(shop.buy("laser") and shop.is_owned("laser") and shop.bricks == dearest - 800, "Paying for one takes the bricks and hands it over")
+	check(shop.buy("laser") and shop.is_owned("laser") and shop.bricks == dearest - 420, "Paying for one takes the bricks and hands it over")
 	check(shop.equip(0, "laser") and shop.kit[0] == "laser", "And it can go straight into the kit")
 	check(not shop.buy("laser"), "Nothing is bought twice")
 

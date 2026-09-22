@@ -49,6 +49,10 @@ var tally: Array = [{}, {}]
 const TALLY_HOLD = 1.0
 const TALLY_FADE = 0.35
 var effect_limit = 112
+# Floating numbers draw on top of that budget instead of competing with it. They are text,
+# they cost almost nothing, and they were the first thing dropped in a crowded frame -
+# which is the frame where the player most needs to know what just happened.
+const NUMBER_ALLOWANCE = 30
 var trail_interval = 0.035
 var brick_instances: Array = []
 var brick_batches: Array = []
@@ -795,6 +799,46 @@ func build_player(color: Color, team: int, skin: int = 0, parent: Node3D = null,
 		build_archon(body, palette.body, palette.light, color)
 	else:
 		build_aurora_pilot(body, color)
+	# Frost: a block of ice around the pilot with crystals standing off it, and a ring of
+	# spikes grown out of the floor. It is the heaviest of the worn effects on purpose -
+	# being frozen is the worst thing that happens to you in a match.
+	var frost = Node3D.new()
+	frost.name = "Frost"
+	root.add_child(frost)
+	var ice = Rules.power_color("freeze")
+	box(frost, Vector3(0, 0.62, 0), Vector3(1.08, 1.44, 0.98), Color(ice, 0.5), true, 0.16)
+	box(frost, Vector3(0, 0.62, 0), Vector3(0.92, 1.58, 0.84), Color("dff4ff", 0.34), true, 0.22)
+	# A bright edge around the middle of the block, so it reads as ice and not as haze.
+	for band in [0.26, 0.62, 0.98]:
+		torus(frost, Vector3(0, band, 0), 0.6, 0.038, Color("f2fdff", 0.95))
+	for i in range(7):
+		var shard_angle = i * TAU / 7.0
+		var shard = cone(frost, Vector3(cos(shard_angle) * 0.6, 0.3 + (i % 3) * 0.26, sin(shard_angle) * 0.6), 0.14, 0.62 + (i % 3) * 0.2, Color("f2fdff", 0.95), true, 6)
+		shard.rotation_degrees = Vector3(cos(shard_angle) * 32, 0, -sin(shard_angle) * 32)
+	for i in range(9):
+		var spike_angle = i * TAU / 9.0 + 0.3
+		cone(frost, Vector3(cos(spike_angle) * 0.96, 0.12, sin(spike_angle) * 0.96), 0.1, 0.46, Color("dff4ff", 0.95), true, 6)
+	torus(frost, Vector3(0, 0.03, 0), 1.02, 0.05, Color("f2fdff", 0.95))
+	frost.hide()
+	# The magnet: a field ring turning on its side around the pilot, with two poles.
+	var pull = Node3D.new()
+	pull.name = "Magnet"
+	root.add_child(pull)
+	var lode = Rules.power_color("magnet")
+	for lift in [0.35, 0.75, 1.15]:
+		torus(pull, Vector3(0, lift, 0), 0.82 - absf(lift - 0.75) * 0.5, 0.028, Color(lode, 0.8))
+	for side in [-1, 1]:
+		box(pull, Vector3(side * 0.82, 0.75, 0), Vector3(0.16, 0.3, 0.16), Color(lode, 0.95), true, 0.03)
+	pull.hide()
+	# Armour piercing: a drill bit of light riding over the gun.
+	var drill = Node3D.new()
+	drill.name = "Pierce"
+	root.add_child(drill)
+	var bite = Rules.power_color("pierce")
+	cone(drill, Vector3(0, 0.95, -0.95), 0.13, 0.46, Color(bite, 0.9), true, 8).rotation_degrees.x = -90
+	for i in range(3):
+		torus(drill, Vector3(0, 0.95, -0.6 + i * 0.22), 0.16, 0.022, Color(bite, 0.75))
+	drill.hide()
 	var surge = Node3D.new()
 	surge.name = "Surge"
 	root.add_child(surge)
@@ -1617,6 +1661,25 @@ func update_state(rules, local_team: int, dt: float, motion_alpha: float = 1.0) 
 			overload.visible = rules.powers[team].surge_time > 0
 			if overload.visible:
 				overload.rotation.y = -clock * 3.4
+		# Worn for as long as their clocks run, and turning at their own pace so that even
+		# standing still the pilot is visibly under something.
+		var chilled: Node3D = node.get_node_or_null("Frost")
+		if chilled != null:
+			chilled.visible = rules.powers[team].freeze_time > 0
+			if chilled.visible:
+				chilled.rotation.y = clock * 0.5
+				chilled.scale = Vector3.ONE * (1.0 + sin(clock * 3.0) * 0.03)
+		var lode: Node3D = node.get_node_or_null("Magnet")
+		if lode != null:
+			lode.visible = rules.powers[team].magnet_time > 0
+			if lode.visible:
+				lode.rotation.y = clock * 2.6
+				lode.rotation.x = sin(clock * 1.4) * 0.22
+		var drill: Node3D = node.get_node_or_null("Pierce")
+		if drill != null:
+			drill.visible = rules.powers[team].pierce_time > 0
+			if drill.visible:
+				drill.get_child(0).rotation_degrees.y = clock * 420.0
 		var halo: Node3D = node.get_node("Stun")
 		halo.visible = data.stun > 0
 		halo.rotation.y = clock * 2.7
@@ -2083,7 +2146,7 @@ func thunder_bolt(at: Vector2, radius: float) -> void:
 	# crawl outwards along the floor.
 	var color = Rules.power_color("thunder")
 	var hot = Color("f2fbff")
-	if effects.size() + 6 >= effect_limit:
+	if effects.size() + 6 >= effect_limit + NUMBER_ALLOWANCE:
 		return
 	var bolt = Node3D.new()
 	add_child(bolt)
@@ -2101,7 +2164,26 @@ func thunder_bolt(at: Vector2, radius: float) -> void:
 			var fork = next + Vector3(randf_range(-1.6, 1.6), -1.8, randf_range(-1.6, 1.6))
 			segment(bolt, next, fork, 0.09, 0.09, Color(hot, 0.85), true)
 		previous = next
-	effects.append({"node": bolt, "v": Vector3.ZERO, "ttl": 0.26, "life": 0.26, "gravity": false, "base": Vector3.ONE, "keep": true, "blink": true})
+	effects.append({"node": bolt, "v": Vector3.ZERO, "ttl": 0.36, "life": 0.36, "gravity": false, "base": Vector3.ONE, "keep": true, "blink": true})
+	# Two more bolts falling around it, for the look alone: the storm is eight strikes in
+	# two seconds and, drawn one at a time, it came out as a slideshow of single flashes.
+	for extra in range(2):
+		if effects.size() >= effect_limit:
+			break
+		var side = Node3D.new()
+		add_child(side)
+		var drift = Vector2(randf_range(-2.6, 2.6), randf_range(-2.2, 2.2))
+		var walk = Vector3(at.x + drift.x, 8.4, at.y + drift.y)
+		for step in range(5):
+			var next = Vector3(at.x + drift.x + randf_range(-0.8, 0.8), 8.4 - (step + 1) * 1.7, at.y + drift.y + randf_range(-0.8, 0.8))
+			segment(side, walk, next, 0.2, 0.2, Color(color, 0.22), true)
+			segment(side, walk, next, 0.07, 0.07, Color(hot, 0.7), true)
+			walk = next
+		effects.append({"node": side, "v": Vector3.ZERO, "ttl": 0.2 + extra * 0.08, "life": 0.2 + extra * 0.08, "gravity": false, "base": Vector3.ONE, "keep": true, "blink": true})
+	# And a sheet of light in the sky over the whole half, so the storm has a ceiling.
+	if effects.size() < effect_limit:
+		var sheet = box(self, Vector3(0, 7.4, at.y * 0.8), Vector3(16.0, 0.1, 9.0), Color(color, 0.16), true, 0.05)
+		effects.append({"node": sheet, "v": Vector3.ZERO, "ttl": 0.3, "life": 0.3, "gravity": false, "base": Vector3.ONE, "keep": true, "blink": true})
 	var ring = torus(self, Vector3(at.x, 0.12, at.y), radius * 0.8, 0.075, Color(hot, 0.95), true)
 	ring.scale = Vector3.ONE * 0.25
 	effects.append({"node": ring, "v": Vector3.ZERO, "ttl": 0.5, "life": 0.5, "gravity": false, "base": Vector3.ONE * 2.3, "grow": true, "tint": color})
@@ -2212,7 +2294,7 @@ func float_number(text: String, at: Vector3, color: Color, size: int, life: floa
 	# effect itself is throwing off. So each one is drawn over everything else, in a strong
 	# colour, inside a thick dark outline. Without the outline the greens and the ambers
 	# both disappeared into the floor.
-	if effects.size() >= effect_limit:
+	if effects.size() >= effect_limit + NUMBER_ALLOWANCE:
 		return
 	var label = world_label(text, at, color, size)
 	label.outline_size = maxi(18, size / 4)
@@ -2278,26 +2360,72 @@ func shock_wave(at: Vector2, marks: Array = [], hurt: int = 1) -> void:
 		pending.append({"time": clampf(at.distance_to(spot) / SHOCK_SPEED, 0.0, 0.8), "call": func(): shock_mark(hurt, spot, bite)})
 
 func frost_flash(at: Vector2) -> void:
-	# Frost closing over the pilot: a ring on the floor, a crystal over it and a cold puff.
+	# The frost taking hold: three rings racing out across the floor, a burst of crystal
+	# shards thrown off the pilot, and the whole thing lit cold. The ice the pilot then
+	# wears is built into the model and shown for as long as the clock runs.
 	var color = Rules.power_color("freeze")
-	if effects.size() + 2 < effect_limit:
-		var ring = torus(self, Vector3(at.x, 0.12, at.y), 0.8, 0.06, Color(color, 0.9), true)
-		ring.scale = Vector3.ONE * 0.3
-		effects.append({"node": ring, "v": Vector3.ZERO, "ttl": 0.6, "life": 0.6, "gravity": false, "base": Vector3.ONE * 1.8, "grow": true, "tint": color})
-		var shell = sphere(self, Vector3(at.x, 0.6, at.y), Vector3.ONE * 1.2, Color(color, 0.32), true)
-		effects.append({"node": shell, "v": Vector3.ZERO, "ttl": Rules.FREEZE_SECONDS, "life": Rules.FREEZE_SECONDS, "gravity": false, "base": Vector3.ONE, "keep": true})
-	emitter(Vector3(at.x, 0.7, at.y), Color("eafaff"), 22, 0.9, 2.0, 60.0, 0.24, -1.0, Vector3.UP)
-	flash(Vector3(at.x, 1.1, at.y), color, 4.0, 0.5, 10.0)
-
-func magnet_flash(at: Vector2) -> void:
-	# The magnet coming on: two rings closing in on the pilot instead of opening out.
-	var color = Rules.power_color("magnet")
-	for step in range(2):
+	var pale = Color("eafaff")
+	for wave in range(3):
 		if effects.size() >= effect_limit:
 			break
-		var ring = torus(self, Vector3(at.x, 0.3 + step * 0.25, at.y), 2.4, 0.05, Color(color, 0.85), true)
-		effects.append({"node": ring, "v": Vector3.ZERO, "ttl": 0.55 + step * 0.12, "life": 0.55 + step * 0.12, "gravity": false, "base": Vector3.ONE * 0.2, "grow": false, "tint": color})
-	flash(Vector3(at.x, 1.0, at.y), color, 4.0, 0.45, 9.0)
+		var life = 0.55 + wave * 0.16
+		var ring = torus(self, Vector3(at.x, 0.1 + wave * 0.28, at.y), 1.0, 0.075 - wave * 0.015, Color(pale if wave == 0 else color, 0.95), true)
+		ring.scale = Vector3.ONE * 0.2
+		effects.append({"node": ring, "v": Vector3.ZERO, "ttl": life, "life": life, "gravity": false, "base": Vector3.ONE * (3.4 + wave * 1.4), "grow": true, "tint": color})
+	# Shards thrown outwards and falling: the crack of something freezing solid.
+	for i in range(10):
+		if effects.size() >= effect_limit:
+			break
+		var throw = i * 2.399
+		var shard = cone(self, Vector3(at.x, 0.7, at.y), 0.09, 0.34, Color(pale, 0.9), true, 6)
+		shard.rotation_degrees = Vector3(randf_range(-60, 60), randf_range(0, 360), randf_range(-60, 60))
+		effects.append({"node": shard, "v": Vector3(cos(throw) * 3.4, 2.2, sin(throw) * 3.4), "ttl": 0.7, "life": 0.7, "gravity": true, "base": Vector3.ONE, "spin": true})
+	var burst_ball = sphere(self, Vector3(at.x, 0.7, at.y), Vector3.ONE * 0.9, Color(pale, 0.55), true)
+	effects.append({"node": burst_ball, "v": Vector3.ZERO, "ttl": 0.4, "life": 0.4, "gravity": false, "base": Vector3.ONE * 2.8, "grow": true, "tint": color})
+	emitter(Vector3(at.x, 0.8, at.y), pale, 34, 1.3, 3.2, 75.0, 0.28, -2.2, Vector3.UP)
+	flash(Vector3(at.x, 1.2, at.y), color, 6.5, 0.7, 15.0)
+	shake(0.55)
+
+func magnet_flash(at: Vector2) -> void:
+	# The field snapping on: rings collapsing inwards onto the pilot, drawn in from wide,
+	# and filings pulled off the floor with them.
+	var color = Rules.power_color("magnet")
+	for step in range(3):
+		if effects.size() >= effect_limit:
+			break
+		var life = 0.5 + step * 0.14
+		var ring = torus(self, Vector3(at.x, 0.25 + step * 0.35, at.y), 3.0, 0.055, Color(color, 0.9), true)
+		effects.append({"node": ring, "v": Vector3.ZERO, "ttl": life, "life": life, "gravity": false, "base": Vector3.ONE * 0.12, "grow": false, "tint": color})
+	for i in range(8):
+		if effects.size() >= effect_limit:
+			break
+		var lane = i * TAU / 8.0
+		var filing = box(self, Vector3(at.x + cos(lane) * 2.6, 0.25, at.y + sin(lane) * 2.6), Vector3(0.14, 0.07, 0.07), Color(color, 0.95), true, 0.02)
+		effects.append({"node": filing, "v": Vector3(-cos(lane) * 4.4, 1.1, -sin(lane) * 4.4), "ttl": 0.55, "life": 0.55, "gravity": false, "base": Vector3.ONE, "spin": true})
+	emitter(Vector3(at.x, 0.7, at.y), Color("fff0c0"), 24, 0.8, 2.4, 70.0, 0.24, -1.6, Vector3.UP)
+	flash(Vector3(at.x, 1.1, at.y), color, 5.0, 0.55, 11.0)
+	shake(0.3)
+
+func weld_flash(positions: Array) -> void:
+	# A welding torch on each brick: a white bead of light and a spray of sparks off it.
+	var color = Rules.power_color("weld")
+	var white = Color("f2fff4")
+	for index in range(positions.size()):
+		if effects.size() + 2 >= effect_limit:
+			return
+		var at: Vector2 = positions[index]
+		var bead = sphere(self, Vector3(at.x, 0.5, at.y), Vector3.ONE * 0.26, Color(white, 0.95), true)
+		effects.append({"node": bead, "v": Vector3(0, 0.6, 0), "ttl": 0.45, "life": 0.45, "gravity": false, "base": Vector3.ONE, "spin": false})
+		var halo = torus(self, Vector3(at.x, 0.42, at.y), 0.3, 0.04, Color(color, 0.9), true)
+		effects.append({"node": halo, "v": Vector3.ZERO, "ttl": 0.5, "life": 0.5, "gravity": false, "base": Vector3.ONE * 1.6, "grow": true, "tint": color})
+		if index % 2 == 0:
+			emitter(Vector3(at.x, 0.55, at.y), Color("ffe9a8"), 10, 0.55, 3.4, 80.0, 0.16, -8.0, Vector3.UP)
+	if not positions.is_empty():
+		var middle = Vector2.ZERO
+		for at in positions:
+			middle += at
+		middle /= positions.size()
+		flash(Vector3(middle.x, 1.0, middle.y), color, 4.5, 0.5, 12.0)
 
 func thorns_flash(team: int) -> void:
 	# Spikes standing up off every brick of that wall, for as long as they are out.
@@ -2310,7 +2438,14 @@ func thorns_flash(team: int) -> void:
 			continue
 		var spike = cone(self, brick_nodes[i].position + Vector3(0, 0.5, 0), 0.12, 0.34, Color(color, 0.8), true, 8)
 		effects.append({"node": spike, "v": Vector3.ZERO, "ttl": Rules.THORNS_SECONDS, "life": Rules.THORNS_SECONDS, "gravity": false, "base": Vector3.ONE, "keep": true})
-	flash(Vector3(0, 1.0, 0), color, 3.6, 0.5, 12.0)
+	# A wave of violet light down the wall as the spikes come up, so it is not just a
+	# quiet change of scenery.
+	var line: float = Rules.goal_center(team).y * 0.55
+	var wave = torus(self, Vector3(0, 0.4, line), 1.0, 0.08, Color(color, 0.9), true)
+	effects.append({"node": wave, "v": Vector3.ZERO, "ttl": 0.65, "life": 0.65, "gravity": false, "base": Vector3.ONE * 7.5, "grow": true, "tint": color})
+	emitter(Vector3(0, 0.6, line), color, 26, 0.9, 3.0, 110.0, 0.22, -2.0, Vector3.UP)
+	flash(Vector3(0, 1.0, line), color, 5.0, 0.55, 14.0)
+	shake(0.3)
 
 func plating_flash(team: int) -> void:
 	# Crystal closes over the wall: a plate lights up on each brick and stays lit while the

@@ -675,7 +675,7 @@ func play_events() -> void:
 			play_tone("power")
 		elif event.kind == "weld":
 			var mended: Array = event.bricks.map(func(i): return rules.bricks[i].p)
-			arena.rebuild_flash(mended)
+			arena.weld_flash(mended)
 			for spot in mended:
 				arena.gain_mark(spot, int(event.get("heal", 0)), Rules.power_color("weld"))
 			play_tone("power")
