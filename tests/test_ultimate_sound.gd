@@ -59,9 +59,14 @@ func run() -> void:
 			# The collapse rumbles with the discharge; the release has its own boom.
 			check(heard(game, "singularity"), "singularity: the collapse is heard as it draws in")
 			hush(game)
+			# Watched tick by tick, not once at the end: the wave throws every round it was
+			# holding back out, those rounds start hitting things at once, and their own
+			# cues can take the voice the boom was playing on before the loop is over.
+			var boomed := false
 			for tick in range(roundi(Rules.SINGULARITY_PULL * 60) + 6):
 				game._physics_process(1.0 / 60)
-			check(heard(game, "void_burst"), "singularity: the release booms when the core opens")
+				boomed = boomed or heard(game, "void_burst")
+			check(boomed, "singularity: the release booms when the core opens")
 		game.rules.powers[0] = Rules.new_power_state()
 	game.return_to_menu()
 	for leftover in [TMP, TMP + "s"]:

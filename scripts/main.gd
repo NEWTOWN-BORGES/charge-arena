@@ -673,6 +673,23 @@ func play_events() -> void:
 		elif event.kind == "volley":
 			arena.volley_flash(event.p, event.heading)
 			play_tone("power")
+		elif event.kind == "weld":
+			var mended: Array = event.bricks.map(func(i): return rules.bricks[i].p)
+			arena.rebuild_flash(mended)
+			for spot in mended:
+				arena.gain_mark(spot, int(event.get("heal", 0)), Rules.power_color("weld"))
+			play_tone("power")
+		elif event.kind == "freeze":
+			arena.frost_flash(event.p)
+			play_tone("power")
+		elif event.kind == "magnet":
+			arena.magnet_flash(event.p)
+			play_tone("power")
+		elif event.kind == "thorns":
+			arena.thorns_flash(int(event.team))
+			play_tone("power")
+		elif event.kind == "thorns_bite":
+			arena.burst(event.p, Rules.power_color("thorns"), false)
 		elif event.kind == "plating":
 			arena.plating_flash(event.team)
 			arena.gain_mark(event.p, int(event.get("gain", 0)), Rules.power_color("plating"))

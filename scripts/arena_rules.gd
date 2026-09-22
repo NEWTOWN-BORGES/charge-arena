@@ -173,8 +173,26 @@ const SHOCK_PLAYER = 1
 const SHOCK_ROW = 0.2
 # Pilhagem: how long the two walls spend crossing over in the air before they land.
 const PLUNDER_SWAP = 1.15
+# Solda: one life back on every brick of yours that has taken a hit. It never raises the
+# dead - that is what the Reconstrucao is for - so it is the cheap patch, not the rescue.
+const WELD_HEAL = 1
+# Gelo: the rival walks at half pace and fires half as often while the frost holds.
+const FREEZE_SECONDS = 5.0
+const FREEZE_WALK = 0.45
+const FREEZE_FIRE = 2.0
+# Iman: your rounds bend towards whichever enemy brick is nearest to their heading, hard
+# enough to save a shot that would have grazed and never enough to shoot for you.
+const MAGNET_SECONDS = 7.0
+const MAGNET_TURN = 2.2
+const MAGNET_REACH = 4.5
+# Perfurante: a round that breaks a brick carries on through it instead of stopping.
+const PIERCE_SECONDS = 6.0
+# Espinhos: while they are out, every enemy round that breaks against your wall costs the
+# pilot that fired it a life of its own.
+const THORNS_SECONDS = 8.0
+const THORNS_BITE = 1
 # How many numbers each side's power state takes in a network packet.
-const POWER_FIELDS = 14
+const POWER_FIELDS = 18
 # A shot ends on a target or after MAX_BOUNCES ricochets: walls, shields, boosters,
 # barriers and bumpers all reflect it. This lifetime is only a safety net for a shot caught in a repeating path
 # that would otherwise bounce for the rest of the match.
@@ -465,6 +483,7 @@ static func new_power_state() -> Dictionary:
 	return {"charge": [0, 0, 0], "destroyed": 0, "rapid_time": 0.0, "ghost_time": 0.0,
 		"laser_time": 0.0, "laser_tick": 0.0, "mirror_time": 0.0, "walls_time": 0.0,
 		"surge_time": 0.0, "plating_time": 0.0, "plunder_time": 0.0,
+		"freeze_time": 0.0, "magnet_time": 0.0, "pierce_time": 0.0, "thorns_time": 0.0,
 		"ultimate_windup": 0.0, "ultimate_time": 0.0, "ultimate_tick": 0.0, "ultimate_shots": 0, "ultimate_id": ""}
 
 static func power_color(id: String) -> Color:
@@ -502,6 +521,10 @@ func reset_round() -> void:
 		state.surge_time = 0.0
 		state.plating_time = 0.0
 		state.plunder_time = 0.0
+		state.freeze_time = 0.0
+		state.magnet_time = 0.0
+		state.pierce_time = 0.0
+		state.thorns_time = 0.0
 		state.ultimate_windup = 0.0
 		state.ultimate_time = 0.0
 		state.ultimate_tick = 0.0
@@ -674,7 +697,7 @@ func step(dt: float, commands: Array) -> void:
 		# accumulated float residue would otherwise buy it one extra round.
 		var burst_left: float = powers[team].rapid_time - dt
 		powers[team].rapid_time = 0.0 if burst_left < dt * 0.5 else burst_left
-		for timer_name in ["ghost_time", "mirror_time", "walls_time", "surge_time", "plating_time"]:
+		for timer_name in ["ghost_time", "mirror_time", "walls_time", "surge_time", "plating_time", "freeze_time", "magnet_time", "pierce_time", "thorns_time"]:
 			powers[team][timer_name] = maxf(0.0, powers[team][timer_name] - dt)
 		if powers[team].plunder_time > 0:
 			# The two walls land the moment the flight ends, and that is when the lives
@@ -696,7 +719,8 @@ func step(dt: float, commands: Array) -> void:
 		var move: Vector2 = cmd.get("move", Vector2.ZERO)
 		# Horizontal input moves along a fixed arc; vertical input never leaves it.
 		# Walking speed is set along the rail, so a wider rail is not also a faster one.
-		p.angle = clampf(p.angle + clampf(move.x, -1, 1) * SPEED / TRACK_WIDTH * dt, -track_limit, track_limit)
+		var frost: float = FREEZE_WALK if powers[team].freeze_time > 0 else 1.0
+		p.angle = clampf(p.angle + clampf(move.x, -1, 1) * SPEED * frost / TRACK_WIDTH * dt, -track_limit, track_limit)
 		p.p = track_position(team, p.angle)
 		p.aim = forward_direction(team, p.angle)
 		activate_power(team, int(cmd.get("power", -1)))
@@ -715,16 +739,20 @@ func step(dt: float, commands: Array) -> void:
 		while ai_charge_time >= wind:
 			ai_charge_time -= wind
 			ai_charge_steps += 1
+			# The ultimate normally winds at half the pace of the bought powers - at full
+			# pace the late bosses were throwing four in a hundred seconds. On DIFICIL it
+			# winds at full pace, because a boss that sits on its ultimate for half the
+			# match is not a hard boss, it is a quiet one.
+			var half_pace: bool = float(ai_profile.get("ultimate_rate", 1.0)) < 1.5
 			for index in range(POWER_SLOTS):
-				# The ultimate winds at half the pace of the bought powers: at full pace the
-				# late bosses were throwing four of them in a hundred seconds.
-				if index == POWER_SLOTS - 1 and ai_charge_steps % 2 == 1:
+				if index == POWER_SLOTS - 1 and half_pace and ai_charge_steps % 2 == 1:
 					continue
 				var cost = power_charge_cost(1, index)
 				if cost > 0 and powers[1].charge[index] < cost:
 					powers[1].charge[index] += 1
 	step_turrets(dt)
 	carry_bricks()
+	steer_magnets(dt)
 	for ball in balls.duplicate():
 		if phase != "play":
 			break
@@ -786,6 +814,20 @@ func activate_power(team: int, index: int) -> bool:
 			events.append({"kind": "walls", "team": team, "p": p.p})
 		"stun":
 			shock_pulse(team)
+		"weld":
+			weld_bricks(team)
+		"freeze":
+			# The frost is set on the pilot that has to live with it, not on the one casting.
+			powers[1 - team].freeze_time = FREEZE_SECONDS
+			events.append({"kind": "freeze", "team": 1 - team, "p": players[1 - team].p, "seconds": FREEZE_SECONDS})
+		"magnet":
+			powers[team].magnet_time = MAGNET_SECONDS
+			events.append({"kind": "magnet", "team": team, "p": p.p, "seconds": MAGNET_SECONDS})
+		"pierce":
+			powers[team].pierce_time = PIERCE_SECONDS
+		"thorns":
+			powers[team].thorns_time = THORNS_SECONDS
+			events.append({"kind": "thorns", "team": team, "p": p.p, "seconds": THORNS_SECONDS})
 		_:
 			if Powers.is_ultimate(id):
 				# Ultimates take two seconds of glow before they land.
@@ -1149,6 +1191,47 @@ func damage_turret(index: int, damage: int, at: Vector2) -> void:
 	turret.alive = turret.hp > 0
 	events.append({"kind": "turret_down" if not turret.alive else "turret_hit", "team": int(turret.team), "p": at, "hp": turret.hp})
 
+func weld_bricks(team: int) -> void:
+	# One life back on every brick of yours that has taken a hit, and nothing at all for the
+	# ones already down: a patch between rounds, not a wall raised from rubble.
+	var mended: Array = []
+	for index in range(bricks.size()):
+		var brick: Dictionary = bricks[index]
+		if brick.team != team or not brick.alive or brick.hp >= brick_lives:
+			continue
+		brick.hp = mini(brick.hp + WELD_HEAL, brick_lives)
+		mended.append(index)
+	events.append({"kind": "weld", "team": team, "bricks": mended, "heal": WELD_HEAL, "p": players[team].p})
+
+func steer_magnets(dt: float) -> void:
+	# A magnet bends its owner's rounds towards the nearest enemy brick ahead of them. It
+	# turns, it never steers: a round pointed at the wrong half of the arena stays wrong.
+	for team in range(2):
+		if powers[team].magnet_time <= 0:
+			continue
+		for ball in balls:
+			if ball.owner != team or ball.get("held", false):
+				continue
+			var heading: Vector2 = ball.v.normalized()
+			var best: Vector2 = Vector2.ZERO
+			var best_gap := INF
+			for brick in bricks:
+				if not brick.alive or brick.team == team:
+					continue
+				var offset: Vector2 = brick.p - ball.p
+				var reach: float = offset.length()
+				if reach > MAGNET_REACH or offset.dot(heading) <= 0:
+					continue
+				var gap: float = absf(angle_difference(heading.angle(), offset.angle())) * reach
+				if gap < best_gap:
+					best_gap = gap
+					best = brick.p
+			if best == Vector2.ZERO:
+				continue
+			var pull: float = MAGNET_TURN * dt
+			var wanted: float = (best - ball.p).angle()
+			ball.v = ball.v.rotated(clampf(angle_difference(ball.v.angle(), wanted), -pull, pull))
+
 func bloom_bricks(team: int) -> void:
 	# Two lives back on every brick; the ones already whole grow instead.
 	var healed: Array = []
@@ -1446,7 +1529,7 @@ func shoot(team: int, power: int = 0) -> void:
 		return
 	var p: Dictionary = players[team]
 	p.aim = forward_direction(team, p.angle)
-	p.cooldown = SURGE_INTERVAL if surged else FIRE_INTERVAL
+	p.cooldown = (SURGE_INTERVAL if surged else FIRE_INTERVAL) * (FREEZE_FIRE if powers[team].freeze_time > 0 else 1.0)
 	spawn_ball(team, assist_heading(team), power, bite, surged)
 	events.append({"kind": "shot", "p": p.p, "team": team, "power": power})
 
@@ -1575,7 +1658,17 @@ func advance_ball(ball: Dictionary, dt: float, sweep_obstacles: bool = false, pr
 						events.append({"kind": "mirror", "p": ball.p, "team": bricks[target].team})
 					remaining *= 1.0 - best
 					continue
+				var was_alive: bool = bricks[target].alive
 				damage_brick(target, int(ball.get("damage", 1)), ball.owner, ball.p)
+				if not preview and powers[bricks[target].team].thorns_time > 0:
+					# Thorns: breaking against this wall costs the pilot that threw it.
+					damage_player(ball.owner, THORNS_BITE, ball.p)
+					events.append({"kind": "thorns_bite", "team": bricks[target].team, "p": ball.p})
+				if powers[ball.owner].pierce_time > 0 and was_alive and not bricks[target].alive:
+					# Armour piercing: the round carries on through the brick it broke.
+					ball.p += ball.v.normalized() * 0.08
+					remaining *= 1.0 - best
+					continue
 				if ball.get("power", 0) == 1:
 					explode(ball)
 				balls.erase(ball)
@@ -1701,7 +1794,7 @@ func ai_power(outcome: Dictionary, level: Dictionary) -> int:
 	if elapsed < ai_next_power or outcome.get("kind", "") != "brick":
 		return -1
 	# Heavier powers first, so a cheap one does not keep the expensive kit idle.
-	return ai_slot(["laser", "rapid", "stun", "blast", "ghost"], level)
+	return ai_slot(["laser", "pierce", "rapid", "magnet", "stun", "blast", "ghost"], level)
 
 func ai_ultimate(level: Dictionary, aimed: bool) -> int:
 	# The boss keeps its skin ultimate for the moment that ultimate is actually good for,
@@ -1733,6 +1826,14 @@ func ai_ultimate(level: Dictionary, aimed: bool) -> int:
 			ready = balls.size() >= 3
 		"sentries":
 			ready = turrets.filter(func(t): return t.alive and t.team == 1).is_empty()
+		"plating":
+			# Armour is worth most with a wall left to armour and a wall coming at it.
+			ready = team_health(1) < wall_health_full(1) * 0.85 and brick_count(1) > 4
+		"surge":
+			# Six seconds of turbocharged fire: only while there is something to shoot at.
+			ready = brick_count(0) > 0
+		"volley":
+			ready = brick_count(0) > 0
 		_:
 			ready = true
 	if not ready:
@@ -1768,17 +1869,25 @@ func ai_slot(wanted: Array, level: Dictionary) -> int:
 	return -1
 
 func ai_defensive_power(level: Dictionary) -> int:
-	# With its wall coming down, the boss reaches for whatever keeps the goal shut.
+	# With its wall coming down, the boss reaches for whatever keeps the goal shut. Measured
+	# as a share of the wall it was given and not as a count of bricks: the walls went from
+	# forty to sixty-four, and against a fixed count of fourteen the boss simply never
+	# defended itself until it was already beaten.
 	if elapsed < ai_next_power:
 		return -1
-	var standing = brick_count(1)
+	var whole: int = maxi(bricks.size() / 2, 1)
+	var left: float = float(brick_count(1)) / float(whole)
+	var health: float = float(team_health(1)) / float(maxi(wall_health_full(1), 1))
 	var wanted: Array = []
-	if standing <= 6:
+	if left <= 0.2:
 		wanted.append("rebuild")
-	if standing <= 10:
-		wanted.append("walls")
-	if standing <= 14:
-		wanted.append_array(["mirror", "stun"])
+	if left <= 0.35:
+		wanted.append_array(["walls", "plating"])
+	if health <= 0.75:
+		# Long before the wall falls: a patch is worth most while there is wall to patch.
+		wanted.append("weld")
+	if left <= 0.6:
+		wanted.append_array(["thorns", "mirror", "freeze", "stun"])
 	return ai_slot(wanted, level)
 
 func ai_angle_score(angle: float) -> float:
@@ -1864,7 +1973,8 @@ func network_snapshot() -> Dictionary:
 	for state in powers:
 		power_data.append_array([state.charge[0], state.charge[1], state.charge[2], state.destroyed, state.rapid_time,
 			state.ghost_time, state.laser_time, state.mirror_time, state.walls_time, state.surge_time, state.plating_time,
-			state.plunder_time, state.ultimate_windup, state.ultimate_time])
+			state.plunder_time, state.freeze_time, state.magnet_time, state.pierce_time, state.thorns_time,
+			state.ultimate_windup, state.ultimate_time])
 	# Sentries: team, place, health and reload, so the client draws and predicts the same.
 	var turret_data = PackedFloat32Array()
 	for turret in turrets:
@@ -1909,8 +2019,12 @@ func apply_network_snapshot(data: Dictionary) -> bool:
 		powers[team].surge_time = clampf(power_data[base + 9], 0, SURGE_SECONDS)
 		powers[team].plating_time = clampf(power_data[base + 10], 0, PLATING_SECONDS)
 		powers[team].plunder_time = clampf(power_data[base + 11], 0, PLUNDER_SWAP)
-		powers[team].ultimate_windup = clampf(power_data[base + 12], 0, ULTIMATE_WINDUP)
-		powers[team].ultimate_time = clampf(power_data[base + 13], 0, maxf(THUNDER_SECONDS, SINGULARITY_PULL))
+		powers[team].freeze_time = clampf(power_data[base + 12], 0, FREEZE_SECONDS)
+		powers[team].magnet_time = clampf(power_data[base + 13], 0, MAGNET_SECONDS)
+		powers[team].pierce_time = clampf(power_data[base + 14], 0, PIERCE_SECONDS)
+		powers[team].thorns_time = clampf(power_data[base + 15], 0, THORNS_SECONDS)
+		powers[team].ultimate_windup = clampf(power_data[base + 16], 0, ULTIMATE_WINDUP)
+		powers[team].ultimate_time = clampf(power_data[base + 17], 0, maxf(THUNDER_SECONDS, SINGULARITY_PULL))
 		powers[team].ultimate_id = power_id(team, 2)
 		var angle = clampf(player_data[team * 4], -track_limit, track_limit)
 		players[team].angle = angle

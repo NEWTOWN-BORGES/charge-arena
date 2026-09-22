@@ -2277,6 +2277,41 @@ func shock_wave(at: Vector2, marks: Array = [], hurt: int = 1) -> void:
 		var bite: int = int(mark.bite)
 		pending.append({"time": clampf(at.distance_to(spot) / SHOCK_SPEED, 0.0, 0.8), "call": func(): shock_mark(hurt, spot, bite)})
 
+func frost_flash(at: Vector2) -> void:
+	# Frost closing over the pilot: a ring on the floor, a crystal over it and a cold puff.
+	var color = Rules.power_color("freeze")
+	if effects.size() + 2 < effect_limit:
+		var ring = torus(self, Vector3(at.x, 0.12, at.y), 0.8, 0.06, Color(color, 0.9), true)
+		ring.scale = Vector3.ONE * 0.3
+		effects.append({"node": ring, "v": Vector3.ZERO, "ttl": 0.6, "life": 0.6, "gravity": false, "base": Vector3.ONE * 1.8, "grow": true, "tint": color})
+		var shell = sphere(self, Vector3(at.x, 0.6, at.y), Vector3.ONE * 1.2, Color(color, 0.32), true)
+		effects.append({"node": shell, "v": Vector3.ZERO, "ttl": Rules.FREEZE_SECONDS, "life": Rules.FREEZE_SECONDS, "gravity": false, "base": Vector3.ONE, "keep": true})
+	emitter(Vector3(at.x, 0.7, at.y), Color("eafaff"), 22, 0.9, 2.0, 60.0, 0.24, -1.0, Vector3.UP)
+	flash(Vector3(at.x, 1.1, at.y), color, 4.0, 0.5, 10.0)
+
+func magnet_flash(at: Vector2) -> void:
+	# The magnet coming on: two rings closing in on the pilot instead of opening out.
+	var color = Rules.power_color("magnet")
+	for step in range(2):
+		if effects.size() >= effect_limit:
+			break
+		var ring = torus(self, Vector3(at.x, 0.3 + step * 0.25, at.y), 2.4, 0.05, Color(color, 0.85), true)
+		effects.append({"node": ring, "v": Vector3.ZERO, "ttl": 0.55 + step * 0.12, "life": 0.55 + step * 0.12, "gravity": false, "base": Vector3.ONE * 0.2, "grow": false, "tint": color})
+	flash(Vector3(at.x, 1.0, at.y), color, 4.0, 0.45, 9.0)
+
+func thorns_flash(team: int) -> void:
+	# Spikes standing up off every brick of that wall, for as long as they are out.
+	var color = Rules.power_color("thorns")
+	var half: int = brick_nodes.size() / 2
+	for i in range(brick_nodes.size()):
+		if (i < half) != (team == 0) or not brick_nodes[i].visible:
+			continue
+		if i % 2 != 0 or effects.size() + 1 >= effect_limit:
+			continue
+		var spike = cone(self, brick_nodes[i].position + Vector3(0, 0.5, 0), 0.12, 0.34, Color(color, 0.8), true, 8)
+		effects.append({"node": spike, "v": Vector3.ZERO, "ttl": Rules.THORNS_SECONDS, "life": Rules.THORNS_SECONDS, "gravity": false, "base": Vector3.ONE, "keep": true})
+	flash(Vector3(0, 1.0, 0), color, 3.6, 0.5, 12.0)
+
 func plating_flash(team: int) -> void:
 	# Crystal closes over the wall: a plate lights up on each brick and stays lit while the
 	# plating holds, so both sides can see why the rounds are bouncing.

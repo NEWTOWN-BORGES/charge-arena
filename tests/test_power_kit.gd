@@ -51,8 +51,10 @@ func run() -> void:
 	shop.owned = Powers.STARTER_KIT.duplicate()
 	shop.bricks = 0
 	shop.config_path = TMP
-	check(Powers.CATALOG.size() == 9 and Powers.CATALOG.all(func(e): return e.has("short") and e.about != "" and e.charge > 0), "Nine powers, each with a name, a charge cost and a description")
-	check(Powers.CATALOG.filter(func(e): return e.kind == "defesa").size() == 4, "Four of them are defensive")
+	check(Powers.CATALOG.size() == 14 and Powers.CATALOG.all(func(e): return e.has("short") and e.about != "" and e.charge > 0), "Fourteen powers, each with a name, a charge cost and a description")
+	check(Powers.CATALOG.filter(func(e): return e.kind == "defesa").size() == 5, "Five of them are defensive, and between the rest there is life, a buff and a debuff")
+	var families: Array = Powers.CATALOG.map(func(e): return String(e.kind))
+	check(["ataque", "defesa", "vida", "buff", "debuff"].all(func(k): return families.has(k)), "Every family has at least one power in it")
 	check(shop.owned == Powers.STARTER_KIT and shop.kit == Powers.STARTER_KIT and shop.bricks == 0, "A new pilot owns the starter kit and no bricks")
 	check(not shop.can_buy("laser") and not shop.buy("laser"), "A power cannot be bought without bricks")
 	shop.add_bricks(300)

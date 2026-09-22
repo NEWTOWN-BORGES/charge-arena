@@ -131,6 +131,7 @@ var powers_detail: Label
 var power_cards: Array = []
 var power_slot_buttons: Array = []
 var power_buy: Button
+var power_actions: GridContainer
 var power_shop = null
 var shop_index = 0
 var power_demo: Control
@@ -161,6 +162,7 @@ var viewer_turntable: Node3D
 var viewer_pilot: Node3D
 var viewer_skin = -1
 var viewer_locked = false
+var viewer_camera: Camera3D
 var viewer_yaw = 0.5
 var viewer_idle = 9.0
 var viewer_clock = 0.0
@@ -266,9 +268,9 @@ func build_skins_menu() -> void:
 	var titles = VBoxContainer.new()
 	titles.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	header.add_child(titles)
-	titles.add_child(label("SKINS", 25, WHITE, true))
-	titles.add_child(label("Arrasta o piloto para o rodar.", 14, MUTED))
-	skins_total = label("", 13, CYAN, true)
+	titles.add_child(label("SKINS", 34, WHITE, true))
+	titles.add_child(label("Arrasta o piloto para o rodar.", 17, MUTED))
+	skins_total = label("", 16, CYAN, true)
 	titles.add_child(skins_total)
 	skins_body = BoxContainer.new()
 	skins_body.add_theme_constant_override("separation", 16)
@@ -286,13 +288,13 @@ func build_skins_menu() -> void:
 	details.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	details.add_theme_constant_override("separation", 6)
 	skins_scroll.add_child(details)
-	skin_name = label("", 26, WHITE, true)
+	skin_name = label("", 32, WHITE, true)
 	details.add_child(skin_name)
-	skin_weapon = label("", 13, LIME, true)
+	skin_weapon = label("", 16, LIME, true)
 	details.add_child(skin_weapon)
-	skin_bricks = label("", 13, CYAN, true)
+	skin_bricks = label("", 16, CYAN, true)
 	details.add_child(skin_bricks)
-	skin_about = label("", 14, MUTED)
+	skin_about = label("", 17, MUTED)
 	skin_about.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	skin_about.custom_minimum_size.x = 320
 	details.add_child(skin_about)
@@ -302,9 +304,9 @@ func build_skins_menu() -> void:
 	skin_swatches.draw.connect(draw_swatches)
 	details.add_child(skin_swatches)
 	# The ultimate that comes with this skin, with its own looping demonstration.
-	skin_ultimate_name = label("", 14, BRASS, true)
+	skin_ultimate_name = label("", 18, BRASS, true)
 	details.add_child(skin_ultimate_name)
-	skin_ultimate_about = label("", 12, MUTED)
+	skin_ultimate_about = label("", 16, MUTED)
 	skin_ultimate_about.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	skin_ultimate_about.custom_minimum_size.x = 320
 	details.add_child(skin_ultimate_about)
@@ -385,16 +387,41 @@ func build_skin_viewer() -> void:
 		light.light_color = rig[1]
 		light.light_energy = rig[2]
 		viewer_stage.add_child(light)
-	var camera = Camera3D.new()
-	camera.fov = 30
-	camera.transform = Transform3D(Basis(), Vector3(0, 1.6, 5.6)).looking_at(Vector3(0, 0.78, 0), Vector3.UP)
-	camera.current = true
-	viewer_stage.add_child(camera)
+	viewer_camera = Camera3D.new()
+	viewer_camera.fov = 30
+	viewer_camera.current = true
+	viewer_stage.add_child(viewer_camera)
+	frame_viewer(1.7)
 	viewer_turntable = Node3D.new()
 	viewer_stage.add_child(viewer_turntable)
 	viewer_audio = AudioStreamPlayer.new()
 	viewer_audio.volume_db = -18
 	add_child(viewer_audio)
+
+func frame_viewer(tall: float) -> void:
+	# Pull the camera back until the whole pilot fits, however tall this one is. A crown, a
+	# lantern mast or a tricorne used to walk straight out of the top of the frame.
+	if not is_instance_valid(viewer_camera):
+		return
+	var middle: float = tall * 0.5
+	# What half an image has to cover, plus a little air, converted into a distance.
+	var reach: float = maxf(middle + 0.35, 0.95)
+	var back: float = reach / tan(deg_to_rad(viewer_camera.fov) * 0.5)
+	viewer_camera.transform = Transform3D(Basis(), Vector3(0, middle + 0.55, back + 1.4)).looking_at(Vector3(0, middle, 0), Vector3.UP)
+
+func measure_viewer_pilot() -> float:
+	# How tall the model standing on the turntable actually is, in world units.
+	if not is_instance_valid(viewer_pilot):
+		return 1.7
+	var tall := 0.0
+	for node in viewer_pilot.find_children("*", "MeshInstance3D", true, false):
+		var box: AABB = node.transform * node.get_aabb()
+		var walk: Node3D = node.get_parent()
+		while walk != null and walk != viewer_pilot:
+			box = walk.transform * box
+			walk = walk.get_parent()
+		tall = maxf(tall, box.end.y)
+	return clampf(tall, 1.2, 4.0)
 
 func build_viewer_pilot() -> void:
 	if not is_instance_valid(arena_view):
@@ -414,9 +441,10 @@ func build_viewer_pilot() -> void:
 	clear_viewer_shots()
 	if is_instance_valid(viewer_pilot):
 		viewer_pilot.queue_free()
-	# A boss not yet beaten is shown in its fighting red; its own colours are the reward.
-	viewer_pilot = arena_view.build_player(CORAL if locked else CYAN, 0, preview_index, viewer_turntable, locked)
+	# Every pilot is shown in the colours it was drawn in, beaten or not.
+	viewer_pilot = arena_view.build_player(CYAN, 0, preview_index, viewer_turntable, false)
 	viewer_pilot.position = Vector3(0, 0.02, 0)
+	frame_viewer(measure_viewer_pilot())
 	for brick in viewer_bricks:
 		brick.queue_free()
 	viewer_bricks.clear()
@@ -683,12 +711,14 @@ func show_pause(value: bool) -> void:
 	queue_redraw()
 
 func make_button(text: String, primary: bool) -> Button:
-	# 58 px is a comfortable thumb target on a phone, and reads well on a monitor too.
+	# 64 px is a comfortable thumb target on a phone, and reads well on a monitor too. The
+	# type on it was set for a desktop and came out small on a six inch screen held at arm
+	# length, which is where this game is actually played.
 	var b = Button.new()
 	b.text = text
-	b.custom_minimum_size.y = 58
+	b.custom_minimum_size.y = 64
 	b.add_theme_font_override("font", font_bold)
-	b.add_theme_font_size_override("font_size", 17)
+	b.add_theme_font_size_override("font_size", 21)
 	paint_button(b, primary)
 	return b
 
@@ -902,12 +932,18 @@ func build_powers_menu() -> void:
 	power_demo.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	power_demo.draw.connect(draw_power_demo)
 	list.add_child(power_demo)
-	powers_detail = label("", 13, MUTED)
+	powers_detail = label("", 17, MUTED)
 	powers_detail.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	powers_detail.custom_minimum_size = Vector2(600, 40)
 	list.add_child(powers_detail)
-	var actions = HBoxContainer.new()
-	actions.add_theme_constant_override("separation", 8)
+	# A grid and not a row: four buttons at this type size do not fit across a phone, and
+	# the panel used to grow wider than the screen to hold them.
+	power_actions = GridContainer.new()
+	power_actions.columns = 4
+	power_actions.add_theme_constant_override("h_separation", 8)
+	power_actions.add_theme_constant_override("v_separation", 8)
+	power_actions.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	var actions = power_actions
 	list.add_child(actions)
 	power_buy = make_button("COMPRAR", true)
 	power_buy.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -917,21 +953,23 @@ func build_powers_menu() -> void:
 	actions.add_child(power_buy)
 	for slot in range(Powers.KIT_SIZE):
 		var equip = make_button("SLOT %d" % (slot + 1), false)
-		equip.custom_minimum_size.x = 150
+		equip.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		equip.add_theme_stylebox_override("disabled", style(Color("203b41"), Color("425a59")))
 		equip.add_theme_color_override("font_disabled_color", MUTED)
 		equip.pressed.connect(func(): power_equipped.emit(slot, String(shop_entries()[shop_index].id)))
 		actions.add_child(equip)
 		power_slot_buttons.append(equip)
 	var leave = make_button("VOLTAR", false)
-	leave.custom_minimum_size.x = 130
+	leave.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	leave.pressed.connect(close_powers)
 	actions.add_child(leave)
 	powers_overlay.hide()
 
 func shop_entries() -> Array:
-	# Everything the panel shows: the nine for sale, then the skin ultimates.
-	return Powers.CATALOG + Powers.ULTIMATES
+	# Only what is actually for sale. The ultimates used to be listed here too, with a
+	# "comes with the skin" label, and every visit ended in the same question: why can I
+	# not buy these. They live in the skins panel, next to the skin that brings them.
+	return Powers.CATALOG
 
 func sync_powers(shop) -> void:
 	power_shop = shop
@@ -1018,6 +1056,10 @@ func demo_ball(c: CanvasItem, at: Vector2, color: Color, size: float = 5.0) -> v
 	c.draw_circle(at + Vector2(0, 2), size, Color(INK, 0.5), true, -1, smooth)
 	c.draw_circle(at, size, color, true, -1, smooth)
 	c.draw_circle(at, size * 0.45, Color(WHITE, 0.85), true, -1, smooth)
+
+func demo_brick_at(area: Rect2, y: float, index: int) -> Vector2:
+	# Where the nth brick of a demonstration row stands, so a drawn shot can aim at one.
+	return Vector2(area.position.x + 28 + index * (area.size.x - 56) / 8.0, y)
 
 func demo_bricks(c: CanvasItem, area: Rect2, team: Color, y: float, gone: Array = []) -> void:
 	for i in range(9):
@@ -1264,6 +1306,57 @@ func draw_demo(panel: Control, id: String) -> void:
 			demo_bricks(c, area, CYAN, mine_at)
 			if slide > 0 and slide < 1:
 				c.draw_line(Vector2(area.position.x, area.get_center().y), Vector2(area.end.x, area.get_center().y), Color(color, 0.8), 2.0, smooth)
+		"weld":
+			# Half the wall comes back up to full as the seam runs across it.
+			demo_bricks(c, area, CORAL, enemy_y)
+			demo_bricks(c, area, CYAN if u > 0.45 else Color(CYAN, 0.45), mine_y)
+			if u > 0.2 and u < 0.75:
+				var seam = lerpf(area.position.x + 10, area.end.x - 10, (u - 0.2) / 0.55)
+				c.draw_line(Vector2(seam, mine_y - 12), Vector2(seam, mine_y + 12), Color(color, 0.9), 3.0, smooth)
+			centered_on(c, "+1 EM CADA TIJOLO TOCADO", Vector2(area.get_center().x, mine_y + 34), 11, color)
+		"thorns":
+			demo_bricks(c, area, CORAL, enemy_y)
+			demo_bricks(c, area, CYAN, mine_y, [4] if u > 0.55 else [])
+			var spike_y = mine_y - 16
+			for step in range(7):
+				var root_x = lerpf(area.position.x + 24, area.end.x - 24, step / 6.0)
+				c.draw_polyline(PackedVector2Array([Vector2(root_x - 4, spike_y + 8), Vector2(root_x, spike_y - 6), Vector2(root_x + 4, spike_y + 8)]), Color(color, 0.85), 2.0, smooth)
+			if u > 0.55:
+				c.draw_circle(their_pilot, 12, Color(color, 0.35), true, -1, smooth)
+				centered_on(c, "-1", their_pilot + Vector2(0, -18), 14, color)
+		"freeze":
+			demo_bricks(c, area, CORAL, enemy_y)
+			demo_bricks(c, area, CYAN, mine_y)
+			if u > 0.25:
+				c.draw_circle(their_pilot, 20, Color(color, 0.22), true, -1, smooth)
+				for step in range(3):
+					var arm = step * PI / 3.0 + u * 0.6
+					var reach = Vector2(cos(arm), sin(arm)) * 15.0
+					c.draw_line(their_pilot - reach, their_pilot + reach, Color(color, 0.8), 2.0, smooth)
+				centered_on(c, "METADE DA VELOCIDADE · DOBRO DA PAUSA", Vector2(area.get_center().x, enemy_y - 26), 11, color)
+		"magnet":
+			demo_bricks(c, area, CORAL, enemy_y, [2] if u > 0.82 else [])
+			demo_bricks(c, area, CYAN, mine_y)
+			# A round that would have missed, bending onto the brick it passes.
+			var bend = PackedVector2Array()
+			for step in range(13):
+				var t = minf(u * 1.25, 1.0) * step / 12.0
+				var straight = my_pilot.lerp(Vector2(area.position.x + 34, enemy_y - 14), t)
+				var onto = my_pilot.lerp(demo_brick_at(area, enemy_y, 2), t)
+				bend.append(straight.lerp(onto, t * t))
+			if bend.size() > 1:
+				c.draw_polyline(bend, Color(color, 0.9), 2.6, smooth)
+		"pierce":
+			# One round, straight through three bricks in a line.
+			var broken: Array = []
+			for step in range(3):
+				if u > 0.3 + step * 0.16:
+					broken.append(3 + step)
+			demo_bricks(c, area, CORAL, enemy_y, broken)
+			demo_bricks(c, area, CYAN, mine_y)
+			var tip = my_pilot.lerp(Vector2(area.get_center().x + 14, area.position.y + 8), minf(u * 1.4, 1.0))
+			c.draw_line(my_pilot, tip, Color(color, 0.85), 2.8, smooth)
+			c.draw_circle(tip, 4.0, color, true, -1, smooth)
 		"stun":
 			demo_bricks(c, area, CORAL, enemy_y)
 			demo_bricks(c, area, CYAN, mine_y)
@@ -1651,6 +1744,8 @@ func layout() -> void:
 	var shop_scroll: ScrollContainer = powers_panel.get_child(0).get_child(1)
 	var shop_grid: GridContainer = shop_scroll.get_child(0)
 	shop_grid.columns = 2 if vertical else 3
+	if is_instance_valid(power_actions):
+		power_actions.columns = 2 if vertical else 4
 	# Leave room for the header, the demonstration, the description and the buttons.
 	shop_scroll.custom_minimum_size.y = clampf(size.y - (620 if vertical else 500), 190, 430)
 	powers_detail.custom_minimum_size.x = minf(size.x - 96, 600)
@@ -2541,6 +2636,42 @@ func power_icon(id: String, center: Vector2, color: Color, canvas: CanvasItem = 
 			c.draw_arc(center, 6.0, -PI * 0.5 - 0.8, -PI * 0.5 + 0.8, 16, brass, 1.4, smooth)
 			c.draw_arc(center, 10.5, -PI * 0.5 - 0.7, -PI * 0.5 + 0.7, 16, Color(color, 0.7), 1.2, smooth)
 			c.draw_circle(center + Vector2(0, 8), 3.0, brass, true, -1, smooth)
+		"weld":
+			# Weld: a brick with a seam of light running across the crack.
+			c.draw_rect(Rect2(center + Vector2(-12, -7), Vector2(24, 14)), Color(color, 0.7), true)
+			c.draw_rect(Rect2(center + Vector2(-12, -7), Vector2(24, 14)), brass, false, 1.2)
+			c.draw_polyline(PackedVector2Array([center + Vector2(-2, -7), center + Vector2(2, 0), center + Vector2(-2, 7)]), CERAMIC, 2.4, smooth)
+			for step in range(3):
+				c.draw_circle(center + Vector2(-2 + step * 4, -11 - step * 2), 1.8, color, true, -1, smooth)
+		"thorns":
+			# Thorns: spikes standing up off a wall line.
+			c.draw_line(center + Vector2(-13, 8), center + Vector2(13, 8), brass, 2.0, smooth)
+			for step in range(4):
+				var root_x = center.x - 10.5 + step * 7.0
+				c.draw_polyline(PackedVector2Array([Vector2(root_x - 3, center.y + 8), Vector2(root_x, center.y - 9), Vector2(root_x + 3, center.y + 8)]), color, 2.0, smooth)
+		"freeze":
+			# Frost: a six-pointed crystal.
+			for step in range(3):
+				var arm = step * PI / 3.0
+				var reach = Vector2(cos(arm), sin(arm)) * 12.0
+				c.draw_line(center - reach, center + reach, color, 2.2, smooth)
+				c.draw_line(center + reach * 0.62, center + reach * 0.62 + reach.rotated(2.2) * 0.3, color, 1.6, smooth)
+				c.draw_line(center - reach * 0.62, center - reach * 0.62 - reach.rotated(2.2) * 0.3, color, 1.6, smooth)
+			c.draw_circle(center, 3.0, brass, true, -1, smooth)
+		"magnet":
+			# Magnet: a horseshoe with its poles pointing up, and a round curving in.
+			c.draw_arc(center + Vector2(0, 3), 9.0, PI, TAU, 22, color, 3.4, smooth)
+			for side in [-1.0, 1.0]:
+				c.draw_line(center + Vector2(side * 9, 3), center + Vector2(side * 9, 10), color, 3.4, smooth)
+				c.draw_line(center + Vector2(side * 9, 8), center + Vector2(side * 9, 10), brass, 3.4, smooth)
+			c.draw_arc(center + Vector2(0, -6), 7.0, PI * 1.15, PI * 1.85, 16, Color(color, 0.6), 1.6, smooth)
+			c.draw_circle(center + Vector2(0, -12), 2.6, CERAMIC, true, -1, smooth)
+		"pierce":
+			# Piercing: a dart through two plates.
+			for plate in [-4.0, 4.0]:
+				c.draw_rect(Rect2(center + Vector2(plate - 1.5, -12), Vector2(3, 24)), Color(brass, 0.6), true)
+			c.draw_line(center + Vector2(-13, 0), center + Vector2(11, 0), color, 3.0, smooth)
+			c.draw_polyline(PackedVector2Array([center + Vector2(6, -5), center + Vector2(13, 0), center + Vector2(6, 5)]), color, 2.4, smooth)
 		"plating":
 			# Plating: a brick under a crystal shell, with the blow glancing off it.
 			c.draw_rect(Rect2(center + Vector2(-10, 0), Vector2(20, 10)), Color(color, 0.7), true)

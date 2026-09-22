@@ -92,10 +92,12 @@ var unlock_all = UNLOCK_ALL_FOR_TESTS
 var completed: Array = []
 
 # What the boss of each level carries: the early ones only shoot, the late ones defend too.
+# Two bought powers each, chosen to say something about the pilot and to put every power
+# in the shop in front of the player at least once before the run is over.
 const BOSS_KITS = [
-	["blast", "air"], ["blast", "air"], ["blast", "air"], ["blast", "rapid"], ["blast", "ghost"],
-	["rapid", "stun"], ["blast", "mirror"], ["rapid", "ghost"], ["laser", "rebuild"], ["rapid", "walls"],
-	["laser", "stun"],
+	["blast", "air"], ["blast", "air"], ["blast", "weld"], ["blast", "magnet"], ["blast", "freeze"],
+	["rapid", "stun"], ["blast", "thorns"], ["rapid", "ghost"], ["laser", "rebuild"], ["pierce", "walls"],
+	["laser", "magnet"],
 ]
 
 static func boss_kit(index: int) -> Array:
@@ -111,7 +113,7 @@ static func ai_profile(index: int, difficulty: int) -> Dictionary:
 	# the last ones open with it.
 	var profile = {"fire_gap": lerpf(2.35, 0.55, tier), "move": lerpf(0.34, 0.76, tier), "dodge": tier >= 0.5,
 		"power_gap": lerpf(9.5, 3.0, tier), "ultimate_wait": lerpf(42.0, 7.0, tier),
-		"charge_tick": lerpf(2.4, 0.9, tier), "ultimate_gap": lerpf(45.0, 26.0, tier)}
+		"charge_tick": lerpf(2.4, 0.9, tier), "ultimate_gap": lerpf(45.0, 26.0, tier), "ultimate_rate": 1.0}
 	match difficulty:
 		0:
 			profile.fire_gap = profile.fire_gap * 1.55 + 0.55
@@ -128,7 +130,9 @@ static func ai_profile(index: int, difficulty: int) -> Dictionary:
 			profile.power_gap *= 0.65
 			profile.ultimate_wait *= 0.6
 			profile.charge_tick *= 0.75
-			profile.ultimate_gap *= 0.8
+			profile.ultimate_gap *= 0.7
+			# On DIFICIL the ultimate winds as fast as the rest of the kit.
+			profile.ultimate_rate = 2.0
 	return profile
 
 func is_unlocked(index: int) -> bool:
