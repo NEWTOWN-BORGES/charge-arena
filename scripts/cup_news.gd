@@ -23,50 +23,57 @@ static func published(cup, who: String, n: int) -> Dictionary:
 
 static func edition(cup, number: int) -> Array:
 	var n = clampi(number, 0, cup.wins)
-	var lead = article(n, "cover", 100, "TOURNAMENT_NEWS", "O PENTA ESTÁ NA MIRA", "Quatro títulos. Aurel abre a Taça rodeado de câmaras e de adeptos que já sonham com outra final. Em campo, todos começam do zero.", "Aurel", "PRESS_CONFERENCE")
+	var lead = article(n, "cover", 100, "TOURNAMENT_NEWS", "CINCO PASSOS ATÉ AO DESAFIO", "A Taça acelera: cinco batalhas e o vencedor da chave do setor. Aurel chega à procura do penta; os novos pilotos querem mudar a história.", "Aurel", "ARENA_ENTRANCE")
+	var stage = cup.stage_index(maxi(0, n - 1))
 	if n > 0:
 		var result: Dictionary = cup.history[n - 1]
-		lead = article(n, "cover", 100, "PLAYER_NEWS", "MAIS UM PASSO TEU", "Venceste %s. A caminhada continua: cada ronda deixa um rival para trás." % result.opponent, "Tu", "POST_MATCH_INTERVIEW", result.opponent, "%s–%s" % result.score)
-		if n % 11 == 0:
-			lead.titulo = "UM SETOR CONQUISTADO"
-			lead.subtitulo = "%s reconhece a tua vitória. A sua skin é tua; uma nova etapa da Taça começa." % result.opponent
+		var local = (n - 1) % cup.STAGE_MATCHES + 1
+		var headings = ["UMA NOVA ARENA, UMA NOVA VITÓRIA", "O RICOCHETE QUE MUDOU O JOGO", "A BANCADA JÁ SABE O TEU NOME", "NINGUÉM OFERECE ESTA PASSAGEM", "A ÚLTIMA PORTA ESTÁ ABERTA"]
+		var scenes = ["ARENA_ENTRANCE", "ARENA_VICTORY", "CROWD_CELEBRATION", "TRAINING", "BACKSTAGE"]
+		var index = (local - 1 + stage) % 5
+		lead = article(n, "cover", 100, "PLAYER_NEWS", headings[index], "%s ficou para trás por %s–%s. Etapa %d: %d das cinco batalhas estão vencidas. A arena, os ângulos e os rivais mudam; a passagem continua a ser conquistada em campo." % [result.opponent, result.score[0], result.score[1], stage + 1, mini(local, 5)], "Tu", scenes[index], result.opponent, "%s–%s" % result.score)
+		if local == cup.STAGE_MATCHES:
+			lead.titulo = "O SETOR %02d TEM NOVO CAMPEÃO" % (stage + 1)
+			lead.subtitulo = "Venceste %s. Os adeptos invadem a zona de celebração, a imprensa procura uma declaração e o rival reconhece a tua passagem." % result.opponent
 			lead.cenario = "CROWD_CELEBRATION"
-		elif n % 11 == 10:
-			var rival = published(cup, cup.BOSS_NAMES[cup.boss_order[cup.stage_index(n)]], n)
-			lead = article(n, "cover", 100, "BOSS_REVEAL", "UM ENCONTRO CONQUISTADO", "%s venceu %s e ganhou o direito de cruzar o teu caminho. O confronto está confirmado." % [rival.winner, rival.loser], rival.winner, "FACE_OFF", "Tu", rival.score)
-		elif n % 4 == 0 or n == 2:
+		elif local == cup.QUALIFIERS:
+			var rounds = cup.stage_rounds(stage).filter(func(r): return r.round <= n)
+			if not rounds.is_empty():
+				var final: Dictionary = rounds.back().fixtures[0]
+				lead = article(n, "cover", 100, "BOSS_REVEAL", final.winner.to_upper() + " GANHOU O SEU LUGAR", "%s superou %s por %s. Os dois percursos cruzam-se agora: a próxima partida decide o setor." % [final.winner, final.loser, final.score], final.winner, "FACE_OFF", "Tu", final.score)
+		elif local == 2 and stage % 2 == 0:
 			var champion = published(cup, "Aurel", n)
-			lead = article(n, "cover", 100, "STREAK", "QUEM PÁRA AUREL?", "O tetracampeão voltou a vencer. Nas bancadas fala-se no penta; Aurel diz que só pensa na próxima partida.", "Aurel", "PRESS_CONFERENCE", champion.get("loser", ""), champion.get("score", ""))
+			if not champion.is_empty(): lead = article(n, "cover", 100, "STREAK", ["O FAVORITO SENTE A PRESSÃO", "QUATRO TÍTULOS, NENHUM ATALHO", "AUREL SOB OS HOLOFOTES"][(stage / 2) % 3], "Mais uma vitória de Aurel, agora contra %s. O resultado foi %s; fora da arena, a pergunta sobre o penta volta a dominar a conversa." % [champion.loser, champion.score], "Aurel", ["PRESS_CONFERENCE", "BACKSTAGE", "ARENA_VICTORY"][(stage / 2) % 3], champion.loser, champion.score)
+		if n == 3:
+			lead = article(n, "cover", 100, "INTERVIEW", "LIRA JÁ NÃO É UMA SURPRESA", "Seis eliminatórias vencidas na chave paralela. Lira responde aos adeptos antes do próximo desafio.", "Lira", "POST_MATCH_INTERVIEW")
 		if n == 4:
-			lead = article(n, "cover", 100, "INTERVIEW", "«AINDA SÓ COMECEI»", "Lira ganha espaço nas capas. Quatro vitórias fizeram dela a promessa do Farol; os adeptos já pedem uma final.", "Lira", "POST_MATCH_INTERVIEW")
-		if n == 7:
 			var upset = published(cup, "Lira", n)
-			lead = article(n, "cover", 100, "UPSET", "A FAVORITA CAIU", "Vértice elimina Lira. A final que tantos antecipavam acaba de mudar de rosto.", "Vértice", "UPSET", "Lira", upset.score)
-		if n == 109:
+			lead = article(n, "cover", 100, "UPSET", "A PROMESSA FICOU PELO CAMINHO", "Vértice elimina Lira. Os prognósticos caem por terra; a chave tem um novo nome a seguir.", "Vértice", "UPSET", "Lira", upset.score)
+		if n == cup.FULL_MATCHES - 1:
 			var upset = published(cup, "Aurel", n)
-			lead = article(n, "cover", 100, "UPSET", "O PENTA CAIU", "Arconte Solar derrotou Aurel na semifinal. O tetracampeão despede-se entre o silêncio das bancadas. A outra vaga na grande final está decidida.", "Arconte Solar", "UPSET", "Aurel", upset.score)
-		if n == 110:
+			lead = article(n, "cover", 100, "UPSET", "O SILÊNCIO DEPOIS DO PENTA", "Arconte Solar elimina Aurel. O tetracampeão abandona a arena; o vencedor vai disputar contigo a grande final.", "Arconte Solar", "UPSET", "Aurel", upset.score)
+		if n == cup.FULL_MATCHES:
 			lead.titulo = "A TAÇA É TUA"
-			lead.subtitulo = "Venceste o Arconte Solar e conquistaste a Taça Aurora. Ganhas a skin do rival e a armadura de Aurel como prémio da competição."
+			lead.subtitulo = "Sessenta combates. Dez etapas conquistadas. O troféu é teu e toda a arena celebra este percurso."
 			lead.tipo = "FINAL"
-		lead.corpo = lead.subtitulo
-	var focus = "Faroleiro" if n < 11 else "Sentinela"
+	var candidates = ["Faroleiro", "Mineiro", "Astrónomo", "Jardineiro", "Sentinela", "Relojoeiro", "Corsário", "Caça-Trovões", "Alquimista", "Arconte Solar"]
+	var focus: String = candidates[(n + stage * 3) % candidates.size()]
 	var record = published(cup, focus, n)
 	var fallen = not record.is_empty() and record.loser == focus
-	var report = article(n, "report", 60, "ELIMINATION" if fallen else "INTERVIEW", "Respeito depois do apito" if fallen else "O trabalho longe das capas", "%s deixou a competição, mas as suas vitórias ficam na história." % focus if fallen else "%s prepara o próximo desafio. Entre treinos e entrevistas, cada lugar tem de ser conquistado em campo." % focus, focus, "ARENA_DEFEAT" if fallen else "TRAINING", record.get("winner", "") if fallen else record.get("loser", ""), record.get("score", ""))
-	var latest = published(cup, "Aurel", n)
-	var brief = article(n, "wire", 10, "TOURNAMENT_NEWS", "A Taça tem mais de uma história", "Os resultados publicados estão na Árvore. Os adversários futuros dependem de quem continuar em prova.", "Sentinela", "ARENA_ENTRANCE")
-	if not latest.is_empty():
-		brief = article(n, "wire", 10, "ELIMINATION" if latest.loser == "Aurel" else "VICTORY", "Aurel despede-se da Taça" if latest.loser == "Aurel" else "O tetracampeão volta a vencer", "%s · %s · %s. Resultado oficial da jornada %d." % [latest.winner, latest.score, latest.loser, latest.round], "Aurel", "ARENA_DEFEAT" if latest.loser == "Aurel" else "ARENA_VICTORY", latest.winner if latest.loser == "Aurel" else latest.loser, latest.score)
+	var report = article(n, "report", 60, "ELIMINATION" if fallen else "INTERVIEW", ("O adeus de " if fallen else ["Na oficina de ", "O treino de ", "À conversa com ", "A chegada de "][n % 4]) + focus, "As vitórias de %s ficam no arquivo, mesmo depois da eliminação." % focus if fallen else "%s mostra como se prepara longe do apito. Novos cenários, novas rotinas e a mesma vontade de conquistar a próxima passagem." % focus, focus, "ARENA_DEFEAT" if fallen else ["BACKSTAGE", "TRAINING", "POST_MATCH_INTERVIEW", "ARENA_ENTRANCE"][n % 4], record.get("winner", "") if fallen else record.get("loser", ""), record.get("score", ""))
+	var brief = article(n, "wire", 10, "TOURNAMENT_NEWS", "O setor em números", "Consulta em RESULTADOS quem avançou e quem foi eliminado. Cada batalha tua faz avançar duas eliminatórias da chave paralela.", focus, "BACKSTAGE")
 	for story in [lead, report, brief]:
-		story.corpo = report_body(cup, story, n)
+		story["visual_variant"] = n + stage * 3
+		story["sector"] = stage
+		story["cast"] = {story.personagemPrincipal: preload("res://scripts/cup_tree_data.gd").portrait_spec(cup, story.personagemPrincipal), story.personagemSecundario: preload("res://scripts/cup_tree_data.gd").portrait_spec(cup, story.personagemSecundario)}
+		story.corpo = story.subtitulo + "\n\n" + report_body(cup, story, n)
 	return [lead, report, brief]
 
 static func report_body(cup, story: Dictionary, n: int) -> String:
 	var who: String = story.personagemPrincipal
 	if n == 0 and who == "Aurel":
 		return "Há quatro troféus no palmarés de Aurel e uma quinta conquista no centro de todas as perguntas. O tetracampeão chega com o peso de uma reputação que enche bancadas antes do primeiro disparo.\n\nA experiência faz dele uma referência, mas não lhe reserva um lugar na final. Cada participante terá de sobreviver à sua chave. Por agora, o penta é uma ambição; os resultados começam a escrever-se na arena."
-	if n >= 109 and who in ["Aurel", "Arconte Solar"]:
+	if n >= cup.FULL_MATCHES - 1 and who in ["Aurel", "Arconte Solar"]:
 		var result = published(cup, "Aurel", n)
 		return "O marcador fechou em %s. Aurel, apontado durante toda a competição como candidato ao quinto título, foi eliminado por Arconte Solar na outra semifinal.\n\nA surpresa tem agora lugar no boletim oficial. O favoritismo que ocupou as capas não bastou para atravessar a última porta: foi Arconte Solar quem conquistou a vaga em campo." % result.score
 	if who == "Tu":

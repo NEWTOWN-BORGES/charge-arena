@@ -1215,12 +1215,12 @@ func start_cup() -> void:
 	var entry = cup.level()
 	use_map(entry.map)
 	rules.ai_profile = cup.profile(game_settings.difficulty)
-	use_loadouts(cup.kit(), cup.boss_id() if cup.local_wins() == 10 else 0, cup.ultimate())
+	use_loadouts(cup.kit(), cup.boss_id() if cup.local_wins() == cup.QUALIFIERS else 0, cup.ultimate())
 	rules.reset_match()
 	dress_pilots(0)
-	arena.set_skin(1, entry.boss, cup.local_wins() < 10, entry.hue)
+	arena.set_skin(1, entry.boss, cup.local_wins() < cup.QUALIFIERS, entry.hue)
 	hud.team_hues = arena.unit_hues
-	hud.level_info = {"number": cup.wins + 1, "cup": true, "name": entry.name, "challenge": "Vence para avançar na Taça Aurora.", "boss_name": cup.opponent(), "has_next": false}
+	hud.level_info = {"number": cup.wins + 1, "cup": true, "name": entry.name, "challenge": entry.get("challenge", "Vence para avançar na Taça Aurora."), "boss_name": cup.opponent(), "has_next": false}
 	hud.level_result = ""
 	hud.show_game(mode, 0)
 	sync_assist()
@@ -1228,12 +1228,12 @@ func start_cup() -> void:
 	cup_active = true
 	cup_resolved = false
 	last_phase = ""
-	music.play_skin(cup.boss_id() if cup.local_wins() == 10 else cup.local_wins() + 1)
+	music.play_skin(cup.boss_id() if cup.local_wins() == cup.QUALIFIERS else cup.local_wins() + 1)
 
 func finish_cup() -> void:
 	var won = rules.winner == 0
 	var rival = cup.opponent()
-	var reward_skin = cup.boss_id() if cup.local_wins() == 10 else 0
+	var reward_skin = cup.boss_id() if cup.local_wins() == cup.QUALIFIERS else 0
 	var score = Array(rules.scores).duplicate()
 	bank_bricks()
 	if won:

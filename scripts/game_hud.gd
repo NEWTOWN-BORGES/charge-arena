@@ -868,7 +868,7 @@ func build_menu() -> void:
 	pvp.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	modes.add_child(pvp)
 	pvp.pressed.connect(open_pvp)
-	var level_list = make_button("TAÇA", false)
+	var level_list = make_button("MODO HISTÓRIA", false)
 	level_list.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	modes.add_child(level_list)
 	level_list.pressed.connect(func(): cup_requested.emit())

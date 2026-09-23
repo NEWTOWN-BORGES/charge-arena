@@ -16,7 +16,7 @@ func run() -> void:
 		var words: String = visible_text(screen.content).to_upper()
 		for forbidden in ["AUREL", "NADIR", "LIRA", "VÉRTICE"]: assert(not words.contains(forbidden))
 		for future in range(n + 1, 10): assert(not words.contains(cup.NAMES[future].to_upper()))
-		assert(not words.contains("FAROLEIRO") if n < 10 else words.contains("FAROLEIRO"))
+		assert(not words.contains("FAROLEIRO") if n < 5 else words.contains("FAROLEIRO"))
 		assert(route.history.size() == n)
 		if n > 0: assert(route.history[0].round == n)
 		if n < cup.FULL_MATCHES:
@@ -24,7 +24,7 @@ func run() -> void:
 			cup.complete([2, n % 2])
 		else: assert(route.state == "COMPLETE" and screen.play.disabled)
 	cup.reset()
-	for i in range(10): cup.complete([2, 1])
+	for i in range(5): cup.complete([2, 1])
 	var complete_round: Dictionary = cup.rounds.pop_back()
 	screen.refresh()
 	assert(Data.snapshot(cup).state == "WAITING")

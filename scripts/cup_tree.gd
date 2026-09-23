@@ -27,7 +27,7 @@ func _ready() -> void:
 	toolbar = HBoxContainer.new()
 	toolbar.add_theme_constant_override("separation", 8)
 	add_child(toolbar)
-	for item in [["TAÇA", 0], ["SETOR", 1], ["CONFRONTOS", 2]]:
+	for item in [["AGORA", 0], ["RIVAIS", 1], ["RESULTADOS", 2]]:
 		toolbar.add_child(button(item[0], func(): show_level(item[1])))
 	caption = label("", 21)
 	add_child(caption)
@@ -128,36 +128,43 @@ func show_level(value: int) -> void:
 	map.fit()
 	map.queue_redraw()
 func overview() -> void:
-	caption.text = "TAÇA AURORA · pilotos e resultados confirmados"
-	add_node("future", "TAÇA AURORA", Vector2(340, 0), "110 combates · dez etapas", "CADA LUGAR É CONQUISTADO EM CAMPO", GOLD, Vector2(400, 150))
-	person("Tu", Vector2(20, 230)); person("Aurel", Vector2(600, 230))
-	edge("future", "Tu", true); edge("future", "Aurel")
-	var names = ["Faroleiro", "Sentinela", "Lira", "Arconte Solar", "Vértice", "Mineiro", "Astrónomo", "Jardineiro", "Relojoeiro", "Corsário", "Caça-Trovões", "Alquimista"]
-	for i in range(names.size()):
-		person(names[i], Vector2(20 + (i % 2) * 580, 500 + (i / 2) * 250))
-	add_node("entrants", "EXPLORAR O TEU SETOR", Vector2(20, 2100), cup.sector_label(), "PERCURSO E CHAVE REGIONAL", MINT, Vector2(420, 150))
-func sector() -> void:
-	caption.text = cup.sector_label() + " · percurso e participantes em prova"
-	var y = 0.0
-	for i in range(cup.history.size()):
-		var record: Dictionary = cup.history[i]
-		add_node("past:%d" % i, "✓ " + record.opponent, Vector2(20, y), "%s–%s · vitória tua" % record.score, "RONDA %03d" % record.round, MINT, Vector2(380, 132))
-		if i > 0: edge("past:%d" % (i - 1), "past:%d" % i, true)
-		y += 186
-	person("Tu", Vector2(20, y))
-	if not cup.history.is_empty(): edge("past:%d" % (cup.history.size() - 1), "Tu", true)
+	caption.text = "VERDE: o teu caminho   ·   DOURADO: próximo combate   ·   CINZENTO: por decidir"
+	add_node("sector", "ETAPA %02d / %02d · %s" % [cup.stage_index() + 1, cup.FULL_STAGES, cup.sector_label()], Vector2(40, 0), "%d / 5 batalhas vencidas nesta etapa" % mini(cup.local_wins(), 5), "CINCO BATALHAS → BOSS → PRÓXIMA ETAPA", GOLD, Vector2(920, 150))
+	person("Tu", Vector2(40, 225))
 	var next_match: Dictionary = cup.confirmed_match()
 	if not next_match.is_empty():
-		person(next_match.name, Vector2(20, y + 260))
+		person(next_match.name, Vector2(580, 225))
+		map.nodes.back().tag = "O TEU PRÓXIMO ADVERSÁRIO"
+		map.nodes.back().accent = GOLD
+		map.nodes.back().status = "BOSS CONFIRMADO" if next_match.is_final else "BATALHA %d DE 5" % (cup.local_wins() + 1)
 		edge("Tu", next_match.name, true)
+	else:
+		add_node("future", "TAÇA CONQUISTADA" if cup.wins >= cup.FULL_MATCHES else "A DEFINIR", Vector2(580, 225), "", "SEM ADVERSÁRIO CONFIRMADO", GOLD, Vector2(380, 184))
+	var defeated = cup.history.back().opponent if not cup.history.is_empty() else "Ainda não há vitórias"
+	add_node("past:latest", "ÚLTIMO ADVERSÁRIO VENCIDO", Vector2(40, 490), defeated, "TOCAR PARA REVER O TEU PERCURSO", MINT, Vector2(920, 150))
+	add_node("matches", "O QUE ACONTECE NO TEU SETOR?", Vector2(40, 720), "%d pilotos continuam na chave" % (1024 if cup.stage_rounds().is_empty() else cup.stage_rounds().back().winners.size()), "TOCAR PARA VER RESULTADOS E ELIMINAÇÕES", GOLD, Vector2(920, 150))
+	for i in range(cup.FULL_STAGES):
+		var won = cup.history.filter(func(h): return h.get("stage", 0) == i and h.get("boss", 0) > 0)
+		var active = i == cup.stage_index() and cup.wins < cup.FULL_MATCHES
+		add_node("chapter:%d" % i, "ETAPA %02d" % (i + 1), Vector2(40 + (i % 2) * 500, 990 + (i / 2) * 210), "CONQUISTADA" if not won.is_empty() else ("ESTÁS AQUI" if active else "POR DESBLOQUEAR"), won[0].opponent if not won.is_empty() else "5 batalhas + boss", MINT if not won.is_empty() or active else Color("45626d"), Vector2(420, 160))
+func sector() -> void:
+	caption.text = "RIVAIS · quem continua em prova e quem eliminou quem"
 	var played: Array = cup.stage_rounds()
-	var alive = 1024 if played.is_empty() else played.back().winners.size()
-	add_node("matches", "CHAVE DO SETOR", Vector2(600, y), "%d de 1 024 em prova" % alive, "ABRIR RESULTADOS", GOLD, Vector2(380, 150))
-	var public_pilots = [cup.entrants[0].name, cup.entrants[512].name, cup.entrants[576].name]
-	for i in range(public_pilots.size()):
-		if not next_match.is_empty() and public_pilots[i] == next_match.name: continue
-		person(public_pilots[i], Vector2(600, y + 250 + i * 250))
-		edge("matches", public_pilots[i])
+	var pool: Array = cup.entrants if played.is_empty() else played.back().winners
+	add_node("matches", "%s · %d EM PROVA" % [cup.sector_label(), pool.size()], Vector2(40, 0), "Resultados da chave paralela", "TOCAR PARA TODOS OS CONFRONTOS", GOLD, Vector2(920, 150))
+	var important: Array = [cup.entrants[0].name]
+	if cup.stage_index() == 0: important.append_array(["Lira", "Vértice"])
+	elif cup.stage_index() == cup.FULL_STAGES - 1: important.append("Aurel")
+	for candidate in pool:
+		if important.size() >= 6: break
+		if not important.has(candidate.name): important.append(candidate.name)
+	for i in range(important.size()):
+		person(important[i], Vector2(40 + (i % 2) * 520, 220 + (i / 2) * 250))
+	var y = 240 + ceili(important.size() / 2.0) * 250
+	if not played.is_empty():
+		for fixture in played.back().fixtures.slice(0, 3):
+			add_node("result:" + fixture.winner, fixture.winner + " AVANÇOU", Vector2(40, y), fixture.score + " contra " + fixture.loser, "ELIMINADO: " + fixture.loser, MINT, Vector2(920, 160))
+			y += 210
 func confrontations() -> void:
 	caption.text = "CONFRONTOS · resultados oficiais · oito encontros por página"
 	if cup.rounds.is_empty():
@@ -179,7 +186,7 @@ func confrontations() -> void:
 	add_node("page_prev", "← ANTERIORES", Vector2(20, 230 + rows.size() * 240), "Página %d" % (page + 1), "RESULTADOS", GOLD)
 	add_node("page_next", "SEGUINTES →", Vector2(680, 230 + rows.size() * 240), "de %d páginas" % ceili(matches.size() / 8.0), "RESULTADOS", GOLD)
 func locate_player() -> void:
-	show_level(1)
+	show_level(0)
 	map.locate("Tu")
 func select_node(key: String) -> void:
 	if map.nodes.any(func(node): return node.key == key and node.has("person")): open_person(key)
@@ -191,6 +198,12 @@ func select_node(key: String) -> void:
 	elif key == "round_next": round_index += 1; page = 0; show_level(2)
 	elif key == "page_prev": page -= 1; show_level(2)
 	elif key == "page_next": page += 1; show_level(2)
+	elif key.begins_with("chapter:"):
+		var chapter = int(key.split(":")[1])
+		var completed = cup.history.filter(func(h): return h.get("stage", 0) == chapter and h.get("boss", 0) > 0)
+		if not completed.is_empty(): open_person(completed[0].opponent)
+		elif chapter == cup.stage_index(): show_level(1)
+	elif key.begins_with("result:"): open_person(key.trim_prefix("result:"))
 	elif key.begins_with("match:"):
 		var index = int(key.split(":")[1])
 		var fixture: Dictionary = cup.rounds[round_index].fixtures[index]

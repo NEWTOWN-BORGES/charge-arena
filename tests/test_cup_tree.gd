@@ -4,13 +4,13 @@ func _initialize() -> void: call_deferred("run")
 func run() -> void:
 	var cup = preload("res://scripts/cup.gd").new()
 	assert(Data.profile(cup, "Faroleiro").wins == 0)
-	for i in range(7): cup.complete([2, 1])
+	for i in range(4): cup.complete([2, 1])
 	var lira = Data.profile(cup, "Lira")
 	assert(lira.state == "ELIMINATED" and lira.eliminated_by == "Vértice")
 	assert(lira.wins == 6 and lira.history.size() == 7)
 	var rival = Data.profile(cup, "Vértice")
-	assert(rival.wins == 7 and rival.history.back().loser == "Lira")
-	assert(Data.profile(cup, "Tu").wins == 7)
+	assert(rival.wins == 8 and rival.history.any(func(h): return h.loser == "Lira"))
+	assert(Data.profile(cup, "Tu").wins == 4)
 	assert(Data.profile(cup, "Aurel").state == "CHAMPION")
 	var screen = preload("res://scripts/cup_screen.gd").new()
 	screen.cup = cup
@@ -21,7 +21,7 @@ func run() -> void:
 	var tree = screen.tree_view
 	assert(tree.map.nodes.size() > 10)
 	tree.locate_player()
-	assert(tree.level == 1)
+	assert(tree.level == 0)
 	var center = Vector2.ZERO
 	for node in tree.map.nodes:
 		if node.key == "Tu": center = node.rect.get_center() * tree.map.zoom + tree.map.pan
@@ -56,7 +56,7 @@ func run() -> void:
 	journal.tree_requested.emit("Vértice")
 	await process_frame
 	assert(screen.tab == 1 and is_instance_valid(screen.tree_view.detail))
-	for i in range(3): cup.complete([2, 0])
+	for i in range(1): cup.complete([2, 0])
 	assert(Data.profile(cup, "Vértice").eliminated_by == "Faroleiro")
 	assert(Data.profile(cup, "Faroleiro").wins == 10)
 	cup.complete([2, 1])

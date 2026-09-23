@@ -28,10 +28,10 @@ func run() -> void:
 		check(not "NADIR" in copy and not "AUREL" in copy and not "VÉRTICE" in copy and not "LIRA" in copy, "Other storylines stay outside the path")
 		for future in range(step + 1, Cup.NAMES.size()):
 			check(not Cup.NAMES[future].to_upper() in copy, "No future qualifier at %d" % step)
-		if step < 10:
+		if step < Cup.QUALIFIERS:
 			check(not "FAROLEIRO" in copy, "Sector winner is not predicted")
 			check(cup.confirmed_match().name == Cup.NAMES[step], "Only the current scheduled qualifier is confirmed")
-		elif step == 10:
+		elif step == Cup.QUALIFIERS:
 			check("FAROLEIRO" in copy and "FINAL DO SETOR · CONFIRMADA" in copy, "Actual bracket winner becomes the opponent")
 		elif step == Cup.FULL_MATCHES:
 			check(screen.play.disabled and not "SE VENCER" in copy and not "PRÓXIMO CONFRONTO" in copy, "Completion has no invented future")
@@ -45,12 +45,12 @@ func run() -> void:
 			cup.complete([2, step % 2])
 	# A seeded narrative winner without a completed fixture must not be revealed.
 	cup.reset()
-	for i in range(9): cup.complete([2, 1])
-	cup.wins = 10
+	for i in range(4): cup.complete([2, 1])
+	cup.wins = 5
 	screen.refresh()
 	check(cup.confirmed_match().is_empty() and screen.play.disabled, "Pending bracket blocks play")
 	check("ADVERSÁRIO A DEFINIR" in labels(screen.content) and not "FAROLEIRO" in labels(screen.content), "Pending bracket does not leak seeded winner")
-	cup.wins = 9
+	cup.wins = 4
 	cup.complete([2, 1])
 	var fixture = cup.rounds.back().fixtures[0]
 	fixture.winner = "Not the recorded winner"
@@ -66,7 +66,7 @@ func run() -> void:
 	screen.cup = restored
 	screen.result = "Derrota · 1–2 contra FAROLEIRO"
 	screen.refresh()
-	check(restored.wins == 10 and not screen.play.disabled, "Defeat allows retry without advancing")
+	check(restored.wins == 5 and not screen.play.disabled, "Defeat allows retry without advancing")
 	screen.free()
 	await process_frame
 	print("PATH FAILURES: ", failures)

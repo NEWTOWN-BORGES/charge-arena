@@ -913,7 +913,18 @@ func build_station_pilot(body: Node3D, shell: Color, light: Color, color: Color,
 	# The pilots between the bosses. One chassis, ten heads: nobody here has a name, so the
 	# whole read has to come from the silhouette and the colour. Deliberately plainer than
 	# any shop skin - these are the road, not the destination.
-	var kind: int = clampi(variant, 0, 9)
+	var kind: int = posmod(variant, 10)
+	var family: int = clampi(variant / 10, 0, 4)
+	body.set_meta("design_signature", "%d:%d" % [kind, family])
+	# Five equipment families × ten helmets: fifty distinct silhouettes.
+	for side in [-1, 1]:
+		match family:
+			0: box(body, Vector3(side * 0.46, 0.98, 0.06), Vector3(0.2, 0.3, 0.36), color, false, 0.08)
+			1: cone(body, Vector3(side * 0.52, 1.06, 0.03), 0.19, 0.46, shell, false, 6)
+			2: box(body, Vector3(side * 0.42, 0.56, 0.26), Vector3(0.3, 0.7, 0.12), color, false, 0.04).rotation.z = side * 0.25
+			3: cylinder(body, Vector3(side * 0.38, 0.98, 0.4), 0.14, 0.8, shell, false, 8)
+			4: sphere(body, Vector3(side * 0.53, 0.89, 0.05), Vector3(0.44, 0.4, 0.42), color)
+	body.scale = Vector3(0.91 + family * 0.045, 0.92 + (kind % 3) * 0.055, 1.0)
 	for side in [-1, 1]:
 		var leg = Node3D.new()
 		leg.name = "LegL" if side == -1 else "LegR"
@@ -1805,7 +1816,7 @@ func update_state(rules, local_team: int, dt: float, motion_alpha: float = 1.0) 
 		active.append(ball.id)
 		# Aura and trail take the shooter's skin colour; the floor glow keeps the team colour.
 		var kind: int = int(ball.get("power", 0))
-		var color = GOLD if ball.get("boosted", false) else shot_colors[ball.owner]
+		var color = Color("fff0b0") if ball.get("amplified", false) else (GOLD if ball.get("boosted", false) else shot_colors[ball.owner])
 		# Power rounds keep their own colour, boosted or not, so each is read at a glance.
 		if kind == 1:
 			color = Rules.power_color("blast")
@@ -2822,6 +2833,10 @@ func update_power_effects(rules, dt: float) -> void:
 			charging.scale = Vector3.ONE * lerpf(2.6, 0.9, wind)
 			charging.rotation.y = clock * 3.4
 			var glow: Color = Rules.power_color(String(state.ultimate_id))
+			if String(state.ultimate_id).begins_with("b_"):
+				glow = glow.lerp(Color("fff4d8"), 0.35)
+				charging.rotation.y = -clock * 5.5
+				charging.scale.y = 1.25 + 0.15 * sin(clock * 18)
 			for part in charging.get_children():
 				if part is MeshInstance3D:
 					part.material_override = material(Color(glow, snappedf(0.35 + 0.45 * wind, 0.05)), true)

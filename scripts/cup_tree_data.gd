@@ -14,8 +14,8 @@ static func public_name(value: String) -> String:
 static func portrait_spec(cup, who: String) -> Array:
 	if CAST.has(who): return CAST[who]
 	for stage in range(cup.FULL_STAGES):
-		for index in range(10):
-			if cup.normal_name(stage, index) == who: return [100 + index, cup.COLORS[index], "Qualificatórias"]
+		for index in range(cup.QUALIFIERS):
+			if cup.normal_name(stage, index) == who: return [100 + stage * cup.QUALIFIERS + index, Color.from_hsv(fmod((stage * cup.QUALIFIERS + index) * 0.618034, 1.0), 0.48, 0.91).to_html(false), "Qualificatórias"]
 	return [101, "719ba3", "Chave regional"]
 static func profile(cup, who: String) -> Dictionary:
 	var p = {"name": who, "state": "ACTIVE", "wins": 0, "history": [], "eliminated_by": "", "sector": portrait_spec(cup, who)[2], "meeting": "Ainda por determinar", "tag": "PILOTO", "confirmed_only": false}
@@ -41,7 +41,7 @@ static func profile(cup, who: String) -> Dictionary:
 		else:
 			p.state = "ELIMINATED"
 			p.eliminated_by = public_name(record.winner)
-	p.tag = "4× CAMPEÃO · RUMO AO PENTA" if who == "Aurel" else ("PROMESSA" if who == "Lira" else ("REVELAÇÃO" if who == "Vértice" and cup.wins >= 7 else "PARTICIPANTE"))
+	p.tag = "4× CAMPEÃO · RUMO AO PENTA" if who == "Aurel" else ("PROMESSA" if who == "Lira" else ("REVELAÇÃO" if who == "Vértice" and cup.wins >= 4 else "PARTICIPANTE"))
 	if who == "Aurel" and p.state != "ELIMINATED": p.state = "CHAMPION"
 	if p.state == "ELIMINATED": p.meeting = "Fora da Taça · resultado confirmado"
 	else:

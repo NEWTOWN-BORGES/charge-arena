@@ -19,17 +19,17 @@ func run() -> void:
 		unique[n] = true
 	check(unique.size() == 1024, "Unique participant identities")
 	var last_gap = 100.0
-	for step in range(11):
+	for step in range(Cup.STAGE_MATCHES):
 		check(c.profile(1).fire_gap <= last_gap, "Difficulty rises %d" % step)
 		last_gap = c.profile(1).fire_gap
 		check(c.level().map.has("outline"), "Playable arena %d" % step)
 		check(c.complete([2, step % 2]), "Win advances once")
-		if step < 10:
+		if step < Cup.QUALIFIERS:
 			var round_data = c.rounds.back()
-			check(round_data.winners.size() == 1024 >> (step + 1), "Bracket halves")
+			check(round_data.winners.size() == 1024 >> ((step + 1) * 2), "Bracket halves")
 			check(round_data.fixtures.size() == round_data.winners.size(), "Every advancement has a result")
 	check(c.rounds.back().winners[0].name == "Faroleiro", "Boss earned the regional final")
-	check(c.confirmed_match().round == 12, "Sector victory opens the next stage")
+	check(c.confirmed_match().round == 7, "Sector victory opens the next stage")
 	check(c.headlines.any(func(h): return "Vértice elimina Lira" in h.title), "Upset is backed by a fixture")
 	check(c.save() == OK, "Save succeeds")
 	var restored = Cup.new()

@@ -8,9 +8,9 @@ static func snapshot(cup) -> Dictionary:
 	if done:
 		route.stage = "Taça conquistada"
 		route.consequence = "Campeão da Taça Aurora. Este é o caminho que construíste."
-	elif cup.local_wins() == 9:
+	elif cup.local_wins() == cup.QUALIFIERS - 1:
 		route.consequence = "Conquistas a classificação para a final do setor."
-	elif cup.local_wins() == 10:
+	elif cup.local_wins() == cup.QUALIFIERS:
 		route.consequence = "Título do setor + skin do adversário. Avanças para o próximo setor."
 		if cup.wins == cup.FULL_MATCHES - 1:
 			route.consequence = "Conquistas a Taça Aurora e as skins de prémio da final."

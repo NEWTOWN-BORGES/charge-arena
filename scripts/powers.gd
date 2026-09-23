@@ -70,6 +70,9 @@ const ULTIMATES = [
 # already does, tuned down. They are meant to be recognised on sight after the second time,
 # not studied.
 const BASIC_ULTIMATES = [
+	{"id": "b_charge", "short": "CARGA+", "name": "DISPARO AMPLIFICADO", "kind": "ultimate", "charge": ULTIMATE_CHARGE, "wait": ULTIMATE_WAIT, "price": 0, "color": "ffdf8a", "about": "O disparo potente do kit com mais 15% de velocidade e preparação dourada."},
+	{"id": "b_quick", "short": "RÁPIDA+", "name": "CADÊNCIA AMPLIFICADA", "kind": "ultimate", "charge": ULTIMATE_CHARGE, "wait": ULTIMATE_WAIT, "price": 0, "color": "e9baff", "about": "A habilidade de cadência dura mais 25%, com preparação violeta."},
+	{"id": "b_fan", "short": "LEQUE+", "name": "LEQUE AMPLIFICADO", "kind": "ultimate", "charge": ULTIMATE_CHARGE, "wait": ULTIMATE_WAIT, "price": 0, "color": "b4fff4", "about": "A habilidade de leque ganha dois projéteis e uma preparação luminosa própria."},
 	{"id": "b_salvo", "short": "SALVA", "name": "SALVA", "kind": "ultimate", "charge": ULTIMATE_CHARGE, "wait": ULTIMATE_WAIT, "price": 0, "color": "ffc978",
 		"about": "Tres leques seguidos, a metade da rajada do Faroleiro."},
 	{"id": "b_hail", "short": "GRANIZO", "name": "GRANIZO", "kind": "ultimate", "charge": ULTIMATE_CHARGE, "wait": ULTIMATE_WAIT, "price": 0, "color": "cbb2ff",
@@ -77,19 +80,19 @@ const BASIC_ULTIMATES = [
 	{"id": "b_spark", "short": "FAISCA", "name": "FAISCA", "kind": "ultimate", "charge": ULTIMATE_CHARGE, "wait": ULTIMATE_WAIT, "price": 0, "color": "7fe6ff",
 		"about": "Tres descargas curtas, duas vidas cada, sem a tempestade a volta."},
 	{"id": "b_patch", "short": "REMENDO", "name": "REMENDO", "kind": "ultimate", "charge": ULTIMATE_CHARGE, "wait": ULTIMATE_WAIT, "price": 0, "color": "8fe0a8",
-		"about": "Uma vida de volta em cada tijolo seu que ja levou pancada."},
+		"about": "A soldadura do kit com reparação extra em um de cada quatro blocos."},
 	{"id": "b_bar", "short": "BARREIRA", "name": "BARREIRA", "kind": "ultimate", "charge": ULTIMATE_CHARGE, "wait": ULTIMATE_WAIT, "price": 0, "color": "dbdf9a",
-		"about": "Muralhas a frente dos bancos dele durante nove segundos."},
+		"about": "As muralhas do kit com mais 20% de duração e preparação luminosa."},
 	{"id": "b_push", "short": "EMPURRAO", "name": "EMPURRAO", "kind": "ultimate", "charge": ULTIMATE_CHARGE, "wait": ULTIMATE_WAIT, "price": 0, "color": "b9e6ff",
 		"about": "Uma onda limpa o campo de balas e atordoa quem estiver do outro lado."},
 	{"id": "b_slow", "short": "LASTRO", "name": "LASTRO", "kind": "ultimate", "charge": ULTIMATE_CHARGE, "wait": ULTIMATE_WAIT, "price": 0, "color": "a8dcff",
-		"about": "Quatro segundos a arrastar-te: mais lento, mais devagar a disparar e sem kit."},
+		"about": "O gelo do kit com mais 20% de duração e preparação azul-clara."},
 	{"id": "b_forge", "short": "FORJA", "name": "FORJA", "kind": "ultimate", "charge": ULTIMATE_CHARGE, "wait": ULTIMATE_WAIT, "price": 0, "color": "7fe6c8",
 		"about": "Quatro segundos com os tiros dele turbinados e ao dobro da cadencia."},
 	{"id": "b_aim", "short": "MIRA", "name": "MIRA", "kind": "ultimate", "charge": ULTIMATE_CHARGE, "wait": ULTIMATE_WAIT, "price": 0, "color": "ffd06b",
-		"about": "Seis segundos com as balas dele a curvar para o teu tijolo mais proximo."},
+		"about": "A atração do kit dura mais 20%, com preparação dourada."},
 	{"id": "b_drill", "short": "FURA", "name": "FURA", "kind": "ultimate", "charge": ULTIMATE_CHARGE, "wait": ULTIMATE_WAIT, "price": 0, "color": "ff8f6b",
-		"about": "Cinco segundos com as balas dele a atravessar o tijolo que partem."},
+		"about": "A perfuração do kit dura mais 20%, com preparação coral."},
 ]
 
 # The kit every pilot starts with, and how many bought powers it holds. The third slot is

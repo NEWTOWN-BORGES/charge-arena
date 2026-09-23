@@ -400,6 +400,12 @@ static func map_barriers(layout: Dictionary) -> Array:
 
 static func map_bricks(layout: Dictionary, lives: int = BRICK_LIVES) -> Array:
 	var bricks: Array = make_bricks(layout.get("bricks", "banks"), lives)
+	var variation = int(layout.get("brick_variant", 0))
+	if variation > 0:
+		for brick in bricks:
+			# Mirror both teams; change bank spacing/depth without changing collider sizes.
+			brick.p.x *= 0.88 + variation * 0.018
+			brick.p.y += (1 if brick.team == 0 else -1) * (variation % 3) * 0.14
 	var narrow: float = narrow_of(layout)
 	if is_equal_approx(narrow, 1.0):
 		return bricks
@@ -957,6 +963,19 @@ func fire_ultimate(team: int) -> void:
 			state.ultimate_tick = VOLLEY_SECONDS / VOLLEY_WAVES
 			state.ultimate_shots = VOLLEY_WAVES - 1
 			volley_wave(team)
+		"b_charge":
+			shoot(team, 1)
+			if not balls.is_empty():
+				balls.back().v *= 1.15
+				balls.back()["amplified"] = true
+		"b_quick":
+			state.rapid_time = RAPID_SECONDS * 1.25
+			players[team].cooldown = 0.0
+		"b_fan":
+			for pellet in range(AIR_PELLETS + 2):
+				var angle = lerpf(-AIR_SPREAD, AIR_SPREAD, pellet / float(AIR_PELLETS + 1))
+				spawn_ball(team, forward_direction(team, players[team].angle).rotated(angle), 3, AIR_DAMAGE)
+				balls.back()["amplified"] = true
 		"b_salvo":
 			state.ultimate_time = VOLLEY_SECONDS * 0.6
 			state.ultimate_tick = VOLLEY_SECONDS / VOLLEY_WAVES
@@ -974,23 +993,26 @@ func fire_ultimate(team: int) -> void:
 			sky_strike(team, "thunder", THUNDER_DAMAGE, THUNDER_RADIUS)
 		"b_patch":
 			weld_bricks(team)
+			for brick in bricks:
+				if brick.team == team and brick.alive and int(brick.id) % 4 == 0:
+					brick.hp = mini(brick.hp + 1, brick_lives)
 		"b_bar":
-			state.walls_time = WALLS_SECONDS * 1.4
+			state.walls_time = WALLS_SECONDS * 1.2
 			events.append({"kind": "walls", "team": team, "p": players[team].p})
 		"b_push":
 			shock_pulse(team)
 		"b_slow":
-			powers[1 - team].freeze_time = FREEZE_SECONDS * 0.8
-			events.append({"kind": "freeze", "team": 1 - team, "p": players[1 - team].p, "seconds": FREEZE_SECONDS * 0.8})
+			powers[1 - team].freeze_time = FREEZE_SECONDS * 1.2
+			events.append({"kind": "freeze", "team": 1 - team, "p": players[1 - team].p, "seconds": FREEZE_SECONDS * 1.2})
 		"b_forge":
 			state.surge_time = SURGE_SECONDS * 0.7
 			players[team].cooldown = 0.0
 			events.append({"kind": "surge", "team": team, "p": players[team].p, "seconds": SURGE_SECONDS * 0.7, "gain": BOOST_DAMAGE - 1})
 		"b_aim":
-			state.magnet_time = MAGNET_SECONDS * 0.85
-			events.append({"kind": "magnet", "team": team, "p": players[team].p, "seconds": MAGNET_SECONDS * 0.85})
+			state.magnet_time = MAGNET_SECONDS * 1.2
+			events.append({"kind": "magnet", "team": team, "p": players[team].p, "seconds": MAGNET_SECONDS * 1.2})
 		"b_drill":
-			state.pierce_time = PIERCE_SECONDS * 0.85
+			state.pierce_time = PIERCE_SECONDS * 1.2
 		"plating":
 			state.plating_time = PLATING_SECONDS
 			events.append({"kind": "plating", "team": team, "p": players[team].p, "seconds": PLATING_SECONDS, "gain": PLATING_SOAK})

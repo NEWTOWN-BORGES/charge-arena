@@ -11,10 +11,10 @@ func run() -> void:
 			assert(News.TYPES.has(story.tipo))
 			assert(News.SCENES.has(story.cenario))
 			assert(story.personagemPrincipal != "Nadir" or story.prioridade == 10)
-		if n == 7: assert(stories[0].personagemSecundario == "Lira")
-		if n == 10: assert(stories[0].personagemPrincipal == "Faroleiro")
+		if n == 4: assert(stories[0].personagemSecundario == "Lira")
+		if n == 5: assert(stories[0].personagemPrincipal == "Faroleiro")
 		if n < 11: cup.complete([2, n % 2])
-	var earlier = News.edition(cup, 4)
+	var earlier = News.edition(cup, 3)
 	assert(earlier[0].personagemPrincipal == "Lira")
 	for template in News.SCENES:
 		var photo = preload("res://scripts/news_scene.gd").new()
@@ -31,7 +31,7 @@ func run() -> void:
 	screen.refresh()
 	var journal = screen.content.get_child(0)
 	journal.article(earlier[0])
-	assert(journal.opened_id == "04_cover")
+	assert(journal.opened_id == "03_cover")
 	journal.edition_number = 4
 	journal.front()
 	assert(journal.opened_id.is_empty())

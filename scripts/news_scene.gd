@@ -3,8 +3,9 @@ extends SubViewport
 const Models = preload("res://scripts/indie_arena_view.gd")
 var stage: Node3D
 var model
+var cast_specs: Dictionary = {}
 func pilot(who: String, pos: Vector3, turn: float = 0.0) -> Node3D:
-	var entry: Array = preload("res://scripts/cup_tree_data.gd").CAST.get(who, [101, "719ba3"])
+	var entry: Array = cast_specs.get(who, preload("res://scripts/cup_tree_data.gd").CAST.get(who, [101, "719ba3"]))
 	var p = model.build_player(Color(entry[1]), 0, entry[0], stage)
 	p.position = pos
 	p.rotation.y = turn
@@ -21,6 +22,7 @@ func sign_text(value: String, pos: Vector3, scale_size: float = 0.009) -> void:
 	l.rotation.y = PI
 	stage.add_child(l)
 func setup(story: Dictionary) -> void:
+	cast_specs = story.get("cast", {})
 	size = Vector2i(960, 540)
 	own_world_3d = true
 	msaa_3d = Viewport.MSAA_2X
@@ -30,6 +32,21 @@ func setup(story: Dictionary) -> void:
 	model = Models.new()
 	stage.add_child(model)
 	var scene: String = story.cenario
+	var variation = int(story.get("visual_variant", 0))
+	var palette = Color.from_hsv(fmod(int(story.get("sector", 0)) * 0.137 + 0.46, 1.0), 0.45, 0.5)
+	for side in [-1, 1]:
+		for i in range(3):
+			model.box(stage, Vector3(side * (3.4 + i * 0.5), 1.0 + i * 0.3, 1.8), Vector3(0.12, 1.8, 0.8), palette.lightened(0.2), true)
+	if scene in ["ARENA_VICTORY", "UPSET", "TRAINING"]:
+		for i in range(9):
+			var p = Vector3(1.3 + (i % 3) * 0.48, 0.2 + (i / 3) * 0.42, 0.5)
+			model.box(stage, p, Vector3(0.4, 0.32, 0.3), palette.lightened(0.4))
+		for i in range(7):
+			model.sphere(stage, Vector3(-0.2 + i * 0.32, 0.8 + sin(i) * 0.2, -0.2), Vector3.ONE * (0.07 + i * 0.012), Color("c9fff4"), true)
+	if scene in ["CROWD_CELEBRATION", "ARENA_ENTRANCE"]:
+		for i in range(6):
+			var flag = model.box(stage, Vector3(-3.5 + i * 1.4, 2.4, 2), Vector3(0.6, 0.9, 0.03), palette.lightened(0.3))
+			flag.rotation.z = sin(i + variation) * 0.25
 	var press = scene in ["POST_MATCH_INTERVIEW", "PRESS_CONFERENCE"]
 	var quiet = scene in ["BACKSTAGE", "TRAINING", "ARENA_ENTRANCE"]
 	block(Vector3(0, -0.16, 0), Vector3(16, 0.3, 13), "20353e")
@@ -100,7 +117,7 @@ func setup(story: Dictionary) -> void:
 	add_child(world)
 	var light = DirectionalLight3D.new()
 	light.rotation_degrees = Vector3(-45, -25, 0)
-	light.light_color = Color("ffe7bd")
+	light.light_color = [Color("ffe7bd"), Color("c2f1ff"), Color("f2c5ff"), Color("d3ffdf")][variation % 4]
 	light.light_energy = 1.6
 	add_child(light)
 	var camera = Camera3D.new()
@@ -109,6 +126,8 @@ func setup(story: Dictionary) -> void:
 	if press:
 		camera.position = Vector3(-0.2, 1.65, -4.2)
 		camera.fov = 38
+	camera.position.x += [-0.65, 0.0, 0.65][variation % 3]
+	camera.position.y += (variation % 2) * 0.3
 	camera.transform = camera.transform.looking_at(Vector3(-0.65, 1.0, -0.2) if press else Vector3(0, 1.15, 0.6))
 	add_child(camera)
 
