@@ -94,3 +94,12 @@ Os testes headless validam estado e disparo dos sons, não a qualidade ouvida. A
 - VER NA ÁRVORE nos artigos abre diretamente o perfil do personagem.
 - Dados públicos (`cup_tree_data.gd`), canvas (`cup_tree_canvas.gd`) e navegação (`cup_tree.gd`) separados. Os avatares são renderizados uma vez por visita e os cenários temporários libertados.
 - Testes: estados e eliminação real, progressão, foco no protagonista, zoom, arrasto, páginas, percurso de rival, ligação do jornal, regressão do menu/galeria e jornal. Capturas em vertical e horizontal. Pinça e desempenho final em aparelhos físicos ainda requerem teste.
+
+## Percurso 2.6.1
+Integra a revisão `7c37f94` do GitHub, preservando os 110 combates, o sorteio dos setores, o hangar, o scroll e a história atual de Aurel/Arconte Solar.
+
+O Percurso tem uma apresentação própria: consequência da vitória acima, protagonista com a skin equipada e próximo confronto confirmado ao centro, histórico real em ordem inversa abaixo. O avatar está identificado como TU. Não apresenta notícias gerais, adversários futuros nem prémios com nomes que revelem confrontos posteriores.
+
+`cup_route_data.gd` apenas projeta `Tournament.confirmed_match()` e o histórico; não duplica as regras de confirmação. O estado A DEFINIR mantém o botão de jogar bloqueado. Ao concluir a Taça, desaparece a previsão de próximo combate. Dados e interface estão separados em `cup_route_data.gd` e `cup_route.gd`.
+
+Validação: testes de Percurso ao longo de toda a campanha, confirmação/espera, ordem dos resultados, torneio e gestos de scroll; capturas vertical/horizontal. APKs 2.6.1-percurso, código 48, para os pacotes normal e de teste. Desempenho e interação em aparelhos reais continuam dependentes do teste no telemóvel.
