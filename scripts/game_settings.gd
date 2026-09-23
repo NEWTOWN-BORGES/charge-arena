@@ -12,6 +12,10 @@ var joystick_sensitivity = 2
 var camera_feedback = 1
 var haptics = true
 var auto_fire = true
+var fire_control = 0
+var fire_size = 1.0
+var fire_x = 0.95
+var fire_y = 0.99
 var sfx_volume = 0.85
 
 func configure(level: int, guide: bool, sensitivity: int = -1) -> void:
@@ -29,6 +33,10 @@ func load_preferences() -> void:
 	camera_feedback = clampi(int(config.get_value("game", "camera_feedback", 1)), 0, 2)
 	haptics = bool(config.get_value("game", "haptics", true))
 	auto_fire = bool(config.get_value("game", "auto_fire", true))
+	fire_control = clampi(int(config.get_value("game", "fire_control", 0)), 0, 1)
+	fire_size = clampf(float(config.get_value("game", "fire_size", 1.0)), 0.7, 1.5)
+	fire_x = clampf(float(config.get_value("game", "fire_x", 0.95)), 0.0, 1.0)
+	fire_y = clampf(float(config.get_value("game", "fire_y", 0.99)), 0.0, 1.0)
 	sfx_volume = clampf(float(config.get_value("game", "sfx_volume", 0.85)), 0.0, 1.0)
 
 func save_preferences() -> Error:
@@ -41,6 +49,10 @@ func save_preferences() -> Error:
 	config.set_value("game", "haptics", haptics)
 	config.set_value("game", "auto_fire", auto_fire)
 	config.set_value("game", "sfx_volume", sfx_volume)
+	config.set_value("game", "fire_control", fire_control)
+	config.set_value("game", "fire_size", fire_size)
+	config.set_value("game", "fire_x", fire_x)
+	config.set_value("game", "fire_y", fire_y)
 	return config.save(config_path)
 
 func sensitivity_scale() -> float:

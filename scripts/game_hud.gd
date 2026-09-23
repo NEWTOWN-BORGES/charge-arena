@@ -43,6 +43,15 @@ var camera_choice: OptionButton
 var haptic_choice: CheckButton
 var automatic_choice: CheckButton
 var sfx_slider: HSlider
+signal fire_layout_changed(control: int, radius_scale: float, x: float, y: float)
+var fire_control_choice: OptionButton
+var fire_size_slider: HSlider
+var fire_x_slider: HSlider
+var fire_y_slider: HSlider
+var fire_control = 0
+var fire_size = 1.0
+var fire_x = 0.95
+var fire_y = 0.99
 var auto_fire = true
 var fire_id = -1
 var fire_tap = false
@@ -1688,6 +1697,16 @@ func build_video_menu() -> void:
 	automatic_choice.text = "Disparo automático (desligar para tiro manual)"
 	automatic_choice.custom_minimum_size.y = 48
 	list.add_child(automatic_choice)
+	fire_control_choice = video_option(list, "Tiro manual", ["Botão separado", "No joystick (manter o dedo)"])
+	fire_size_slider = volume_slider(list, "Tamanho do botão (%)")
+	fire_size_slider.min_value = 70
+	fire_size_slider.max_value = 150
+	fire_x_slider = volume_slider(list, "Posição horizontal (%)")
+	fire_y_slider = volume_slider(list, "Posição vertical (%)")
+	fire_control_choice.item_selected.connect(func(_v): emit_fire_layout())
+	fire_size_slider.value_changed.connect(fire_slider_changed)
+	fire_x_slider.value_changed.connect(fire_slider_changed)
+	fire_y_slider.value_changed.connect(fire_slider_changed)
 	sfx_slider = volume_slider(list, "Efeitos sonoros")
 	camera_choice.item_selected.connect(func(_v): emit_feedback())
 	haptic_choice.toggled.connect(func(_v): emit_feedback())
@@ -1752,6 +1771,12 @@ func volume_slider(parent: VBoxContainer, title: String) -> HSlider:
 	row.add_child(slider)
 	return slider
 
+func fire_slider_changed(_value: float) -> void:
+	emit_fire_layout()
+
+func emit_fire_layout() -> void:
+	fire_layout_changed.emit(fire_control_choice.selected, fire_size_slider.value / 100.0, fire_x_slider.value / 100.0, fire_y_slider.value / 100.0)
+
 func emit_feedback() -> void:
 	feedback_changed.emit(camera_choice.selected, haptic_choice.button_pressed, automatic_choice.button_pressed, sfx_slider.value / 100.0)
 
@@ -1761,6 +1786,16 @@ func sync_game(settings) -> void:
 	automatic_choice.set_pressed_no_signal(settings.auto_fire)
 	sfx_slider.set_value_no_signal(settings.sfx_volume * 100.0)
 	auto_fire = settings.auto_fire
+	fire_control = settings.fire_control
+	fire_size = settings.fire_size
+	fire_x = settings.fire_x
+	fire_y = settings.fire_y
+	fire_control_choice.select(fire_control)
+	fire_size_slider.set_value_no_signal(fire_size * 100.0)
+	fire_x_slider.set_value_no_signal(fire_x * 100.0)
+	fire_y_slider.set_value_no_signal(fire_y * 100.0)
+	for slider in [fire_size_slider, fire_x_slider, fire_y_slider]:
+		slider.editable = fire_control == 0 and not auto_fire
 	reset_touch()
 	layout()
 	if is_instance_valid(cup_difficulty):
@@ -1843,9 +1878,10 @@ func layout() -> void:
 	# No stick any more: the pilot walks to whatever you point at. Under the right hand
 	# sit the two arrows that step from target to target; the power keys stay on the left.
 	move_home = Vector2(size.x * (0.70 if vertical else 0.88), size.y - safe_bottom - (132 if vertical else 139))
-	if not auto_fire:
+	if not auto_fire and fire_control == 0:
 		move_home.x = size.x * (0.68 if vertical else 0.72)
-	fire_center = Vector2(size.x - 62, size.y - safe_bottom - 64)
+	var fire_margin = 46.0 * fire_size + 10.0
+	fire_center = Vector2(lerpf(fire_margin, size.x - fire_margin, fire_x), lerpf(safe_top + 160 + fire_margin, size.y - safe_bottom - fire_margin, fire_y))
 	move_center = move_home
 	var menu_height = menu.get_combined_minimum_size().y
 	levels_grid.columns = 2 if vertical else 5
@@ -2036,7 +2072,7 @@ func _input(event: InputEvent) -> void:
 		return
 	if event is InputEventScreenTouch:
 		if event.pressed:
-			if not auto_fire and event.position.distance_to(fire_center) <= 49:
+			if not auto_fire and fire_control == 0 and event.position.distance_to(fire_center) <= 49 * fire_size:
 				fire_id = event.index
 				fire_tap = true
 				fire_age = 0.0
@@ -2054,6 +2090,9 @@ func _input(event: InputEvent) -> void:
 			if move_id < 0:
 				move_id = event.index
 				move_center = event.position
+				if not auto_fire and fire_control == 1:
+					fire_tap = true
+					fire_age = 0.0
 		else:
 			if event.index == fire_id: fire_id = -1
 			if event.index == move_id:
@@ -2574,12 +2613,12 @@ func _draw() -> void:
 	draw_circle(knob, 26, CYAN.darkened(0.2 if move_id >= 0 else 0.55), true, -1, smooth)
 	draw_arc(knob, 26, 0, TAU, 48, Color(CYAN, 0.65), 1.2, smooth)
 	draw_circle(knob, 3, INK if move_id >= 0 else CYAN, true, -1, smooth)
-	centered("MOVER E APONTAR", stick + Vector2(0, 84), 10, CYAN, true)
+	centered("MOVER, APONTAR E DISPARAR" if not auto_fire and fire_control == 1 else "MOVER E APONTAR", stick + Vector2(0, 84), 10, CYAN, true)
 	centered("DISPARO AUTOMÁTICO  ·  MIRA ASSISTIDA" if auto_fire else "MIRA ASSISTIDA", stick + Vector2(0, 99), 9, Color(LIME, 0.75), true)
-	if not auto_fire:
+	if not auto_fire and fire_control == 0:
 		var press = 0.93 + 0.07 * clampf(fire_age / 0.16, 0.0, 1.0)
-		draw_circle(fire_center, 46 * press, CYAN.darkened(0.6), true, -1, smooth)
-		draw_arc(fire_center, 46 * press, 0, TAU, 48, CYAN, 2.0, smooth)
+		draw_circle(fire_center, 46 * fire_size * press, CYAN.darkened(0.6), true, -1, smooth)
+		draw_arc(fire_center, 46 * fire_size * press, 0, TAU, 48, CYAN, 2.0, smooth)
 		centered("TIRO", fire_center + Vector2(0, 5), 17, WHITE, true)
 	if defense_notice_time > 0 and match_data.phase == "play":
 		var notice_at = Vector2(arena_rect.get_center().x, arena_rect.position.y + 28) if vertical else Vector2(size.x * 0.62, 104)

@@ -43,6 +43,9 @@ var shot_variants = [0, 1]
 var impact_variant = 0
 var haptic_next_ms = 0
 var haptic_strength = 0.0
+var sustained_haptic = false
+var sustained_next_ms = 0
+var haptic_pulse_until = 0
 var arena_duck_db = 0.0
 var release_focus = 0.0
 var break_times = [-10.0, -10.0]
@@ -81,6 +84,17 @@ var client_boosted_ids: Dictionary = {}
 # Last seen position of each explosive round, to replay the blast the host resolved.
 var client_blast_spots: Dictionary = {}
 
+func configure_test_access(enabled: bool) -> void:
+	# Access flags, not fake victories. Enabled only by the isolated LAB export.
+	if not enabled:
+		return
+	skins.unlock_all = true
+	skins.selected = 5
+	power_shop.unlock_all = true
+	power_shop.owned = PowerShop.all_ids()
+	power_shop.bricks = PowerShop.TEST_WALLET
+	campaign.unlock_all = true
+
 func _ready() -> void:
 	arena = ArenaView.new()
 	add_child(arena)
@@ -114,6 +128,7 @@ func _ready() -> void:
 	music.load_preferences()
 	hud.sync_audio(music)
 	music.play("menu")
+	configure_test_access(OS.has_feature("open_test"))
 	skins.load_preferences()
 	power_shop.load_preferences()
 	hud.sync_powers(power_shop)
@@ -138,6 +153,7 @@ func _ready() -> void:
 	hud.guide_changed.connect(change_guide)
 	hud.sensitivity_changed.connect(change_sensitivity)
 	hud.feedback_changed.connect(change_feedback)
+	hud.fire_layout_changed.connect(change_fire_layout)
 	campaign.load_preferences()
 	sync_boss_skins()
 	hud.sync_campaign(campaign)
@@ -151,6 +167,7 @@ func _ready() -> void:
 	hud.show_menu()
 	get_window().focus_exited.connect(func(): hud.reset_touch(); mouse_firing = false)
 	get_window().focus_exited.connect(pause_pve)
+	get_window().focus_exited.connect(stop_haptics)
 	multiplayer.peer_connected.connect(peer_connected)
 	multiplayer.peer_disconnected.connect(peer_disconnected)
 	multiplayer.connected_to_server.connect(joined_server)
@@ -399,6 +416,7 @@ func request_menu() -> void:
 		return_to_menu()
 
 func pause_pve() -> void:
+	stop_haptics()
 	if mode != "pve" or not is_instance_valid(hud):
 		return
 	pve_paused = true
@@ -652,9 +670,17 @@ func change_guide(on: bool) -> void:
 	arena.guide_enabled = on
 	save_game_settings()
 
+func change_fire_layout(control: int, radius_scale: float, x: float, y: float) -> void:
+	game_settings.fire_control = clampi(control, 0, 1)
+	game_settings.fire_size = clampf(radius_scale, 0.7, 1.5)
+	game_settings.fire_x = clampf(x, 0.0, 1.0)
+	game_settings.fire_y = clampf(y, 0.0, 1.0)
+	save_game_settings()
+
 func change_feedback(camera: int, haptics: bool, automatic: bool, volume: float) -> void:
 	game_settings.camera_feedback = camera
 	game_settings.haptics = haptics
+	if not haptics: stop_haptics()
 	game_settings.auto_fire = automatic
 	game_settings.sfx_volume = volume
 	arena.shake_scale = [0.0, 0.45, 1.0][camera]
@@ -669,7 +695,46 @@ func haptic(milliseconds: int, strength: float) -> void:
 	if now < haptic_next_ms and strength <= haptic_strength: return
 	haptic_next_ms = now + maxi(110, milliseconds + 55)
 	haptic_strength = strength
+	haptic_pulse_until = now + milliseconds
+	sustained_next_ms = haptic_pulse_until + 15
 	Input.vibrate_handheld(milliseconds, strength)
+
+func stop_haptics() -> void:
+	if OS.has_feature("android"): Input.vibrate_handheld(0)
+	sustained_haptic = false
+	sustained_next_ms = 0
+	haptic_pulse_until = 0
+	haptic_next_ms = 0
+
+static func sustained_haptic_profile(state: Dictionary) -> Vector3:
+	# x = pulse duration, y = refresh interval in ms, z = amplitude.
+	# Beam pulses overlap for a continuous feel; other powers keep a distinct rhythm.
+	if state.laser_time > 0.0: return Vector3(130, 95, 0.20)
+	if state.ultimate_time > 0.0:
+		match String(state.ultimate_id):
+			"sun_ray": return Vector3(150, 105, 0.32)
+			"singularity": return Vector3(65, 170, 0.25)
+	if state.rapid_time > 0.0: return Vector3(12, 115, 0.17)
+	if state.surge_time > 0.0: return Vector3(20, 190, 0.20)
+	return Vector3.ZERO
+
+func update_sustained_haptics() -> void:
+	if not OS.has_feature("android"): return
+	if not game_settings.haptics or mode == "menu" or pve_paused or hud.video_overlay.visible or not get_window().has_focus():
+		if sustained_haptic or haptic_pulse_until > 0: stop_haptics()
+		return
+	var now = Time.get_ticks_msec()
+	var profile = sustained_haptic_profile(rules.powers[local_team]) if rules.phase == "play" else Vector3.ZERO
+	if profile == Vector3.ZERO:
+		if sustained_haptic:
+			# Do not cancel a stronger goal/impact pulse that replaced the beam.
+			if now >= haptic_pulse_until: Input.vibrate_handheld(0)
+			sustained_haptic = false
+		return
+	if now < sustained_next_ms or now < haptic_pulse_until: return
+	Input.vibrate_handheld(int(profile.x), profile.z)
+	sustained_haptic = true
+	sustained_next_ms = now + int(profile.y)
 
 func update_feedback_mix(dt: float) -> void:
 	release_focus = maxf(0.0, release_focus - dt)
@@ -769,16 +834,19 @@ func play_events() -> void:
 			play_tone("sun_ray")
 		elif event.kind == "meteor":
 			arena.meteor_fall(event.p, event.radius, randf() < 0.5)
+			if int(event.team) == local_team: haptic(28, 0.38)
 			# Fourteen rocks in a second would be a wall of noise: every other one sounds.
 			if randf() < 0.5:
 				play_tone("meteor")
 		elif event.kind == "thunder":
 			arena.thunder_bolt(event.p, event.radius)
+			if int(event.team) == local_team: haptic(35, 0.55)
 			play_tone("thunder")
 		elif event.kind == "singularity":
 			arena.singularity_open(event.p)
 		elif event.kind == "singularity_wave":
 			arena.singularity_wave(event.p, int(event.index), float(event.seconds))
+			if int(event.team) == local_team: haptic(45, 0.50)
 			play_tone("void_wave")
 		elif event.kind == "swallow":
 			arena.singularity_swallow(event.p)
@@ -800,6 +868,7 @@ func play_events() -> void:
 			play_tone("boost")
 		elif event.kind == "volley":
 			arena.volley_flash(event.p, event.heading)
+			if int(event.team) == local_team: haptic(18, 0.30)
 			play_tone("power")
 		elif event.kind == "weld":
 			var mended: Array = event.bricks.map(func(i): return rules.bricks[i].p)
@@ -877,7 +946,7 @@ func local_command() -> Dictionary:
 		move += keys
 	# Manual fire is optional; a short mobile tap survives until this simulation tick.
 	var tap: bool = hud.fire_tap and not game_settings.auto_fire
-	var fire = game_settings.auto_fire or hud.fire_id >= 0 or tap or mouse_firing
+	var fire = game_settings.auto_fire or hud.fire_id >= 0 or (game_settings.fire_control == 1 and hud.move_id >= 0) or tap or mouse_firing
 	hud.fire_tap = false
 	if DisplayServer.get_name() != "headless": fire = fire or Input.is_physical_key_pressed(KEY_SPACE)
 	return {"move": Vector2(clampf(move.x, -1, 1), 0), "fire": fire, "tap": tap, "power": read_power()}
@@ -1031,6 +1100,7 @@ func idle_frame_rate() -> void:
 		Engine.max_fps = wanted
 
 func _process(dt: float) -> void:
+	update_sustained_haptics()
 	update_feedback_mix(dt)
 	idle_frame_rate()
 	hud.fps_label.visible = video.show_fps and mode != "menu"
