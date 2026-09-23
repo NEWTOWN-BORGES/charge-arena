@@ -38,6 +38,18 @@ var skin_music_note: Label
 signal difficulty_changed(level: int)
 signal guide_changed(on: bool)
 signal sensitivity_changed(level: int)
+signal feedback_changed(camera: int, haptics: bool, automatic: bool, volume: float)
+var camera_choice: OptionButton
+var haptic_choice: CheckButton
+var automatic_choice: CheckButton
+var sfx_slider: HSlider
+var auto_fire = true
+var fire_id = -1
+var fire_tap = false
+var fire_age = 1.0
+var fire_center = Vector2.ZERO
+var defense_notice = ""
+var defense_notice_time = 0.0
 signal level_selected(index: int)
 signal next_level_requested
 signal levels_requested
@@ -739,6 +751,10 @@ func ask_redraw() -> void:
 	redraw_asked = true
 
 func _process(dt: float) -> void:
+	if fire_age < 0.24 or defense_notice_time > 0:
+		fire_age += dt
+		defense_notice_time = maxf(0.0, defense_notice_time - dt)
+		queue_redraw()
 	redraw_wait += dt
 	if redraw_asked and redraw_wait >= REDRAW_INTERVAL:
 		redraw_wait = 0.0
@@ -1663,6 +1679,20 @@ func build_video_menu() -> void:
 	guide_choice.toggled.connect(func(value): guide_changed.emit(value))
 	sensitivity_choice = video_option(list, "Sensibilidade", ["Muito lenta", "Lenta", "Normal", "Rápida", "Muito rápida"])
 	sensitivity_choice.item_selected.connect(func(index): sensitivity_changed.emit(index))
+	camera_choice = video_option(list, "Impacto da câmara", ["Desligado", "Suave", "Completo"])
+	haptic_choice = CheckButton.new()
+	haptic_choice.text = "Vibração nos disparos e impactos"
+	haptic_choice.custom_minimum_size.y = 48
+	list.add_child(haptic_choice)
+	automatic_choice = CheckButton.new()
+	automatic_choice.text = "Disparo automático (desligar para tiro manual)"
+	automatic_choice.custom_minimum_size.y = 48
+	list.add_child(automatic_choice)
+	sfx_slider = volume_slider(list, "Efeitos sonoros")
+	camera_choice.item_selected.connect(func(_v): emit_feedback())
+	haptic_choice.toggled.connect(func(_v): emit_feedback())
+	automatic_choice.toggled.connect(func(_v): emit_feedback())
+	sfx_slider.value_changed.connect(func(_v): emit_feedback())
 	music_choice = CheckButton.new()
 	music_choice.text = "Música de fundo"
 	music_choice.custom_minimum_size.y = 44
@@ -1722,7 +1752,17 @@ func volume_slider(parent: VBoxContainer, title: String) -> HSlider:
 	row.add_child(slider)
 	return slider
 
+func emit_feedback() -> void:
+	feedback_changed.emit(camera_choice.selected, haptic_choice.button_pressed, automatic_choice.button_pressed, sfx_slider.value / 100.0)
+
 func sync_game(settings) -> void:
+	camera_choice.select(settings.camera_feedback)
+	haptic_choice.set_pressed_no_signal(settings.haptics)
+	automatic_choice.set_pressed_no_signal(settings.auto_fire)
+	sfx_slider.set_value_no_signal(settings.sfx_volume * 100.0)
+	auto_fire = settings.auto_fire
+	reset_touch()
+	layout()
 	if is_instance_valid(cup_difficulty):
 		cup_difficulty.selected = settings.difficulty
 	for level in range(difficulty_buttons.size()):
@@ -1803,6 +1843,9 @@ func layout() -> void:
 	# No stick any more: the pilot walks to whatever you point at. Under the right hand
 	# sit the two arrows that step from target to target; the power keys stay on the left.
 	move_home = Vector2(size.x * (0.70 if vertical else 0.88), size.y - safe_bottom - (132 if vertical else 139))
+	if not auto_fire:
+		move_home.x = size.x * (0.68 if vertical else 0.72)
+	fire_center = Vector2(size.x - 62, size.y - safe_bottom - 64)
 	move_center = move_home
 	var menu_height = menu.get_combined_minimum_size().y
 	levels_grid.columns = 2 if vertical else 5
@@ -1957,6 +2000,8 @@ func show_game(new_mode: String, local_team: int) -> void:
 	layout()
 
 func reset_touch() -> void:
+	fire_id = -1
+	fire_tap = false
 	touches.clear()
 	move_id = -1
 	move_vector = Vector2.ZERO
@@ -1991,6 +2036,12 @@ func _input(event: InputEvent) -> void:
 		return
 	if event is InputEventScreenTouch:
 		if event.pressed:
+			if not auto_fire and event.position.distance_to(fire_center) <= 49:
+				fire_id = event.index
+				fire_tap = true
+				fire_age = 0.0
+				queue_redraw()
+				return
 			# Power buttons sit between the thumb controls, so they are tested first.
 			var slot = power_at(event.position)
 			if slot >= 0:
@@ -2004,6 +2055,7 @@ func _input(event: InputEvent) -> void:
 				move_id = event.index
 				move_center = event.position
 		else:
+			if event.index == fire_id: fire_id = -1
 			if event.index == move_id:
 				move_id = -1
 				move_vector = Vector2.ZERO
@@ -2331,7 +2383,7 @@ func player_card(rect: Rect2, side: int, t: int) -> void:
 	var status = "BALIZA ABERTA" if count == 0 else str(count) + " TIJOLOS  ·  " + str(health) + "/120"
 	var status_color = LIME if count == 0 else MUTED
 	var stunned: bool = match_data.players[t].stun > 0
-	var tips = [["Move-te para apontar", WHITE, false], ["Dispara sozinho, sempre em frente", MUTED, false]]
+	var tips = [["Move-te para apontar", WHITE, false], ["Dispara sozinho, sempre em frente" if auto_fire else "TIRO / Espaço / rato para disparar", MUTED, false]]
 	if side == 1:
 		tips = [["BOOST: 2 NOS TIJOLOS", LIME, true], ["5 acertos · pausa 0,5 s", MUTED, false]]
 	if vertical:
@@ -2523,7 +2575,16 @@ func _draw() -> void:
 	draw_arc(knob, 26, 0, TAU, 48, Color(CYAN, 0.65), 1.2, smooth)
 	draw_circle(knob, 3, INK if move_id >= 0 else CYAN, true, -1, smooth)
 	centered("MOVER E APONTAR", stick + Vector2(0, 84), 10, CYAN, true)
-	centered("DISPARO AUTOMÁTICO  ·  MIRA ASSISTIDA", stick + Vector2(0, 99), 9, Color(LIME, 0.75), true)
+	centered("DISPARO AUTOMÁTICO  ·  MIRA ASSISTIDA" if auto_fire else "MIRA ASSISTIDA", stick + Vector2(0, 99), 9, Color(LIME, 0.75), true)
+	if not auto_fire:
+		var press = 0.93 + 0.07 * clampf(fire_age / 0.16, 0.0, 1.0)
+		draw_circle(fire_center, 46 * press, CYAN.darkened(0.6), true, -1, smooth)
+		draw_arc(fire_center, 46 * press, 0, TAU, 48, CYAN, 2.0, smooth)
+		centered("TIRO", fire_center + Vector2(0, 5), 17, WHITE, true)
+	if defense_notice_time > 0 and match_data.phase == "play":
+		var notice_at = Vector2(arena_rect.get_center().x, arena_rect.position.y + 28) if vertical else Vector2(size.x * 0.62, 104)
+		panel(Rect2(notice_at - Vector2(174, 23), Vector2(348, 40)))
+		centered(defense_notice, notice_at + Vector2(0, 3), 13, LIME, true)
 	draw_powers()
 
 func stun_banner_rect() -> Rect2:

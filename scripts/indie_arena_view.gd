@@ -86,6 +86,12 @@ var quality_level = 0
 # Camera shake: a strength that decays, added to the camera's resting place.
 var camera_home = Vector3(0, 26, 15)
 var shake_power = 0.0
+var shake_scale = 0.55
+var shot_age = [1.0, 1.0]
+var feedback_pool: Array[MeshInstance3D] = []
+var feedback_allocated = 0
+const FEEDBACK_POOL_LIMIT = 80
+var brick_reactions: Dictionary = {}
 var shake_seed = 0.0
 # Effects waiting for their moment: {"time": seconds, "call": Callable}.
 var pending: Array = []
@@ -1688,11 +1694,20 @@ func update_state(rules, local_team: int, dt: float, motion_alpha: float = 1.0) 
 			job.call.call()
 	# Camera shake: a quick decaying wobble, never enough to lose the ball.
 	if shake_power > 0.0:
-		shake_power = maxf(0.0, shake_power - dt * 2.6)
+		shake_power *= exp(-dt * 17.0)
+		if shake_power < 0.0005: shake_power = 0.0
 		shake_seed += dt * 46.0
 		camera.position = camera_home + Vector3(sin(shake_seed) * 0.6, cos(shake_seed * 1.37) * 0.35, sin(shake_seed * 0.8) * 0.3) * shake_power
 	elif camera.position != camera_home:
 		camera.position = camera_home
+	for id in brick_reactions.keys():
+		brick_reactions[id] -= dt
+		if id < brick_nodes.size():
+			var brick: Node3D = brick_nodes[id]
+			brick.position.y = sin(maxf(0.0, brick_reactions[id]) / 0.14 * PI) * 0.065
+			update_brick_batch(id)
+		if brick_reactions[id] <= 0.0:
+			brick_reactions.erase(id)
 	step_tallies(dt)
 	trail_timer += dt
 	var interpolate = not previous_motion.is_empty() and previous_motion.phase == rules.phase
@@ -1789,20 +1804,19 @@ func update_state(rules, local_team: int, dt: float, motion_alpha: float = 1.0) 
 			burst(data.p, GOLD, false)
 		stuns_before[team] = data.stun
 		var gun: Node3D = body.get_node("Gun")
-		if data.cooldown > float(node.get_meta("last_cooldown")) + 0.1:
-			gun.position.z = 0.13
-			gun.get_node("Flash").scale = Vector3.ONE * 0.34
-		gun.position.z = lerpf(gun.position.z, 0, minf(dt * 18, 1))
-		gun.get_node("Flash").scale = gun.get_node("Flash").scale.lerp(Vector3.ONE * 0.001, minf(dt * 22, 1))
-		node.set_meta("last_cooldown", data.cooldown)
+		shot_age[team] += dt
+		var age: float = shot_age[team]
+		# Only the weapon moves: 60 ms impulse, 150 ms recovery. Simulation is untouched.
+		var recoil = sin(clampf(age / 0.06, 0.0, 1.0) * PI * 0.5) if age < 0.06 else pow(maxf(0.0, 1.0 - (age - 0.06) / 0.15), 2.0)
+		gun.position.z = recoil * 0.17
+		gun.rotation.x = recoil * 0.045
+		gun.get_node("Flash").scale = Vector3.ONE * maxf(0.001, 0.42 * (1.0 - age / 0.055))
 		goals[team].material_override.set_shader_parameter("unlocked", 1.0 if rules.brick_count(team) == 0 else 0.0)
 	for i in range(rules.bricks.size()):
 		var data: Dictionary = rules.bricks[i]
 		var brick: Node3D = brick_nodes[i]
 		if int(brick.get_meta("hp")) == data.hp:
 			continue
-		if int(brick.get_meta("hp")) > data.hp:
-			burst(data.p, CYAN if data.team == 0 else CORAL, not data.alive)
 		brick.set_meta("hp", data.hp)
 		brick.visible = data.alive
 		# Narrowed along the arena's own axis on a tall map, so the bank reads as separate
@@ -1829,6 +1843,8 @@ func update_state(rules, local_team: int, dt: float, motion_alpha: float = 1.0) 
 			add_child(root)
 			var core = sphere(root, Vector3.ZERO, Vector3.ONE * 0.26, Color("fff3d5"), true)
 			core.name = "Core"
+			var tail = sphere(root, Vector3.ZERO, Vector3.ONE, Color(color, 0.55), true)
+			tail.name = "Tail"
 			var aura = sphere(root, Vector3.ZERO, Vector3.ONE * 0.39, Color(color, 0.28), true)
 			aura.name = "Aura"
 			soft_disc(root, Vector3(0, -0.53, 0), Vector2(1.55, 1.55), Color(CYAN if ball.owner == 0 else CORAL, 0.42))
@@ -1846,12 +1862,13 @@ func update_state(rules, local_team: int, dt: float, motion_alpha: float = 1.0) 
 		var swell: float = POWER_BALL_SCALE[clampi(kind, 0, POWER_BALL_SCALE.size() - 1)]
 		node.get_node("Aura").scale = Vector3.ONE * (0.52 if ball.get("boosted", false) else 0.39) * swell
 		node.get_node("Core").scale = Vector3.ONE * 0.26 * swell
-		if ball_previous.has(ball.id) and ball_previous[ball.id].bounces != ball.bounces:
-			burst(ball.p, color, false)
-		ball_previous[ball.id] = {"p": ball.p, "bounces": ball.bounces}
-		if trail_timer > trail_interval and effects.size() < effect_limit - 20:
-			var spark = sphere(self, node.position, Vector3.ONE * 0.13, Color(color, 0.72), true)
-			effects.append({"node": spark, "v": Vector3.ZERO, "ttl": 0.2, "life": 0.2, "gravity": false, "base": Vector3.ONE * 0.13})
+		# One attached, short tail per ball: no trail nodes allocated every frame.
+		var tail: MeshInstance3D = node.get_node("Tail")
+		var direction: Vector2 = ball.v.normalized()
+		tail.position = Vector3(-direction.x * 0.31, 0, -direction.y * 0.31)
+		tail.rotation.y = atan2(direction.x, direction.y)
+		tail.scale = Vector3(0.105, 0.105, 0.48 if quality_level == 0 else 0.72) * swell
+		tail.material_override = material(Color(color, 0.55), true)
 	if trail_timer > trail_interval:
 		trail_timer = 0
 	for id in projectiles.keys():
@@ -1897,7 +1914,11 @@ func update_state(rules, local_team: int, dt: float, motion_alpha: float = 1.0) 
 			# Lightning does not fade: it stutters and is gone.
 			effect.node.visible = fmod(effect.ttl, 0.07) > 0.025
 		if effect.ttl <= 0:
-			effect.node.queue_free()
+			if effect.get("pooled", false):
+				effect.node.hide()
+				feedback_pool.append(effect.node)
+			else:
+				effect.node.queue_free()
 			effects.erase(effect)
 
 func update_aim_guide(rules, local_team: int, dt: float) -> void:
@@ -2137,7 +2158,7 @@ func schedule(seconds: float, call: Callable) -> void:
 	pending.append({"time": seconds, "call": call})
 
 func shake(power: float) -> void:
-	shake_power = maxf(shake_power, power)
+	shake_power = maxf(shake_power, power * shake_scale)
 
 func scorch(at: Vector2, size: float, color: Color, life: float) -> void:
 	# A soft mark left on the floor, using the same decal shader as the shadows.
@@ -3028,3 +3049,79 @@ func build_power_effects() -> void:
 func world_at(screen: Vector2) -> Vector2:
 	var point = Plane(Vector3.UP, 0.58).intersects_ray(camera.project_ray_origin(screen), camera.project_ray_normal(screen))
 	return Vector2(point.x, point.z) if point != null else Vector2.ZERO
+
+# Basic feedback uses a bounded reusable pool, separate from the elaborate ultimate VFX.
+func feedback_chip(at: Vector3, velocity: Vector3, tint: Color, life: float, size: Vector3, debris: bool = false) -> void:
+	if effects.size() >= effect_limit:
+		return
+	var chip: MeshInstance3D
+	if not feedback_pool.is_empty():
+		chip = feedback_pool.pop_back()
+	elif feedback_allocated < FEEDBACK_POOL_LIMIT:
+		chip = MeshInstance3D.new()
+		if not shapes.has("feedback_cube"):
+			var cube = BoxMesh.new()
+			cube.size = Vector3.ONE
+			shapes["feedback_cube"] = cube
+		chip.mesh = shapes["feedback_cube"]
+		chip.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		add_child(chip)
+		feedback_allocated += 1
+	else:
+		return
+	chip.position = at
+	chip.rotation = Vector3.ZERO
+	chip.scale = size
+	chip.material_override = material(tint, not debris)
+	chip.show()
+	effects.append({"node": chip, "v": velocity, "ttl": life, "life": life, "gravity": debris, "base": size, "pooled": true})
+
+func shot_feedback(team: int) -> void:
+	shot_age[team] = 0.0
+	var gun: Node3D = units[team].get_node("Body/Gun")
+	gun.position.z = 0.055
+	gun.get_node("Flash").scale = Vector3.ONE * 0.42
+	var origin = muzzle_of(team)
+	var direction = -units[team].get_node("Body").global_basis.z
+	for i in range(2 if quality_level == 0 else 4):
+		feedback_chip(origin, direction * (2.5 + i) + Vector3((i % 2 - 0.5) * 1.1, 0.3, 0), shot_colors[team], 0.09, Vector3.ONE * 0.06)
+
+func impact_feedback(event: Dictionary) -> void:
+	var kind = String(event.kind)
+	var broken = kind == "brick"
+	var shield = kind in ["mirror", "player_hit"] or event.get("soaked", false)
+	var tint: Color = shot_colors[int(event.get("team", 0))] if shield or kind.begins_with("brick") else GOLD
+	var at: Vector2 = event.p
+	var heading: Vector2 = event.get("heading", Vector2.ZERO)
+	var direction = Vector3(heading.x, 0, heading.y)
+	var origin = Vector3(at.x, 0.55, at.y)
+	feedback_chip(origin, Vector3.ZERO, Color("fff3d5"), 0.055, Vector3.ONE * (0.28 if broken else 0.16))
+	var count = (5 if quality_level == 0 else 8) if broken else (2 if quality_level == 0 else 4)
+	for i in range(count):
+		var angle = i * 2.399
+		var velocity = direction * (1.5 if broken else -0.65) + Vector3(cos(angle), 0.8 + (i % 3) * 0.35, sin(angle)) * (1.7 if broken else 0.7)
+		feedback_chip(origin, velocity, CREAM if broken and i % 2 == 0 else tint, 0.38 if broken else 0.13, Vector3(0.13, 0.08, 0.16) if broken else Vector3.ONE * 0.055, broken)
+	if shield and effects.size() < effect_limit:
+		var ring = torus(self, origin, 0.32, 0.025, tint, true)
+		effects.append({"node": ring, "v": Vector3.ZERO, "ttl": 0.18, "life": 0.18, "gravity": false, "base": Vector3.ONE * 1.7, "grow": true, "tint": tint})
+	if kind == "brick_hit" and event.has("brick_id"):
+		brick_reactions[int(event.brick_id)] = 0.14
+	if event.get("defense_open", false):
+		var team = int(event.team)
+		var spot = Vector3(goals[team].global_position.x, 0.1, goals[team].global_position.z)
+		if effects.size() < effect_limit:
+			var ring = torus(self, spot, 1.1, 0.045, tint, true)
+			effects.append({"node": ring, "v": Vector3.ZERO, "ttl": 0.35, "life": 0.35, "gravity": false, "base": Vector3.ONE * 2.0, "grow": true, "tint": tint})
+
+func ultimate_accent(at: Vector2, id: String) -> void:
+	# Small silhouette accents augment, rather than replace, each themed main effect.
+	var tint = Rules.power_color(id)
+	var origin = Vector3(at.x, 0.7, at.y)
+	var count = 5 if quality_level == 0 else 9
+	var rising = id in ["bloom", "meteors", "sun_ray"]
+	var inward = id in ["singularity", "plunder"]
+	for i in range(count):
+		var a = float(i) / count * TAU
+		var radial = Vector3(cos(a), 0, sin(a))
+		feedback_chip(origin + radial * (0.95 if inward else 0.22), radial * (-2.0 if inward else 2.4) + Vector3.UP * (2.3 if rising else 0.55), tint, 0.24, Vector3(0.055, 0.22 if rising else 0.055, 0.12))
+	shake(0.30)

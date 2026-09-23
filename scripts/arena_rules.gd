@@ -1496,7 +1496,7 @@ func credit_destroyed_brick(team: int) -> void:
 		if previous < cost and powers[team].charge[index] == cost:
 			events.append({"kind": "power_ready", "power": index, "team": team, "p": players[team].p})
 
-func damage_brick(index: int, damage: int, owner: int, at: Vector2, mark: bool = false) -> void:
+func damage_brick(index: int, damage: int, owner: int, at: Vector2, mark: bool = false, incoming: Vector2 = Vector2.ZERO) -> void:
 	var brick: Dictionary = bricks[index]
 	if not brick.alive or brick.team == owner:
 		return
@@ -1506,7 +1506,7 @@ func damage_brick(index: int, damage: int, owner: int, at: Vector2, mark: bool =
 	brick.alive = brick.hp > 0
 	# `mark`: an ultimate landed this one, so the arena floats the number it took. Ordinary
 	# fire says nothing - forty numbers a round would be noise, not information.
-	events.append({"kind": "brick" if not brick.alive else "brick_hit", "p": at, "team": brick.team, "soaked": bite <= 0, "bite": bite if mark else 0})
+	events.append({"kind": "brick" if not brick.alive else "brick_hit", "p": at, "team": brick.team, "soaked": bite <= 0, "bite": bite if mark else 0, "brick_id": index, "heading": incoming, "defense_open": not brick.alive and brick_count(brick.team) == 0})
 	if not brick.alive:
 		cached_firing_angles.clear()
 		credit_destroyed_brick(owner)
@@ -1762,7 +1762,7 @@ func advance_ball(ball: Dictionary, dt: float, sweep_obstacles: bool = false, pr
 				# A round thrown by a power, or turbocharged by a bumper, says what it took;
 				# a plain shot does not, or every round would drag a number behind it.
 				var spoken: bool = int(ball.get("power", 0)) > 0 or ball.get("boosted", false)
-				damage_brick(target, int(ball.get("damage", 1)), ball.owner, ball.p, spoken)
+				damage_brick(target, int(ball.get("damage", 1)), ball.owner, ball.p, spoken, ball.v.normalized())
 				if not preview and powers[bricks[target].team].thorns_time > 0:
 					# Thorns: breaking against this wall costs the pilot that threw it.
 					damage_player(ball.owner, THORNS_BITE, ball.p)
@@ -1810,7 +1810,7 @@ func advance_ball(ball: Dictionary, dt: float, sweep_obstacles: bool = false, pr
 					if ball.get("power", 0) == 1:
 						explode(ball)
 					balls.erase(ball)
-					events.append({"kind": "spent", "p": ball.p, "team": ball.owner})
+					events.append({"kind": "spent", "p": ball.p, "team": ball.owner, "surface": kind, "heading": ball.v.normalized()})
 					return {"kind": "spent"}
 				if kind == "obstacle":
 					# Reflect relative to the moving surface, preserving the arcade shot speed.
@@ -1824,7 +1824,7 @@ func advance_ball(ball: Dictionary, dt: float, sweep_obstacles: bool = false, pr
 					ball.damage = BOOST_DAMAGE
 				ball.p += normal * 0.005
 				if not preview:
-					events.append({"kind": "boost" if kind == "boost" else "bounce", "p": ball.p, "team": ball.owner})
+					events.append({"kind": "boost" if kind == "boost" else "bounce", "p": ball.p, "team": ball.owner, "surface": kind, "heading": ball.v.normalized()})
 				remaining *= 1.0 - best
 	return {}
 
