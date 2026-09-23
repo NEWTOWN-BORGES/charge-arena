@@ -44,7 +44,6 @@ signal levels_requested
 signal power_bought(id: String)
 signal power_equipped(slot: int, id: String)
 signal menu_level_changed(step: int)
-signal menu_page_changed(page: int)
 const INK = Color("142b32")
 const BRASS = Color("e8bd78")
 const CERAMIC = Color("dedbca")
@@ -132,21 +131,6 @@ var level_cards: Array = []
 var menu_level = 0
 var swipe_start = Vector2.INF
 const SWIPE_DISTANCE = 70.0
-# TikTok-style page feed: each page is a full-screen card with live 3D behind it.
-const MENU_PAGE_NAMES = ["CAMPANHA", "TAÇA AURORA", "JOGO RÁPIDO", "PvP", "SKINS", "PODERES"]
-const MENU_PAGE_SUBS  = ["Destrói os bosses. Avança nível a nível.", "Torneio de eliminação. Oito combates, uma taça.", "Uma partida livre contra a IA.", "Dois jogadores na mesma rede Wi-Fi.", "Coleciona pilotos. Veste o teu favorito.", "Compra poderes com tijolos destruídos."]
-const MENU_PAGE_ICONS = ["⚔", "🏆", "⚡", "📡", "👤", "🔧"]
-const MENU_PAGE_ACTIONS = ["JOGAR", "ENTRAR NA TAÇA", "JOGAR", "ABRIR PvP", "ABRIR HANGAR", "ABRIR LOJA"]
-const MENU_PAGE_COUNT = 6
-var menu_page = 0
-var menu_page_offset = 0.0
-var menu_page_velocity = 0.0
-var menu_page_dragging = false
-var menu_page_drag_start = Vector2.INF
-var menu_page_drag_last_y = 0.0
-# Per-page action buttons, created in build_menu.
-var page_buttons: Array = []
-var page_containers: Array = []
 var skins_overlay: ColorRect
 var skins_panel: PanelContainer
 var skins_button: Button
@@ -775,12 +759,6 @@ func _process(dt: float) -> void:
 	elif skins_overlay.visible and skin_ultimate_demo != null:
 		demo_clock += dt
 		skin_ultimate_demo.queue_redraw()
-	# Animate the page offset towards zero (snap to current page).
-	if not menu_page_dragging and absf(menu_page_offset) > 0.001:
-		menu_page_offset = lerpf(menu_page_offset, 0.0, minf(dt * 12.0, 1.0))
-		if absf(menu_page_offset) < 0.003:
-			menu_page_offset = 0.0
-		queue_redraw()
 
 func show_pause(value: bool) -> void:
 	reset_touch()
@@ -832,25 +810,21 @@ func build_menu() -> void:
 	menu = PanelContainer.new()
 	menu.add_theme_stylebox_override("panel", style(Color(0.055, 0.105, 0.125, 0.97), Color("3c5756"), 22))
 	add_child(menu)
-	page_containers.clear()
-	page_buttons.clear()
-
-	# PAGE 0: CAMPANHA
-	var list0 = VBoxContainer.new()
-	list0.add_theme_constant_override("separation", 13)
-	menu.add_child(list0)
-	page_containers.append(list0)
-
-	list0.add_child(label("✦  CIRCUITO AURORA", 13, CYAN, true))
-	list0.add_child(label("CHARGE ARENA", 34, WHITE, true))
-	list0.add_child(label("Destrói as defesas do rival e marca 2 golos.", 15, MUTED))
+	var list = VBoxContainer.new()
+	list.add_theme_constant_override("separation", 13)
+	menu.add_child(list)
+	# Reading on top, buttons below and the main action last: with the panel anchored to
+	# the bottom of the screen, that is where a thumb already rests.
+	list.add_child(label("✦  CIRCUITO AURORA", 13, CYAN, true))
+	list.add_child(label("CHARGE ARENA", 34, WHITE, true))
+	list.add_child(label("Destrói as defesas do rival e marca 2 golos.", 15, MUTED))
 	menu_status = label(MENU_HINT, 13, MUTED)
 	menu_status.clip_text = true
 	menu_status.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
-	list0.add_child(menu_status)
+	list.add_child(menu_status)
 	var level_row = HBoxContainer.new()
 	level_row.add_theme_constant_override("separation", 6)
-	list0.add_child(level_row)
+	list.add_child(level_row)
 	var level_caption = label("IA", 13, MUTED, true)
 	level_caption.custom_minimum_size.x = 30
 	level_caption.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
@@ -873,7 +847,7 @@ func build_menu() -> void:
 		difficulty_buttons.append(pick)
 	var extras = HBoxContainer.new()
 	extras.add_theme_constant_override("separation", 10)
-	list0.add_child(extras)
+	list.add_child(extras)
 	skins_button = make_button("SKINS", false)
 	skins_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	extras.add_child(skins_button)
@@ -886,9 +860,10 @@ func build_menu() -> void:
 	graphics.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	extras.add_child(graphics)
 	graphics.pressed.connect(open_video)
+	# What is waiting behind those buttons, named in a line under them.
 	var modes = HBoxContainer.new()
 	modes.add_theme_constant_override("separation", 10)
-	list0.add_child(modes)
+	list.add_child(modes)
 	var pvp = make_button("PvP", false)
 	pvp.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	modes.add_child(pvp)
@@ -906,113 +881,8 @@ func build_menu() -> void:
 	campaign_button.add_theme_font_size_override("font_size", 21)
 	campaign_button.add_theme_stylebox_override("disabled", style(Color("203b41"), Color("425a59")))
 	campaign_button.add_theme_color_override("font_disabled_color", MUTED)
-	list0.add_child(campaign_button)
+	list.add_child(campaign_button)
 	campaign_button.pressed.connect(func(): level_selected.emit(menu_level))
-	page_buttons.append(campaign_button)
-
-	# PAGE 1: TAÇA AURORA
-	var list1 = VBoxContainer.new()
-	list1.add_theme_constant_override("separation", 12)
-	menu.add_child(list1)
-	page_containers.append(list1)
-	list1.add_child(label("🏆  TORNEIO DE ELIMINAÇÃO", 13, CYAN, true))
-	list1.add_child(label("TAÇA AURORA", 32, WHITE, true))
-	list1.add_child(label("Oito combates, uma taça. Vence e conquista o troféu dourado!", 14, MUTED))
-	var cup_action = make_button("ENTRAR NA TAÇA  →", true)
-	cup_action.custom_minimum_size.y = 74
-	cup_action.add_theme_font_size_override("font_size", 21)
-	cup_action.pressed.connect(func(): cup_requested.emit())
-	list1.add_child(cup_action)
-	page_buttons.append(cup_action)
-	var cup_nav = make_button("← VOLTAR À CAMPANHA", false)
-	cup_nav.pressed.connect(func(): set_menu_page(0))
-	list1.add_child(cup_nav)
-
-	# PAGE 2: JOGO RÁPIDO
-	var list2 = VBoxContainer.new()
-	list2.add_theme_constant_override("separation", 12)
-	menu.add_child(list2)
-	page_containers.append(list2)
-	list2.add_child(label("⚡  PARTIDA LIVRE", 13, CYAN, true))
-	list2.add_child(label("JOGO RÁPIDO", 32, WHITE, true))
-	list2.add_child(label("Uma partida rápida contra a inteligência artificial sem pressão.", 14, MUTED))
-	var quick_action = make_button("JOGAR AGORA  →", true)
-	quick_action.custom_minimum_size.y = 74
-	quick_action.add_theme_font_size_override("font_size", 21)
-	quick_action.pressed.connect(func(): play_requested.emit())
-	list2.add_child(quick_action)
-	page_buttons.append(quick_action)
-	var quick_nav = make_button("← VOLTAR À CAMPANHA", false)
-	quick_nav.pressed.connect(func(): set_menu_page(0))
-	list2.add_child(quick_nav)
-
-	# PAGE 3: PvP
-	var list3 = VBoxContainer.new()
-	list3.add_theme_constant_override("separation", 12)
-	menu.add_child(list3)
-	page_containers.append(list3)
-	list3.add_child(label("📡  MULTIJOGADOR LOCAL", 13, CYAN, true))
-	list3.add_child(label("DUELO PvP", 32, WHITE, true))
-	list3.add_child(label("Dois aparelhos na mesma rede Wi-Fi. Um cria a sala, o outro entra.", 14, MUTED))
-	var pvp_action = make_button("ABRIR SALA PvP  →", true)
-	pvp_action.custom_minimum_size.y = 74
-	pvp_action.add_theme_font_size_override("font_size", 21)
-	pvp_action.pressed.connect(open_pvp)
-	list3.add_child(pvp_action)
-	page_buttons.append(pvp_action)
-	var pvp_nav = make_button("← VOLTAR À CAMPANHA", false)
-	pvp_nav.pressed.connect(func(): set_menu_page(0))
-	list3.add_child(pvp_nav)
-
-	# PAGE 4: SKINS
-	var list4 = VBoxContainer.new()
-	list4.add_theme_constant_override("separation", 12)
-	menu.add_child(list4)
-	page_containers.append(list4)
-	list4.add_child(label("👤  COLECÇÃO DE PILOTOS", 13, CYAN, true))
-	list4.add_child(label("HANGAR DE PILOTOS", 32, WHITE, true))
-	list4.add_child(label("11 pilotos únicos com modelos 3D, efeitos e habilidades próprias.", 14, MUTED))
-	var skins_action = make_button("VER PILOTOS  →", true)
-	skins_action.custom_minimum_size.y = 74
-	skins_action.add_theme_font_size_override("font_size", 21)
-	skins_action.pressed.connect(open_skins)
-	list4.add_child(skins_action)
-	page_buttons.append(skins_action)
-	var skins_nav = make_button("← VOLTAR À CAMPANHA", false)
-	skins_nav.pressed.connect(func(): set_menu_page(0))
-	list4.add_child(skins_nav)
-
-	# PAGE 5: PODERES
-	var list5 = VBoxContainer.new()
-	list5.add_theme_constant_override("separation", 12)
-	menu.add_child(list5)
-	page_containers.append(list5)
-	list5.add_child(label("🔧  OFICINA & LOJA", 13, CYAN, true))
-	list5.add_child(label("LOJA DE PODERES", 32, WHITE, true))
-	list5.add_child(label("Usa tijolos recolhidos para comprar e equipar até 3 poderes activos.", 14, MUTED))
-	var powers_action = make_button("ABRIR LOJA  →", true)
-	powers_action.custom_minimum_size.y = 74
-	powers_action.add_theme_font_size_override("font_size", 21)
-	powers_action.pressed.connect(open_powers)
-	list5.add_child(powers_action)
-	page_buttons.append(powers_action)
-	var powers_nav = make_button("← VOLTAR À CAMPANHA", false)
-	powers_nav.pressed.connect(func(): set_menu_page(0))
-	list5.add_child(powers_nav)
-
-	for i in range(page_containers.size()):
-		page_containers[i].visible = (i == menu_page)
-
-func set_menu_page(p: int) -> void:
-	var next_p = clampi(p, 0, MENU_PAGE_COUNT - 1)
-	if next_p == menu_page:
-		return
-	menu_page = next_p
-	for i in range(page_containers.size()):
-		page_containers[i].visible = (i == menu_page)
-	layout()
-	menu_page_changed.emit(menu_page)
-	queue_redraw()
 
 func build_pvp_menu() -> void:
 	pvp_overlay = ColorRect.new()
@@ -1664,21 +1534,7 @@ func swipe_area() -> Rect2:
 func menu_swipe(event: InputEvent) -> void:
 	if menu_overlay_open():
 		swipe_start = Vector2.INF
-		menu_page_dragging = false
 		return
-	if event is InputEventKey and event.pressed and not event.echo:
-		if event.keycode == KEY_UP:
-			set_menu_page(menu_page - 1)
-			return
-		elif event.keycode == KEY_DOWN:
-			set_menu_page(menu_page + 1)
-			return
-		elif menu_page == 0 and event.keycode == KEY_LEFT:
-			menu_level_changed.emit(-1)
-			return
-		elif menu_page == 0 and event.keycode == KEY_RIGHT:
-			menu_level_changed.emit(1)
-			return
 	var pressed: bool
 	var at: Vector2
 	if event is InputEventScreenTouch and event.index == 0:
@@ -1688,44 +1544,15 @@ func menu_swipe(event: InputEvent) -> void:
 		# A real mouse drags the same way; touch already arrives as a screen touch.
 		pressed = event.pressed
 		at = event.position
-	elif event is InputEventMouseButton and event.pressed:
-		if event.button_index == MOUSE_BUTTON_WHEEL_UP:
-			set_menu_page(menu_page - 1)
-			return
-		elif event.button_index == MOUSE_BUTTON_WHEEL_DOWN:
-			set_menu_page(menu_page + 1)
-			return
-		return
 	else:
 		return
-
-	# Direct tap on the vertical TikTok indicator capsule
-	var strip_x = size.x - 22.0
-	var strip_cy = size.y * 0.45
-	var spacing = 26.0
-	var start_y = strip_cy - (MENU_PAGE_COUNT - 1) * 0.5 * spacing
-	if pressed and absf(at.x - strip_x) <= 24.0 and at.y >= start_y - 20.0 and at.y <= start_y + (MENU_PAGE_COUNT - 1) * spacing + 20.0:
-		var target = clampi(roundi((at.y - start_y) / spacing), 0, MENU_PAGE_COUNT - 1)
-		set_menu_page(target)
-		return
-
 	if pressed:
 		swipe_start = at if swipe_area().has_point(at) else Vector2.INF
-		menu_page_drag_start = at if swipe_area().has_point(at) else Vector2.INF
-		menu_page_dragging = (menu_page_drag_start != Vector2.INF)
 	elif swipe_start != Vector2.INF:
 		var travel = at - swipe_start
 		swipe_start = Vector2.INF
-		menu_page_drag_start = Vector2.INF
-		menu_page_dragging = false
-		# Vertical swipe changes page (TikTok feed style)
-		if absf(travel.y) >= SWIPE_DISTANCE and absf(travel.y) > absf(travel.x) * 1.2:
-			if travel.y < 0:
-				set_menu_page(menu_page + 1)
-			else:
-				set_menu_page(menu_page - 1)
-		# Horizontal swipe changes campaign level (when on page 0)
-		elif menu_page == 0 and absf(travel.x) >= SWIPE_DISTANCE and absf(travel.x) > absf(travel.y) * 1.5:
+		# Mostly sideways and long enough: a tap or a vertical scroll never changes level.
+		if absf(travel.x) >= SWIPE_DISTANCE and absf(travel.x) > absf(travel.y) * 1.5:
 			menu_level_changed.emit(1 if travel.x < 0 else -1)
 
 func draw_menu_level() -> void:
@@ -1773,48 +1600,6 @@ func draw_menu_level() -> void:
 			continue
 		var tip = Vector2(center_x + step * reach, hint_y)
 		draw_polyline(PackedVector2Array([tip + Vector2(-step * 14, -22), tip, tip + Vector2(-step * 14, 22)]), Color(WHITE, 0.55), 4, smooth)
-
-func draw_menu_page_header() -> void:
-	var area = swipe_area()
-	var center_x = area.get_center().x
-	var top = (safe_top + 92) if vertical else 34.0
-
-	var badge = MENU_PAGE_ICONS[menu_page] + "  " + MENU_PAGE_NAMES[menu_page]
-	centered(badge, Vector2(center_x, top + 14), 13, CYAN, true)
-	centered(MENU_PAGE_NAMES[menu_page], Vector2(center_x, top + 46), 28, WHITE, true)
-	centered(MENU_PAGE_SUBS[menu_page], Vector2(center_x, top + 72), 12, MUTED)
-
-	var emblem_y = area.get_center().y - 20
-	draw_circle(Vector2(center_x, emblem_y), 50, Color(INK, 0.6), true, -1, smooth)
-	draw_arc(Vector2(center_x, emblem_y), 52, 0, TAU, 64, Color(CYAN, 0.4), 1.5, smooth)
-	draw_arc(Vector2(center_x, emblem_y), 58, -PI * 0.7, -PI * 0.1, 24, Color(LIME, 0.6), 2.0, smooth)
-	centered(MENU_PAGE_ICONS[menu_page], Vector2(center_x, emblem_y + 12), 36, WHITE, true)
-
-func draw_menu_tiktok_indicators() -> void:
-	var total_pages = MENU_PAGE_COUNT
-	var strip_x = size.x - 22.0
-	var strip_cy = size.y * 0.45
-	var spacing = 26.0
-	var start_y = strip_cy - (total_pages - 1) * 0.5 * spacing
-
-	var bg_rect = Rect2(strip_x - 14, start_y - 16, 28, (total_pages - 1) * spacing + 32)
-	draw_style_box(style(Color(0.02, 0.05, 0.07, 0.75), Color("263d42"), 14), bg_rect)
-
-	for i in range(total_pages):
-		var dot_pos = Vector2(strip_x, start_y + i * spacing)
-		if i == menu_page:
-			draw_circle(dot_pos, 7.5, Color(CYAN, 0.3), true, -1, smooth)
-			draw_circle(dot_pos, 5.0, LIME, true, -1, smooth)
-			draw_line(dot_pos - Vector2(16, 0), dot_pos - Vector2(9, 0), LIME, 2.0, smooth)
-		else:
-			draw_circle(dot_pos, 3.0, Color(WHITE, 0.35), true, -1, smooth)
-
-	if menu_page > 0:
-		var up_pt = Vector2(strip_x, start_y - 8)
-		draw_polyline(PackedVector2Array([up_pt + Vector2(-4, 3), up_pt, up_pt + Vector2(4, 3)]), Color(CYAN, 0.8), 2.0, smooth)
-	if menu_page < total_pages - 1:
-		var dn_pt = Vector2(strip_x, start_y + (total_pages - 1) * spacing + 8)
-		draw_polyline(PackedVector2Array([dn_pt + Vector2(-4, -3), dn_pt, dn_pt + Vector2(4, -3)]), Color(CYAN, 0.8), 2.0, smooth)
 
 func open_levels() -> void:
 	reset_touch()
@@ -2084,9 +1869,9 @@ func layout_vertical(menu_height: float) -> void:
 	menu.size = Vector2(minf(size.x - 48, 520), menu_height)
 	menu.position = Vector2((size.x - menu.size.x) * 0.5, maxf(safe_top + 150, bottom - menu.size.y - 56))
 	if mode == "menu":
-		video_button.position = Vector2(size.x - 110, safe_top + 10)
-		video_button.size = Vector2(96, 36)
-		video_button.text = "OPÇÕES"
+		# The previewed level's name sits above its stadium, and under it come the boss card
+		# and the page dots. The stadium stops above the boss: it used to be framed down to
+		# the panel and drew straight over the face.
 		var top = safe_top + 172
 		arena_rect = Rect2(16, top, size.x - 32, maxf(menu.position.y - 221 - top, 120))
 	else:
@@ -2141,8 +1926,7 @@ func show_menu(message: String = "") -> void:
 	show_pause(false)
 	menu.show()
 	back.hide()
-	video_button.show()
-	video_button.text = "OPÇÕES"
+	video_button.hide()
 	video_overlay.hide()
 	skins_overlay.hide()
 	pvp_overlay.hide()
@@ -2152,8 +1936,6 @@ func show_menu(message: String = "") -> void:
 	host_ai_button.hide()
 	mode = "menu"
 	reset_touch()
-	for i in range(page_containers.size()):
-		page_containers[i].visible = (i == menu_page)
 	if message != "":
 		menu_status.text = message
 	layout()
@@ -2641,16 +2423,14 @@ func _draw() -> void:
 		write("CHARGE ARENA", Vector2(82, 44) + top, 17, WHITE, true)
 		write("C I R C U I T O   A U R O R A", Vector2(82, 62) + top, 9, MUTED)
 	if mode == "menu":
+		# Flavour for the menu alone. In a match that strip belongs to the stick's caption and
+		# to the frame counter, and the three of them were landing on top of each other.
 		write("ARENA 01   /   AURORA", Vector2(34, bottom - 24), 10, MUTED)
-		write("DESLIZA ↑↓ PARA MUDAR DE MODO", Vector2(size.x - 220, bottom - 24), 10, CYAN)
+		write("ENCONTRA O TEU ÂNGULO", Vector2(size.x - 204, bottom - 24), 10, MUTED)
 		if not vertical:
 			write("UM DISPARO.", Vector2(size.x - 285, size.y - 126), 22, WHITE, true)
 			write("MIL POSSIBILIDADES.", Vector2(size.x - 285, size.y - 98), 22, LIME, true)
-		if menu_page == 0:
-			draw_menu_level()
-		else:
-			draw_menu_page_header()
-		draw_menu_tiktok_indicators()
+		draw_menu_level()
 		return
 	if match_data.is_empty():
 		return
