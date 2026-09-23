@@ -135,6 +135,7 @@ func _ready() -> void:
 	hud.next_level_requested.connect(func(): start_level(level_index + 1))
 	hud.levels_requested.connect(show_levels)
 	hud.menu_level_changed.connect(step_menu_level)
+	hud.menu_page_changed.connect(on_menu_page_changed)
 	menu_level = campaign.suggested_level()
 	hud.sync_menu_level(menu_level)
 	show_menu_preview()
@@ -277,6 +278,34 @@ func show_menu_preview() -> void:
 	use_map(level.map)
 	dress_pilots(0)
 	show_menu_boss()
+
+func on_menu_page_changed(page: int) -> void:
+	if hud.mode != "menu":
+		return
+	match page:
+		0:
+			show_menu_preview()
+		1:
+			var cup_map = {"tall": true, "lean": true, "id": "taca_colosseum", "outline": "colosseum", "boosters": true, "bricks": "chevron", "lives": 3, "barriers": [], "obstacles": []}
+			use_map(cup_map)
+			arena.set_skin(1, 11, false, "")
+			hud.team_hues = arena.unit_hues
+		2:
+			var quick_map = Rules.default_map()
+			use_map(quick_map)
+			dress_pilots(0)
+		3:
+			var pvp_map = {"tall": false, "lean": false, "id": "pvp_colosseum", "outline": "colosseum", "boosters": true, "bricks": "banks", "lives": 4, "barriers": [], "obstacles": []}
+			use_map(pvp_map)
+			dress_pilots(0)
+		4:
+			var skins_map = {"tall": true, "lean": true, "id": "skins_bay", "outline": "stadium", "boosters": true, "bricks": "arc", "lives": 3, "barriers": [], "obstacles": []}
+			use_map(skins_map)
+			dress_pilots(0)
+		5:
+			var powers_map = {"tall": true, "lean": true, "id": "powers_lab", "outline": "gorge", "boosters": true, "bricks": "islands", "lives": 3, "barriers": [], "obstacles": []}
+			use_map(powers_map)
+			dress_pilots(0)
 
 func show_menu_boss() -> void:
 	# The previewed rival is shown in its own colours, like it fights: a boss in its skin's
