@@ -199,7 +199,29 @@ adb install -r builds/charge-arena.apk
 adb logcat -s godot
 ```
 
-O APK foi gerado, instalado e lançado no emulador: o motor arranca, cria contexto OpenGL ES 3.0 e entra no ciclo principal sem erros de script. **Falta a validação num aparelho real**: desempenho, áudio, multitouch, recortes do ecrã e comportamento ao suspender a aplicação.
+O APK foi gerado, instalado e lançado no emulador: o motor arranca, cria contexto OpenGL ES 3.0 e entra no ciclo principal sem erros de script.
+
+### Testes em dispositivos Android
+
+O **Charge Arena já foi testado em vários smartphones Android reais de gama média moderna**, para além dos testes realizados em PC e emulador.
+
+Os testes em dispositivos físicos apresentaram **resultados muito positivos de desempenho e estabilidade**, incluindo partidas com os principais sistemas do jogo ativos: projéteis e ricochetes, obstáculos móveis, destruição de tijolos, poderes, ultimates, partículas, animações, música, efeitos sonoros e interface tátil.
+
+Durante estes testes, o jogo manteve uma experiência fluida e estável nos dispositivos utilizados, sem terem sido identificados problemas graves de desempenho que impedissem a jogabilidade. Os controlos por toque, a orientação vertical e a interface adaptada a ecrãs de telemóvel também foram testados em utilização real.
+
+Os resultados observados são consistentes com o trabalho de otimização já aplicado ao projeto, incluindo reutilização de geometria, MultiMeshes para os tijolos, limites de efeitos visuais, perfis de qualidade e ajuste dinâmico de desempenho.
+
+> Os resultados podem variar conforme o dispositivo, resolução, temperatura, versão do Android e perfil gráfico selecionado. Ainda não foi estabelecido um requisito mínimo oficial de hardware.
+
+### Estado atual do projeto
+
+O **Charge Arena encontra-se numa fase avançada de desenvolvimento**, com o ciclo principal de jogo e grande parte dos sistemas previstos já funcionais.
+
+A versão atual inclui campanha PvE, bosses com comportamentos e poderes próprios, progressão, skins, ultimates, loja e kit de poderes, jogo rápido, PvP por ligação direta, diferentes arenas, Taça Aurora, sistema de torneio, jornal narrativo, música e efeitos sonoros próprios, configurações gráficas e controlos táteis.
+
+A prioridade atual está concentrada em **polimento, game feel, equilíbrio, clareza da interface, feedback audiovisual, experiência de novos jogadores e testes numa variedade maior de dispositivos** antes de expandir significativamente o conteúdo ou avançar para uma distribuição pública mais ampla.
+
+A compatibilidade Android continuará a ser avaliada para estabelecer requisitos mínimos, comportamento em sessões prolongadas, consumo de bateria, temperatura e desempenho em hardware mais modesto.
 
 Notas sobre o emulador: com `-gpu host` o jogo desenha na janela do emulador, mas `adb exec-out screencap` devolve preto porque não captura a SurfaceView; com `-gpu swiftshader_indirect` a captura funciona mas os shaders não compilam (`GL_MAX_FRAGMENT_UNIFORM_VECTORS` insuficiente). Para prova visual, usar um aparelho real.
 
@@ -295,4 +317,4 @@ O protocolo de rede desta revisão sincroniza as posições em arco, orientaçã
 - **Poderes: 89 verificações passaram** em `tests/test_powers.gd` — cargas e limites, dano em área dentro e fora do raio, uma bala explosiva disparada pelo arco até detonar, as 30 balas da rajada, o leque de 9 balas sempre diferente, o boss a ganhar e gastar poderes com ritmos distintos por dificuldade e por nível, o estado que viaja na rede e os botões nas duas orientações (sem tapar cartões, contador de FPS, aviso de paralisia nem o estádio). Os outros 13 scripts de teste foram repetidos e passam todos.
 - Dois ajustes saíram destes testes: a rajada usava um intervalo de 0,10 s que na grelha de 60 Hz escorregava para 7 frames e dava só 26 balas (`RAPID_INTERVAL` passou a 0,09, que dá 6 frames certos), e o resíduo do float no cronómetro da rajada oferecia uma 31.ª bala.
 - **Ricochete sem limite:** os 14 scripts de teste voltaram a passar depois da mudança. As verificações que descreviam o orçamento de ricochetes foram reescritas para a regra nova — uma bola atravessa a arena doze vezes seguidas (24 contactos com parede) e continua viva, o acelerador volta a carregar uma bola já ressaltada sem acumular velocidade nem dano, e a salvaguarda dos 12 s continua a limpar um disparo que nunca chega a um alvo. Na simulação de 45 s com a IA havia **18 bolas em jogo** no fim, ou seja a mudança não enche a arena: os disparos passam a acertar mais cedo, não a durar mais.
-- APK gerado e assinado: `outputs/charge-arena-0.7.0-ricochete.apk` (94,5 MB, `org.chargearena.playtest`, versionCode 13, arm64-v8a + armeabi-v7a + x86_64, minSdk 24). **Ainda não foi instalado nem corrido num aparelho real** — a validação em telemóvel continua por fazer.
+- APK gerado e assinado: `outputs/charge-arena-0.7.0-ricochete.apk` (94,5 MB, `org.chargearena.playtest`, versionCode 13, arm64-v8a + armeabi-v7a + x86_64, minSdk 24). O projeto já foi **testado em vários smartphones Android reais de gama média moderna**, com resultados muito positivos de desempenho e estabilidade nos dispositivos utilizados. A validação continua numa variedade maior de hardware para definir requisitos mínimos e avaliar sessões prolongadas.
