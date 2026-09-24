@@ -210,8 +210,7 @@ var viewer_bricks: Array = []
 var team_skins: Array = [0, 0]
 var team_tints: Array = [false, false]
 var team_hues: Array = ["", ""]
-var unlock_text = ""
-var unlock_timer = 0.0
+var unlock_notice: Control
 var pause_panel: PanelContainer
 
 func _ready() -> void:
@@ -750,10 +749,26 @@ func close_skins() -> void:
 	skin_preview_closed.emit()
 	clear_viewer_shots()
 
+func prepare_unlock_notice() -> void:
+	if is_instance_valid(unlock_notice): return
+	var layer = CanvasLayer.new()
+	layer.layer = 20
+	add_child(layer)
+	unlock_notice = preload("res://scripts/unlock_notice.gd").new()
+	unlock_notice.painter = self
+	layer.add_child(unlock_notice)
+
 func announce_unlock(names: Array) -> void:
-	unlock_text = " · ".join(names)
-	unlock_timer = 4.0
-	queue_redraw()
+	prepare_unlock_notice()
+	for item_name in names:
+		for index in range(Skins.CATALOG.size()):
+			if Skins.CATALOG[index].name == item_name:
+				unlock_notice.enqueue({"kind": "skin", "id": index, "name": item_name})
+				break
+
+func announce_power(id: String, item_name: String) -> void:
+	prepare_unlock_notice()
+	unlock_notice.enqueue({"kind": "power", "id": id, "name": item_name})
 
 func ask_redraw() -> void:
 	# Marks the HUD dirty; the repaint happens on the next slot of the redraw clock.
@@ -768,9 +783,6 @@ func _process(dt: float) -> void:
 	if redraw_asked and redraw_wait >= REDRAW_INTERVAL:
 		redraw_wait = 0.0
 		redraw_asked = false
-		queue_redraw()
-	if unlock_timer > 0:
-		unlock_timer = maxf(unlock_timer - dt, 0)
 		queue_redraw()
 	for index in range(power_flash.size()):
 		if power_flash[index] > 0:
@@ -2024,7 +2036,6 @@ func show_game(new_mode: String, local_team: int) -> void:
 	skins_overlay.hide()
 	pvp_overlay.hide()
 	levels_overlay.hide()
-	unlock_timer = 0.0
 	back.text = "PAUSA" if new_mode == "pve" else "MENU"
 	mode = new_mode
 	team = local_team
@@ -2593,11 +2604,6 @@ func _draw() -> void:
 		centered(sub, Vector2(c.x, c.y + 24), 11, LIME)
 		if detail != "":
 			centered(detail, Vector2(c.x, c.y + 44), 11, MUTED)
-	if unlock_timer > 0:
-		var at = message_center - Vector2(0, 170 if vertical else 150)
-		panel(Rect2(at.x - 190, at.y - 34, 380, 68), Color(0.065, 0.125, 0.14, 0.96))
-		centered("✦  NOVA SKIN DESBLOQUEADA  ✦", at + Vector2(0, -8), 11, LIME, true)
-		centered(unlock_text, at + Vector2(0, 21), 22, WHITE, true)
 	# The stick: grabbed anywhere in the band, it slides the pilot along its arc.
 	var stick = move_center
 	draw_circle(stick + Vector2(0, 3), STICK_RADIUS, Color(0.01, 0.04, 0.05, 0.5), true, -1, smooth)

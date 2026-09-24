@@ -602,6 +602,7 @@ func save_powers() -> void:
 func buy_power(id: String) -> void:
 	if not power_shop.buy(id):
 		return
+	hud.announce_power(id, PowerShop.CATALOG[PowerShop.index_of(id)].name)
 	save_powers()
 	hud.sync_powers(power_shop)
 
@@ -1417,6 +1418,7 @@ func start_cup() -> void:
 func finish_cup() -> void:
 	var won = rules.winner == 0
 	var rival = cup.opponent()
+	var new_rewards: Array = []
 	var reward_skin = cup.boss_id() if cup.local_wins() == cup.QUALIFIERS else 0
 	var score = Array(rules.scores).duplicate()
 	bank_bricks()
@@ -1424,10 +1426,10 @@ func finish_cup() -> void:
 		cup.complete(score)
 		if cup.save() != OK:
 			push_warning("Não foi possível guardar a Taça.")
-		if reward_skin > 0:
-			skins.defeat(reward_skin)
-		if cup.wins == Cup.FULL_MATCHES:
-			skins.defeat(11)
+		if reward_skin > 0 and skins.defeat(reward_skin):
+			new_rewards.append(Skins.CATALOG[reward_skin].name)
+		if cup.wins == Cup.FULL_MATCHES and skins.defeat(11):
+			new_rewards.append(Skins.CATALOG[11].name)
 		save_skins()
 	cup_screen.result = ("Vitória" if won else "Derrota") + " · %d–%d contra %s" % [score[0], score[1], rival]
 	if won and reward_skin > 0:
@@ -1438,6 +1440,7 @@ func finish_cup() -> void:
 	open_cup()
 	cup_screen.tab = 2 if won else 0
 	cup_screen.refresh()
+	hud.announce_unlock(new_rewards)
 
 func open_cup() -> void:
 	cup_screen.show()

@@ -1,3 +1,5 @@
+> **2.9.1:** notificações compactas com retratos dos desbloqueios; LAB com Sentinela e Alfa com Arconte. [Detalhes](docs/NOTIFICACOES-2.9.1.md). APKs em `builds/charge-arena-2.9.1-sentinela-lab.apk` e `builds/charge-arena-2.9.1-alfa.apk`.
+
 > **2.9 — Sentinela LAB Refinado:** skins arredondadas, MSAA 8×, masters das músicas originais e nova ordem da história com Aurora na admissão. [Alterações e validação](docs/REFINADO-2.9.md). APK local: `builds/charge-arena-2.9.0-sentinela-lab.apk`.
 
 > **2.8 — Impacto:** novo passe de disparo, sons por skin, destruição, câmara e vibração configuráveis; tiro manual opcional. [Alterações e testes](docs/IMPACTO-2.8.md). APKs locais: `builds/charge-arena-2.8.0-impacto.apk` e `builds/charge-arena-2.8.0-teste.apk`.
