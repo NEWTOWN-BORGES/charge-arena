@@ -24,6 +24,10 @@ static func published(cup, who: String, n: int) -> Dictionary:
 static func edition(cup, number: int) -> Array:
 	var n = clampi(number, 0, cup.wins)
 	var lead = article(n, "cover", 100, "TOURNAMENT_NEWS", "CINCO PASSOS ATÉ AO DESAFIO", "A Taça acelera: cinco batalhas e o vencedor da chave do setor. Aurel chega à procura do penta; os novos pilotos querem mudar a história.", "Aurel", "ARENA_ENTRANCE")
+	if n == 0 and not cup.entrance_passed:
+		lead = article(0, "cover", 100, "TOURNAMENT_NEWS", "A PRIMEIRA PORTA É AURORA", "Antes da Taça, um teste de entrada. Aurora espera na arena: conquista o teu lugar e prepara o caminho até ao Faroleiro.", "Aurora", "FACE_OFF", "Tu")
+	elif n == 0 and cup.wins == 0 and cup.entrance_score.size() == 2:
+		lead = article(0, "cover", 100, "PLAYER_NEWS", "ENTRADA CONQUISTADA", "Superaste Aurora por %s–%s. Agora começa a competição: cinco batalhas, cinco adversários e o Faroleiro no horizonte." % cup.entrance_score, "Tu", "ARENA_ENTRANCE", "Aurora")
 	var stage = cup.stage_index(maxi(0, n - 1))
 	if n > 0:
 		var result: Dictionary = cup.history[n - 1]
@@ -76,6 +80,8 @@ static func report_body(cup, story: Dictionary, n: int) -> String:
 	if n >= cup.FULL_MATCHES - 1 and who in ["Aurel", "Arconte Solar"]:
 		var result = published(cup, "Aurel", n)
 		return "O marcador fechou em %s. Aurel, apontado durante toda a competição como candidato ao quinto título, foi eliminado por Arconte Solar na outra semifinal.\n\nA surpresa tem agora lugar no boletim oficial. O favoritismo que ocupou as capas não bastou para atravessar a última porta: foi Arconte Solar quem conquistou a vaga em campo." % result.score
+	if n == 0 and who == "Tu":
+		return "O teste de entrada está concluído. A tua vaga está garantida; os resultados da Taça começam a contar a partir da próxima partida."
 	if who == "Tu":
 		return "Esta é a tua vitória número %d na Taça Aurora. O resultado fica no teu Percurso, junto dos adversários que superaste desde a primeira ronda.\n\n%s" % [n, "A competição terminou. O troféu e as skins da final estão conquistados; todo o caminho continua disponível no arquivo." if n == cup.FULL_MATCHES else "A próxima página depende do próximo combate. A Árvore reúne os resultados conhecidos e o Percurso identifica o teu encontro confirmado."]
 	var fixture = published(cup, who, n)

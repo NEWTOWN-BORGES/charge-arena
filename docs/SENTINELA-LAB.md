@@ -1,6 +1,6 @@
-# Sentinela LAB — 2.8.1
+# Sentinela LAB — 2.9
 
-APK: `builds/charge-arena-2.8.1-sentinela-lab.apk`.
+APK: `builds/charge-arena-2.9.0-sentinela-lab.apk`.
 
 Esta edição instala como **Sentinela LAB**, com o avatar original do Sentinela no ícone. O pacote `org.chargearena.sentinellab` tem armazenamento Android separado de `org.chargearena.prototype` e `org.chargearena.playtest`. Não é necessário desinstalar nenhum deles; o LAB não lê nem altera os seus saves.
 

@@ -13,8 +13,10 @@ func check(ok: bool, message: String) -> void:
 func _initialize() -> void: call_deferred("run")
 func run() -> void:
 	var cup = Cup.new()
+	cup.complete([2, 0]) # Fixture starts after admission.
 	cup.seed_value = 73
 	cup.reset()
+	cup.complete([2, 0]) # Fixture starts after admission.
 	var names: Dictionary = {}
 	var boss_ids: Array = []
 	for index in range(Cup.FULL_MATCHES):
@@ -71,6 +73,7 @@ func run() -> void:
 	game.skins.config_path = "user://tournament-skins-test.cfg"
 	game.power_shop.config_path = "user://tournament-powers-test.cfg"
 	game.cup = Cup.new()
+	game.cup.complete([2, 0]) # Fixture starts after admission.
 	game.cup.path = "user://tournament-game-test.cfg"
 	game.cup_screen.cup = game.cup
 	for i in range(Cup.FULL_MATCHES - 1): game.cup.complete([2, 1])

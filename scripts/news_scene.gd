@@ -25,7 +25,7 @@ func setup(story: Dictionary) -> void:
 	cast_specs = story.get("cast", {})
 	size = Vector2i(960, 540)
 	own_world_3d = true
-	msaa_3d = Viewport.MSAA_2X
+	msaa_3d = Viewport.MSAA_8X
 	render_target_update_mode = SubViewport.UPDATE_ONCE
 	stage = Node3D.new()
 	add_child(stage)

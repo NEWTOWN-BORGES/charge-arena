@@ -1,0 +1,119 @@
+[
+  {
+    "track": "music_cup.ogg",
+    "seconds": 71.02222222222223,
+    "correlation_to_original": 0.96275,
+    "peak_dbfs": -1.97,
+    "original_rms": 0.09996144355644958,
+    "master_rms": 0.1439223414975188,
+    "loop_jump": 0.011637147516012192
+  },
+  {
+    "track": "music_match.ogg",
+    "seconds": 64.0,
+    "correlation_to_original": 0.95491,
+    "peak_dbfs": -2.23,
+    "original_rms": 0.11288302151444082,
+    "master_rms": 0.12545647282991845,
+    "loop_jump": 0.10981928091496229
+  },
+  {
+    "track": "music_menu.ogg",
+    "seconds": 45.714285714285715,
+    "correlation_to_original": 0.99425,
+    "peak_dbfs": -4.9,
+    "original_rms": 0.08675330046433774,
+    "master_rms": 0.10327143693973298,
+    "loop_jump": 0.003330923616886139
+  },
+  {
+    "track": "music_skin_1.ogg",
+    "seconds": 64.0,
+    "correlation_to_original": 0.9677,
+    "peak_dbfs": -2.14,
+    "original_rms": 0.12912337954280537,
+    "master_rms": 0.14352195262964373,
+    "loop_jump": 0.03303136117756367
+  },
+  {
+    "track": "music_skin_10.ogg",
+    "seconds": 64.0,
+    "correlation_to_original": 0.96682,
+    "peak_dbfs": -1.95,
+    "original_rms": 0.14075440052082047,
+    "master_rms": 0.1276177400726723,
+    "loop_jump": 0.007213480770587921
+  },
+  {
+    "track": "music_skin_2.ogg",
+    "seconds": 64.0,
+    "correlation_to_original": 0.96699,
+    "peak_dbfs": -1.96,
+    "original_rms": 0.12274890493720654,
+    "master_rms": 0.11053714193307324,
+    "loop_jump": 0.009960480034351349
+  },
+  {
+    "track": "music_skin_3.ogg",
+    "seconds": 64.0,
+    "correlation_to_original": 0.95537,
+    "peak_dbfs": -2.04,
+    "original_rms": 0.1220019411507026,
+    "master_rms": 0.10928574474774513,
+    "loop_jump": 0.03981193620711565
+  },
+  {
+    "track": "music_skin_4.ogg",
+    "seconds": 64.0,
+    "correlation_to_original": 0.96945,
+    "peak_dbfs": -1.81,
+    "original_rms": 0.1358844803730829,
+    "master_rms": 0.15306536890703915,
+    "loop_jump": 0.028131753206253052
+  },
+  {
+    "track": "music_skin_5.ogg",
+    "seconds": 64.0,
+    "correlation_to_original": 0.97433,
+    "peak_dbfs": -1.98,
+    "original_rms": 0.1434405253452729,
+    "master_rms": 0.10121249181618275,
+    "loop_jump": 0.059730556793510914
+  },
+  {
+    "track": "music_skin_6.ogg",
+    "seconds": 64.0,
+    "correlation_to_original": 0.9641,
+    "peak_dbfs": -2.04,
+    "original_rms": 0.12676986985581346,
+    "master_rms": 0.1060170960434878,
+    "loop_jump": 0.02830549329519272
+  },
+  {
+    "track": "music_skin_7.ogg",
+    "seconds": 64.0,
+    "correlation_to_original": 0.96041,
+    "peak_dbfs": -1.81,
+    "original_rms": 0.13314240887086812,
+    "master_rms": 0.14735798524425922,
+    "loop_jump": 0.02550247311592102
+  },
+  {
+    "track": "music_skin_8.ogg",
+    "seconds": 64.0,
+    "correlation_to_original": 0.96217,
+    "peak_dbfs": -1.99,
+    "original_rms": 0.12619728958058468,
+    "master_rms": 0.12524690210931047,
+    "loop_jump": 0.05905864015221596
+  },
+  {
+    "track": "music_skin_9.ogg",
+    "seconds": 64.0,
+    "correlation_to_original": 0.95641,
+    "peak_dbfs": -1.96,
+    "original_rms": 0.12426331441900908,
+    "master_rms": 0.12930250178780367,
+    "loop_jump": 0.04419512674212456
+  }
+]

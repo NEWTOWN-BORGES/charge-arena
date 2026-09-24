@@ -430,7 +430,7 @@ func build_skin_viewer() -> void:
 	var viewport = SubViewport.new()
 	viewport.own_world_3d = true
 	viewport.transparent_bg = true
-	viewport.msaa_3d = Viewport.MSAA_4X
+	viewport.msaa_3d = Viewport.MSAA_8X
 	viewer.add_child(viewport)
 	viewer_stage = Node3D.new()
 	viewport.add_child(viewer_stage)

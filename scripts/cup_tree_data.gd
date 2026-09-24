@@ -1,6 +1,7 @@
 extends RefCounted
 ## Only actual completed results are public; seed ratings are never exposed.
 const CAST = {
+	"Aurora": [0, "81d9c4", "Teste de entrada"],
 	"Tu": [0, "81d9c4", "Taça Aurora"], "Faroleiro": [1, "81d9c4", "Farol"],
 	"Lira": [103, "bd9ee0", "Farol"], "Vértice": [108, "d28263", "Farol"],
 	"Aurel": [11, "e8bd78", "Coroa"], "Mineiro": [4, "b99668", "Pedreira"],

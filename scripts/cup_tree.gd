@@ -130,13 +130,17 @@ func show_level(value: int) -> void:
 func overview() -> void:
 	caption.text = "VERDE: o teu caminho   ·   DOURADO: próximo combate   ·   CINZENTO: por decidir"
 	add_node("sector", "ETAPA %02d / %02d · %s" % [cup.stage_index() + 1, cup.FULL_STAGES, cup.sector_label()], Vector2(40, 0), "%d / 5 batalhas vencidas nesta etapa" % mini(cup.local_wins(), 5), "CINCO BATALHAS → BOSS → PRÓXIMA ETAPA", GOLD, Vector2(920, 150))
+	if not cup.entrance_passed:
+		map.nodes.back().title = "TESTE DE ENTRADA · AURORA"
+		map.nodes.back().sub = "Primeiro conquista o teu lugar na competição"
+		map.nodes.back().status = "ADMISSÃO → CINCO BATALHAS → FAROLEIRO"
 	person("Tu", Vector2(40, 225))
 	var next_match: Dictionary = cup.confirmed_match()
 	if not next_match.is_empty():
 		person(next_match.name, Vector2(580, 225))
 		map.nodes.back().tag = "O TEU PRÓXIMO ADVERSÁRIO"
 		map.nodes.back().accent = GOLD
-		map.nodes.back().status = "BOSS CONFIRMADO" if next_match.is_final else "BATALHA %d DE 5" % (cup.local_wins() + 1)
+		map.nodes.back().status = "TESTE DE ENTRADA" if next_match.get("entrance", false) else "BOSS CONFIRMADO" if next_match.is_final else "BATALHA %d DE 5" % (cup.local_wins() + 1)
 		edge("Tu", next_match.name, true)
 	else:
 		add_node("future", "TAÇA CONQUISTADA" if cup.wins >= cup.FULL_MATCHES else "A DEFINIR", Vector2(580, 225), "", "SEM ADVERSÁRIO CONFIRMADO", GOLD, Vector2(380, 184))
@@ -279,7 +283,7 @@ func make_portrait(who: String) -> void:
 	render.size = Vector2i(160, 160)
 	render.transparent_bg = true
 	render.own_world_3d = true
-	render.msaa_3d = Viewport.MSAA_2X
+	render.msaa_3d = Viewport.MSAA_8X
 	render.render_target_update_mode = SubViewport.UPDATE_ONCE
 	add_child(render)
 	var model = Models.new()

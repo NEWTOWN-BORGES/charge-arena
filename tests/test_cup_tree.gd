@@ -3,6 +3,7 @@ const Data = preload("res://scripts/cup_tree_data.gd")
 func _initialize() -> void: call_deferred("run")
 func run() -> void:
 	var cup = preload("res://scripts/cup.gd").new()
+	cup.complete([2, 0]) # Fixture starts after admission.
 	assert(Data.profile(cup, "Faroleiro").wins == 0)
 	for i in range(4): cup.complete([2, 1])
 	var lira = Data.profile(cup, "Lira")

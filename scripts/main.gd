@@ -1412,7 +1412,7 @@ func start_cup() -> void:
 	cup_active = true
 	cup_resolved = false
 	last_phase = ""
-	music.play_skin(cup.boss_id() if cup.local_wins() == cup.QUALIFIERS else cup.local_wins() + 1)
+	music.play_skin(0 if not cup.entrance_passed else (cup.boss_id() if cup.local_wins() == cup.QUALIFIERS else cup.local_wins() + 1))
 
 func finish_cup() -> void:
 	var won = rules.winner == 0

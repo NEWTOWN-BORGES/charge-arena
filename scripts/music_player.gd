@@ -2,26 +2,26 @@ extends Node
 ## Menu music and one match theme per skin (campaign levels play their boss's theme). Tracks crossfade, dip during
 ## countdowns/goals, and pause while the app is in the background.
 const TRACKS = {
-	"cup": preload("res://audio/music_cup.ogg"),
-	"cup_boss": preload("res://audio/music_skin_1.ogg"),
-	"menu": preload("res://audio/music_menu.ogg"),
-	"match": preload("res://audio/music_match.ogg"),
-	"skin_1": preload("res://audio/music_skin_1.ogg"),
-	"skin_2": preload("res://audio/music_skin_2.ogg"),
-	"skin_3": preload("res://audio/music_skin_3.ogg"),
-	"skin_4": preload("res://audio/music_skin_4.ogg"),
-	"skin_5": preload("res://audio/music_skin_5.ogg"),
-	"skin_6": preload("res://audio/music_skin_6.ogg"),
-	"skin_7": preload("res://audio/music_skin_7.ogg"),
-	"skin_8": preload("res://audio/music_skin_8.ogg"),
-	"skin_9": preload("res://audio/music_skin_9.ogg"),
-	"skin_10": preload("res://audio/music_skin_10.ogg"),
-	"skin_11": preload("res://audio/music_cup.ogg"),
+	"cup": preload("res://audio/polished/music_cup.ogg"),
+	"cup_boss": preload("res://audio/polished/music_skin_1.ogg"),
+	"menu": preload("res://audio/polished/music_menu.ogg"),
+	"match": preload("res://audio/polished/music_match.ogg"),
+	"skin_1": preload("res://audio/polished/music_skin_1.ogg"),
+	"skin_2": preload("res://audio/polished/music_skin_2.ogg"),
+	"skin_3": preload("res://audio/polished/music_skin_3.ogg"),
+	"skin_4": preload("res://audio/polished/music_skin_4.ogg"),
+	"skin_5": preload("res://audio/polished/music_skin_5.ogg"),
+	"skin_6": preload("res://audio/polished/music_skin_6.ogg"),
+	"skin_7": preload("res://audio/polished/music_skin_7.ogg"),
+	"skin_8": preload("res://audio/polished/music_skin_8.ogg"),
+	"skin_9": preload("res://audio/polished/music_skin_9.ogg"),
+	"skin_10": preload("res://audio/polished/music_skin_10.ogg"),
+	"skin_11": preload("res://audio/polished/music_cup.ogg"),
 }
 const CONFIG_PATH = "user://audio_settings.cfg"
 const FADE_SECONDS = 1.4
 const BASE_DB = -7.0
-# Original boss recordings, with a small playback lift only. No recomposition or re-encoding.
+# Masters preserve the original melodies, arrangements and tempo; originals remain archived.
 const BOSS_PRESENCE_DB = 1.25
 const DUCK_DB = {"countdown": -5.0, "goal": -9.0, "finished": -9.0}
 const DUCK_SPEED_DB = 14.0

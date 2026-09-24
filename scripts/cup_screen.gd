@@ -166,7 +166,7 @@ func refresh() -> void:
 	var next_match: Dictionary = cup.confirmed_match()
 	play.disabled = next_match.is_empty()
 	subtitle.text = "TAÇA AURORA   /   " + cup.sector_label()
-	play.text = "TAÇA CONQUISTADA" if cup.wins >= cup.DEMO_MATCHES else ("AGUARDANDO ADVERSÁRIO" if play.disabled else ("DISPUTAR A FINAL  →" if next_match.is_final else "JOGAR RONDA %02d  →" % next_match.round))
+	play.text = "TESTE DE ENTRADA · AURORA  →" if not cup.entrance_passed else "TAÇA CONQUISTADA" if cup.wins >= cup.DEMO_MATCHES else ("AGUARDANDO ADVERSÁRIO" if play.disabled else ("DISPUTAR A FINAL  →" if next_match.is_final else "JOGAR RONDA %02d  →" % next_match.round))
 	for i in range(nav.get_child_count()):
 		nav.get_child(i).modulate = WHITE if tab == i else MUTED
 	if tab == 0:

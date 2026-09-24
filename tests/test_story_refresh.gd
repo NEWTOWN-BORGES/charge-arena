@@ -11,6 +11,9 @@ func geometry(node: Node) -> String:
 func _initialize() -> void: call_deferred("run")
 func run() -> void:
 	var cup = Cup.new()
+	assert(cup.confirmed_match().entrance and cup.level().boss == 0)
+	assert(cup.complete([2, 0]) and cup.wins == 0)
+	assert(cup.boss_order == [1, 4, 8, 6, 3, 2, 7, 9, 5, 10])
 	var designs = {}
 	var maps = {}
 	var scenes = {}

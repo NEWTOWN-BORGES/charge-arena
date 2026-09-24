@@ -106,10 +106,10 @@ func portrait(parent: Control) -> void:
 	tag.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	identity.add_child(tag)
 	var viewport = SubViewport.new()
-	viewport.size = Vector2i(320, 280)
+	viewport.size = Vector2i(640, 560)
 	viewport.transparent_bg = true
 	viewport.own_world_3d = true
-	viewport.msaa_3d = Viewport.MSAA_2X
+	viewport.msaa_3d = Viewport.MSAA_8X
 	viewport.render_target_update_mode = SubViewport.UPDATE_ONCE
 	image.add_child(viewport)
 	var models = Models.new()

@@ -11,6 +11,7 @@ func _initialize() -> void:
 	call_deferred("run")
 func run() -> void:
 	var c = Cup.new()
+	c.complete([2, 0]) # Fixture starts after admission.
 	c.path = "res://tests/cup-test.tmp"
 	check(c.entrants.size() == 1024, "Full regional field")
 	var names = c.entrants.map(func(p): return p.name)
@@ -40,6 +41,7 @@ func run() -> void:
 	var game = load("res://scenes/main.tscn").instantiate()
 	root.add_child(game)
 	game.cup = Cup.new()
+
 	game.cup.path = "res://tests/cup-test.tmp"
 	game.cup_screen.cup = game.cup
 	game.start_cup()
@@ -55,7 +57,12 @@ func run() -> void:
 	game.rules.winner = 0
 	game.rules.scores = [2, 1]
 	game.finish_cup()
-	check(game.cup.wins == 1 and game.cup_screen.visible, "Win returns to tournament desk")
+	check(game.cup.entrance_passed and game.cup.wins == 0 and game.cup_screen.visible, "Admission win opens the tournament without consuming a qualifier")
+	game.start_cup()
+	game.rules.winner = 0
+	game.rules.scores = [2, 0]
+	game.finish_cup()
+	check(game.cup.wins == 1 and game.cup_screen.visible, "First qualifier advances after admission")
 	DirAccess.remove_absolute(ProjectSettings.globalize_path(game.cup.path))
 	game.queue_free()
 	await process_frame

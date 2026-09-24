@@ -18,6 +18,7 @@ func labels(node: Node) -> String:
 
 func run() -> void:
 	var cup = Cup.new()
+	cup.complete([2, 0]) # Fixture starts after admission.
 	var screen = preload("res://scripts/cup_screen.gd").new()
 	screen.cup = cup
 	root.add_child(screen)
@@ -45,6 +46,7 @@ func run() -> void:
 			cup.complete([2, step % 2])
 	# A seeded narrative winner without a completed fixture must not be revealed.
 	cup.reset()
+	cup.complete([2, 0]) # Fixture starts after admission.
 	for i in range(4): cup.complete([2, 1])
 	cup.wins = 5
 	screen.refresh()

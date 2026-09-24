@@ -2,11 +2,9 @@ extends RefCounted
 ## Local display preferences; never change the authoritative 60 Hz simulation.
 const FPS_OPTIONS = [30, 60, 90]
 const QUALITY_NAMES = ["Leve", "Equilibrado", "Refinado"]
-# Leve uses only FXAA (zero extra geometry cost for Mali GPUs); Equilibrado and
-# Refinado add 2X MSAA which is nearly free on tiled mobile GPUs.  FXAA cleans
-# what MSAA misses and costs < 0.3 ms even on a Galaxy A15.
-const AA_LEVELS = [Viewport.MSAA_DISABLED, Viewport.MSAA_2X, Viewport.MSAA_2X]
-const SCREEN_AA = [Viewport.SCREEN_SPACE_AA_FXAA, Viewport.SCREEN_SPACE_AA_FXAA, Viewport.SCREEN_SPACE_AA_FXAA]
+# Compatibility does not support screen-space FXAA. Use actual MSAA for silhouettes.
+const AA_LEVELS = [Viewport.MSAA_DISABLED, Viewport.MSAA_2X, Viewport.MSAA_8X]
+const SCREEN_AA = [Viewport.SCREEN_SPACE_AA_DISABLED, Viewport.SCREEN_SPACE_AA_DISABLED, Viewport.SCREEN_SPACE_AA_DISABLED]
 const EFFECT_LIMITS = [20, 48, 96]
 # Leve targets budget phones (Galaxy A15): 0.72x keeps text readable while
 # halving pixel throughput vs native.  Refinado stays at 1.0 for flagship feel.
@@ -15,7 +13,7 @@ const MIN_RENDER_SCALES = [0.50, 0.62, 0.72]
 const CONFIG_PATH = "user://video_settings.cfg"
 var fps = 60
 # A phone starts on the performance profile; a PC has no reason to.
-var quality = 0 if OS.has_feature("mobile") else 2
+var quality = 2 if OS.has_feature("open_test") else (0 if OS.has_feature("mobile") else 2)
 var vsync = true
 var show_fps = false
 var runtime_scale = 0.72
@@ -33,6 +31,8 @@ func load_preferences(path: String = CONFIG_PATH) -> void:
 	# update cannot preserve the setting that caused stalls on entry-level phones.
 	if OS.has_feature("mobile") and int(config.get_value("video", "performance_version", 0)) < 2:
 		saved_quality = 0
+	if OS.has_feature("open_test") and int(config.get_value("video", "presentation_version", 0)) < 3:
+		saved_quality = 2
 	configure(int(config.get_value("video", "fps", 60)), saved_quality, bool(config.get_value("video", "vsync", true)), bool(config.get_value("video", "show_fps", false)))
 
 func configure(new_fps: int, new_quality: int, sync: bool, counter: bool) -> void:
@@ -53,6 +53,7 @@ func save_preferences(path: String = CONFIG_PATH) -> Error:
 	config.set_value("video", "vsync", vsync)
 	config.set_value("video", "show_fps", show_fps)
 	config.set_value("video", "performance_version", 2)
+	config.set_value("video", "presentation_version", 3)
 	return config.save(path)
 
 func apply(viewport: Viewport, arena) -> void:

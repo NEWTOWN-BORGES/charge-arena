@@ -3,6 +3,7 @@ extends RefCounted
 const Campaign = preload("res://scripts/campaign.gd")
 const Skins = preload("res://scripts/skins.gd")
 const SAVE_PATH = "user://cup_v1.cfg"
+const STORY_BOSSES = [1, 4, 8, 6, 3, 2, 7, 9, 5, 10]
 const FULL_STAGES = 10
 const QUALIFIERS = 5
 const STAGE_MATCHES = 6
@@ -14,6 +15,8 @@ const SEEDS = ["Aro", "Bora", "Ciro", "Duna", "Elo", "Faro", "Gala", "Hélio", "
 const BOSS_NAMES = {1: "Faroleiro", 2: "Astrónomo", 3: "Jardineiro", 4: "Mineiro", 5: "Sentinela", 6: "Relojoeiro", 7: "Caça-Trovões", 8: "Alquimista", 9: "Corsário", 10: "Arconte Solar"}
 var path = SAVE_PATH
 var wins = 0
+var entrance_passed = false
+var entrance_score: Array = []
 var history: Array = []
 var entrants: Array = []
 var rounds: Array = []
@@ -32,16 +35,9 @@ func reset() -> void:
 	history.clear()
 	rounds.clear()
 	world_results.clear()
-	var rng = RandomNumberGenerator.new()
-	rng.seed = seed_value
-	boss_order = [4, 8, 6, 3, 9, 7, 2, 5]
-	for i in range(boss_order.size() - 1, 0, -1):
-		var j = rng.randi_range(0, i)
-		var swap = boss_order[i]
-		boss_order[i] = boss_order[j]
-		boss_order[j] = swap
-	boss_order.push_front(1)
-	boss_order.append(10)
+	entrance_passed = false
+	entrance_score = []
+	boss_order = STORY_BOSSES.duplicate()
 	headlines = [{"round": 0, "title": "Uma taça. Mil percursos.", "body": "Cada vitória tua faz avançar a competição."}, {"round": 0, "title": "Aurel procura o penta", "body": "O tetracampeão domina as capas. Sentinela e Arconte Solar entram na luta pelo título."}]
 	prepare_entrants()
 
@@ -53,6 +49,7 @@ func local_wins(at: int = -1) -> int:
 	return STAGE_MATCHES if count >= FULL_MATCHES else count % STAGE_MATCHES
 
 func sector_label(at: int = -1) -> String:
+	if at < 0 and not entrance_passed: return "ADMISSÃO"
 	var index = stage_index(at)
 	return "FAROL" if index == 0 else ("FASE FINAL" if index == 9 else "SETOR %02d" % (index + 1))
 
@@ -79,9 +76,12 @@ func stage_rounds(stage: int = -1) -> Array:
 	return rounds.filter(func(r): return r.stage == index)
 
 func opponent() -> String:
+	if not entrance_passed: return "Aurora"
 	return BOSS_NAMES[boss_id()] if local_wins() >= QUALIFIERS else normal_name(stage_index(), local_wins())
 
 func confirmed_match() -> Dictionary:
+	if not entrance_passed:
+		return {"name": "Aurora", "round": 0, "is_final": false, "grand_final": false, "boss": 0, "hue": "", "entrance": true}
 	if wins >= FULL_MATCHES: return {}
 	var name_value = opponent()
 	if local_wins() == QUALIFIERS:
@@ -96,6 +96,14 @@ func confirmed_match() -> Dictionary:
 		"grand_final": wins == FULL_MATCHES - 1, "boss": entry.boss, "hue": entry.hue}
 
 func level() -> Dictionary:
+	if not entrance_passed:
+		var entry: Dictionary = Campaign.LEVELS[0].duplicate(true)
+		entry.map.id = "cup_entrance"
+		entry.boss = 0
+		entry.hue = ""
+		entry.name = "Aurora · Teste de entrada"
+		entry.challenge = "Vence Aurora para entrar na competição. Move-te para apontar, abre a defesa e marca na baliza."
+		return entry
 	var sources = [0, 2, 3, 4, 8]
 	var result: Dictionary = Campaign.LEVELS[sources[mini(local_wins(), QUALIFIERS - 1)]].duplicate(true)
 	if local_wins() >= QUALIFIERS:
@@ -131,6 +139,7 @@ func kit() -> Array:
 	return [["blast", "walls"], ["rapid", "weld"], ["air", "ghost"], ["blast", "mirror"], ["rapid", "magnet"], ["pierce", "walls"], ["air", "freeze"]][wins % 7].duplicate()
 
 func ultimate() -> String:
+	if not entrance_passed: return ""
 	if local_wins() >= QUALIFIERS: return Skins.CATALOG[boss_id()].ultimate
 	var equipped = kit()
 	if "walls" in equipped or "mirror" in equipped: return "b_bar"
@@ -144,6 +153,10 @@ func defeated_bosses() -> Array:
 	return history.filter(func(h): return h.get("boss", 0) > 0).map(func(h): return h.boss)
 
 func complete(score: Array) -> bool:
+	if not entrance_passed:
+		entrance_passed = true
+		entrance_score = score.duplicate()
+		return true
 	if confirmed_match().is_empty(): return false
 	var stage = stage_index()
 	var local = local_wins()
@@ -182,7 +195,10 @@ func complete(score: Array) -> bool:
 
 func save() -> Error:
 	var data = ConfigFile.new()
-	data.set_value("cup", "version", 3)
+	data.set_value("cup", "version", 4)
+	data.set_value("cup", "entrance_passed", entrance_passed)
+	data.set_value("cup", "entrance_score", entrance_score)
+	data.set_value("cup", "boss_order", boss_order)
 	data.set_value("cup", "legacy_history", legacy_history)
 	data.set_value("cup", "seed", seed_value)
 	data.set_value("cup", "wins", wins)
@@ -212,7 +228,17 @@ func restore() -> void:
 			selected.append(saved[old_index] if saved is Array and old_index >= 0 and old_index < saved.size() else {})
 	else:
 		selected = saved if saved is Array else []
+	if version < 4 and not FileAccess.file_exists(path + ".before-story-order"):
+		DirAccess.copy_absolute(path, path + ".before-story-order")
 	reset()
+	# Preserve bosses actually defeated; unplayed stages follow the requested order.
+	var conquered: Array = []
+	for record in selected:
+		var boss = int(record.get("boss", 0)) if record is Dictionary else 0
+		if boss in STORY_BOSSES and not conquered.has(boss): conquered.append(boss)
+	boss_order = conquered + STORY_BOSSES.filter(func(id): return not conquered.has(id))
+	prepare_entrants()
+	entrance_passed = true # Replay saved victories without inserting a new admission win.
 	for i in range(count):
 		var record: Dictionary = selected[i] if i < selected.size() and selected[i] is Dictionary else {}
 		complete(record.get("score", [2, 0]))
@@ -220,3 +246,6 @@ func restore() -> void:
 			history.back().opponent = record.get("opponent", history.back().opponent)
 			history.back().legacy_round = record.get("legacy_round", record.get("round", i + 1))
 
+
+	entrance_passed = bool(data.get_value("cup", "entrance_passed", count > 0)) if version >= 4 else count > 0
+	entrance_score = Array(data.get_value("cup", "entrance_score", []))

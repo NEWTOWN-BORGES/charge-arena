@@ -22,6 +22,7 @@ const POWER_BALL_SCALE = [1.0, 1.4, 0.95, 0.7]
 # read while the enlarged walls still remain fully visible.
 const LANDSCAPE_SIZE = 17.0 * Rules.MAP_SCALE
 var units: Array = []
+var crafting_pilot = false
 var brick_nodes: Array = []
 var goals: Array = []
 var projectiles: Dictionary = {}
@@ -166,7 +167,41 @@ func beveled_shape(dim: Vector3, bevel: float) -> ArrayMesh:
 	return shape
 
 func box(parent: Node3D, pos: Vector3, dimensions: Vector3, color: Color, luminous: bool = false, bevel: float = 0.06) -> MeshInstance3D:
+	if crafting_pilot and not luminous and dimensions.x * dimensions.y * dimensions.z > 0.004 and minf(dimensions.x, minf(dimensions.y, dimensions.z)) > 0.07:
+		return mesh(parent, rounded_pilot_shape(dimensions, maxf(bevel, 0.07)), pos, color, luminous)
 	return mesh(parent, beveled_shape(dimensions, bevel), pos, color, luminous)
+
+func rounded_pilot_shape(dim: Vector3, radius: float) -> ArrayMesh:
+	var r = minf(radius, minf(dim.x, minf(dim.y, dim.z)) * 0.45)
+	var key = "pilot_round" + str(dim) + str(r)
+	if shapes.has(key): return shapes[key]
+	var half = dim * 0.5
+	var inner = half - Vector3.ONE * r
+	var st = SurfaceTool.new()
+	st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	# Six rounded patches with analytic normals: smooth enamel, flat central panels.
+	for axis in range(3):
+		var u = (axis + 1) % 3
+		var v = (axis + 2) % 3
+		var us = [-half[u], -half[u] + r * 0.3, -inner[u], inner[u], half[u] - r * 0.3, half[u]]
+		var vs = [-half[v], -half[v] + r * 0.3, -inner[v], inner[v], half[v] - r * 0.3, half[v]]
+		for sign_value in [-1.0, 1.0]:
+			for x in range(5):
+				for y in range(5):
+					var order = [Vector2i(x,y), Vector2i(x,y+1), Vector2i(x+1,y+1), Vector2i(x,y), Vector2i(x+1,y+1), Vector2i(x+1,y)]
+					if sign_value < 0: order.reverse()
+					for at in order:
+						var point = Vector3.ZERO
+						point[axis] = half[axis] * sign_value
+						point[u] = us[at.x]
+						point[v] = vs[at.y]
+						var core = point.clamp(-inner, inner)
+						var normal = (point - core).normalized()
+						st.set_normal(normal)
+						st.add_vertex(core + normal * r)
+	var shape = st.commit()
+	shapes[key] = shape
+	return shape
 
 func cylinder(parent: Node3D, pos: Vector3, radius: float, height: float, color: Color, luminous: bool = false, segments: int = 48) -> MeshInstance3D:
 	var key = "c" + str(radius) + str(height) + str(segments)
@@ -796,6 +831,7 @@ func build_player(color: Color, team: int, skin: int = 0, parent: Node3D = null,
 	root.add_child(body)
 	# Every skin provides LegL, LegR, Gun and Gun/Flash for the shared animation code.
 	var palette = Skins.colors(skin, color, tint)
+	crafting_pilot = true
 	if skin == 1:
 		build_lighthouse_keeper(body, palette.body, palette.light)
 	elif skin == 2:
@@ -830,6 +866,7 @@ func build_player(color: Color, team: int, skin: int = 0, parent: Node3D = null,
 	box(body, Vector3(-0.20, 0.86, -0.265), Vector3(0.085, 0.12, 0.026), badge_color, false, 0.018)
 	for side in [-1, 1]:
 		box(body, Vector3(side*0.43, 1.00, -0.07), Vector3(0.22, 0.035, 0.24), badge_color, false, 0.015)
+	crafting_pilot = false
 	# Frost: a block of ice around the pilot with crystals standing off it, and a ring of
 	# spikes grown out of the floor. It is the heaviest of the worn effects on purpose -
 	# being frozen is the worst thing that happens to you in a match.

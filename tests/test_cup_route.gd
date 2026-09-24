@@ -7,6 +7,7 @@ func visible_text(node: Node) -> String:
 	return result
 func run() -> void:
 	var cup = preload("res://scripts/cup.gd").new()
+	cup.complete([2, 0]) # Fixture starts after admission.
 	var screen = preload("res://scripts/cup_screen.gd").new()
 	screen.cup = cup
 	root.add_child(screen)
@@ -24,6 +25,7 @@ func run() -> void:
 			cup.complete([2, n % 2])
 		else: assert(route.state == "COMPLETE" and screen.play.disabled)
 	cup.reset()
+	cup.complete([2, 0]) # Fixture starts after admission.
 	for i in range(5): cup.complete([2, 1])
 	var complete_round: Dictionary = cup.rounds.pop_back()
 	screen.refresh()

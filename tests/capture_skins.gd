@@ -63,6 +63,8 @@ func run() -> void:
 	var game = load("res://scenes/main.tscn").instantiate()
 	root.add_child(game)
 	await create_timer(0.3).timeout
+	game.video.configure(60, 2, false, false)
+	game.video.apply(root, game.arena)
 	game.start_pve()
 	game.set_process(false)
 	game.set_physics_process(false)

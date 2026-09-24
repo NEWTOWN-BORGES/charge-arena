@@ -3,6 +3,7 @@ const News = preload("res://scripts/cup_news.gd")
 func _initialize() -> void: call_deferred("run")
 func run() -> void:
 	var cup = preload("res://scripts/cup.gd").new()
+	cup.complete([2, 0]) # Fixture starts after admission.
 	for n in range(12):
 		var stories = News.edition(cup, n)
 		assert(stories.size() == 3)
