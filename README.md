@@ -1,3 +1,5 @@
+> **2.9.3 — IA:** Normal/Difícil mais ativos, poderes sem esperar pelo tiro básico e compatibilidade dos saves da loja. [Alterações e testes](docs/IA-2.9.3.md).
+
 > **2.9.1:** notificações compactas com retratos dos desbloqueios; LAB com Sentinela e Alfa com Arconte. [Detalhes](docs/NOTIFICACOES-2.9.1.md). APKs em `builds/charge-arena-2.9.1-sentinela-lab.apk` e `builds/charge-arena-2.9.1-alfa.apk`.
 
 > **2.9 — Sentinela LAB Refinado:** skins arredondadas, MSAA 8×, masters das músicas originais e nova ordem da história com Aurora na admissão. [Alterações e validação](docs/REFINADO-2.9.md). APK local: `builds/charge-arena-2.9.0-sentinela-lab.apk`.

@@ -276,7 +276,7 @@ func run() -> void:
 	var ramps = true
 	for i in range(1, waits.size()):
 		ramps = ramps and waits[i] <= waits[i - 1] + 0.001
-	check(ramps and waits[0] > waits[waits.size() - 1] * 3.0, "The later the level, the sooner the boss reaches for its ultimate (%.0f s no primeiro, %.0f s no último)" % [waits[0], waits[waits.size() - 1]])
+	check(ramps and waits[0] > waits[waits.size() - 1] * 1.5, "The later the level, the sooner the boss reaches for its ultimate (%.0f s no primeiro, %.0f s no último)" % [waits[0], waits[waits.size() - 1]])
 	check(float(Campaign.ai_profile(8, 2).ultimate_wait) < float(Campaign.ai_profile(8, 0).ultimate_wait), "And DIFÍCIL brings it out sooner than FÁCIL")
 
 	# A boss left to its own devices, with nobody handing it charge, still brings out its

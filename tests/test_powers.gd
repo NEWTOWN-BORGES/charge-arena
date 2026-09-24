@@ -227,7 +227,7 @@ func run() -> void:
 	check(quiet > 0 and relentless <= 30.0 / Rules.AI_LEVELS[2].power_gap + 1, "Even Fácil uses them, and Difícil never spams them")
 	var first_boss: Dictionary = Campaign.ai_profile(0, 1)
 	var last_boss: Dictionary = Campaign.ai_profile(Campaign.LEVELS.size() - 1, 1)
-	check(first_boss.power_gap > last_boss.power_gap and last_boss.power_gap >= 1.9, "Campaign bosses use powers more often level after level (%.2f para %.2f)" % [first_boss.power_gap, last_boss.power_gap])
+	check(first_boss.power_gap > last_boss.power_gap and last_boss.power_gap >= 0.8, "Campaign bosses use powers more often level after level (%.2f para %.2f)" % [first_boss.power_gap, last_boss.power_gap])
 	check(Campaign.ai_profile(0, 0).power_gap > first_boss.power_gap and Campaign.ai_profile(0, 2).power_gap < first_boss.power_gap, "The chosen difficulty shifts that pace as well")
 	r = playing()
 	r.ai_level = 2

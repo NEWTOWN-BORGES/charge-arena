@@ -229,6 +229,15 @@ static func ai_profile(index: int, difficulty: int) -> Dictionary:
 			profile.ultimate_gap *= 0.7
 			# On DIFICIL the ultimate winds as fast as the rest of the kit.
 			profile.ultimate_rate = 2.0
+	if difficulty > 0:
+		profile.fire_gap = lerpf(0.8, 0.25, tier) if difficulty == 1 else lerpf(0.28, 0.0, tier)
+		profile.move = lerpf(0.65, 0.88, tier) if difficulty == 1 else lerpf(0.86, 1.0, tier)
+		profile.dodge = true
+		profile.power_gap = lerpf(1.2, 0.9, tier) if difficulty == 1 else lerpf(0.65, 0.45, tier)
+		profile.charge_tick = lerpf(1.0, 0.8, tier) if difficulty == 1 else lerpf(0.7, 0.55, tier)
+		profile.ultimate_rate = 2.0
+		profile.ultimate_wait = lerpf(8.0, 4.0, tier) if difficulty == 1 else lerpf(5.0, 2.0, tier)
+		profile.ultimate_gap = 14.0 if difficulty == 1 else 10.0
 	return profile
 
 func is_unlocked(index: int) -> bool:

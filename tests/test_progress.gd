@@ -46,7 +46,7 @@ func fresh_shop():
 func run() -> void:
 	# ---------------------------------------------------------------- the demo starts closed
 	# This test APK exposes the sandbox arenas and powers, while keeping skin prizes earned.
-	check(not Skins.UNLOCK_ALL_FOR_TESTS and Campaign.UNLOCK_ALL_FOR_TESTS and Powers.UNLOCK_ALL_FOR_TESTS, "Skin rewards progress while sandbox arenas and powers remain open")
+	check(not Skins.UNLOCK_ALL_FOR_TESTS and not Powers.UNLOCK_ALL_FOR_TESTS, "Skin rewards and powers start locked and must be earned or bought")
 	check(not Powers.START_WITH_ULTIMATE_FOR_TESTS, "And a match still starts with the ultimate keys cold, open build or not")
 	var campaign = fresh_campaign()
 	var skins = fresh_skins()
@@ -98,6 +98,21 @@ func run() -> void:
 	check(again_campaign.is_unlocked(1), "The opened level is still open after a restart")
 	check(again_skins.is_unlocked(boss_two), "The won pilot is still yours")
 	check(again_shop.is_owned("laser") and again_shop.kit[0] == "laser", "The bought power is still bought, and still equipped")
+
+	# Version 2 purchases and balance survive the version-3 closed-shop update.
+	var v2 = ConfigFile.new()
+	v2.set_value("powers", "version", 2)
+	v2.set_value("powers", "bricks", 321)
+	v2.set_value("powers", "owned", ["blast", "air", "laser"])
+	v2.set_value("powers", "kit", ["laser", "air"])
+	v2.save(TMP + "-v2.tmp")
+	var upgraded = fresh_shop()
+	upgraded.config_path = TMP + "-v2.tmp"
+	upgraded.load_preferences()
+	check(upgraded.bricks == 321 and upgraded.is_owned("laser") and upgraded.kit[0] == "laser", "Version-2 earned powers, equipped kit and currency survive migration")
+	check(FileAccess.file_exists(upgraded.config_path + ".before-v3"), "Migration keeps a backup of the previous shop save")
+	DirAccess.remove_absolute(ProjectSettings.globalize_path(upgraded.config_path))
+	DirAccess.remove_absolute(ProjectSettings.globalize_path(upgraded.config_path + ".before-v3"))
 
 	# ---------------------------------------------------------------- an old open save is refused
 	# Exactly what sits on a phone that ran the unlocked test builds: everything won, a full

@@ -131,6 +131,9 @@ func level() -> Dictionary:
 
 func profile(difficulty: int) -> Dictionary:
 	var t = minf(wins / float(FULL_MATCHES - 1), 1.0)
+	if difficulty > 0:
+		var hard = difficulty >= 2
+		return {"fire_gap": lerpf(0.28, 0.0, t) if hard else lerpf(0.8, 0.25, t), "move": lerpf(0.86, 1.0, t) if hard else lerpf(0.65, 0.88, t), "dodge": true, "power_gap": 0.6 if hard else 1.1, "ultimate_wait": 4.0 if hard else 7.0, "charge_tick": lerpf(0.7, 0.55, t) if hard else lerpf(1.0, 0.8, t), "ultimate_gap": 10.0 if hard else 14.0, "ultimate_rate": 2.0}
 	var factor = [1.35, 1.0, 0.72][clampi(difficulty, 0, 2)]
 	return {"fire_gap": lerpf(2.6, 0.7, t) * factor, "move": lerpf(0.32, 0.72, t), "dodge": wins >= 5, "power_gap": lerpf(14.0, 6.0, t) * factor, "ultimate_wait": 32.0 * factor, "charge_tick": 2.5 * factor, "ultimate_gap": 38.0, "ultimate_rate": 1.0}
 

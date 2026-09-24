@@ -100,20 +100,19 @@ const BASIC_ULTIMATES = [
 # Saves written by the old unlocked test builds have everything open and a full wallet.
 # The demo refuses to read them: a stored file without this stamp is left behind and the
 # run starts from nothing, which is the whole point of a progression build.
-const SAVE_VERSION = 2
+const SAVE_VERSION = 3
 const STARTER_KIT = ["blast", "air"]
 const KIT_SIZE = 2
-# Testing build: every power is already bought, with a full wallet, so the whole kit can
-# be tried out. Set to false to sell them one by one again; purchases are saved either way.
-const UNLOCK_ALL_FOR_TESTS = true
-const TEST_WALLET = 5000
+# Testing build: set to false so all powers except the starter kit are locked until bought.
+const UNLOCK_ALL_FOR_TESTS = false
+const TEST_WALLET = 0
 # Testing build: the ultimate starts a match already charged, so it can be tried out
 # without farming twenty bricks first.
 const START_WITH_ULTIMATE_FOR_TESTS = false
 var config_path = CONFIG_PATH
 var unlock_all = UNLOCK_ALL_FOR_TESTS
-var bricks = TEST_WALLET if UNLOCK_ALL_FOR_TESTS else 0
-var owned: Array = all_ids() if UNLOCK_ALL_FOR_TESTS else STARTER_KIT.duplicate()
+var bricks = 0
+var owned: Array = STARTER_KIT.duplicate()
 var kit: Array = STARTER_KIT.duplicate()
 
 static func all_ids() -> Array:
@@ -187,8 +186,12 @@ func load_preferences() -> void:
 	var config = ConfigFile.new()
 	if config.load(config_path) != OK:
 		return
-	if int(config.get_value("powers", "version", 1)) < SAVE_VERSION:
+	var saved_version = int(config.get_value("powers", "version", 1))
+	if saved_version < 2:
 		return
+	# Version 3 closes the shop for new installs, not for earned version-2 saves.
+	if saved_version < SAVE_VERSION and not FileAccess.file_exists(config_path + ".before-v3"):
+		DirAccess.copy_absolute(config_path, config_path + ".before-v3")
 	bricks = maxi(int(config.get_value("powers", "bricks", 0)), 0)
 	owned = all_ids() if unlock_all else STARTER_KIT.duplicate()
 	if unlock_all:

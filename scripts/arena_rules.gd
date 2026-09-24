@@ -208,9 +208,9 @@ const MAX_BOUNCES = 3
 # long it waits between powers. The default (index 2, DIFÍCIL) is the full-strength
 # planner used by the AI tests.
 const AI_LEVELS = [
-	{"fire_gap": 1.8, "move": 0.45, "dodge": false, "power_gap": 8.0},
-	{"fire_gap": 0.95, "move": 0.65, "dodge": true, "power_gap": 5.0},
-	{"fire_gap": 0.0, "move": 1.0, "dodge": true, "power_gap": 3.0},
+	{"fire_gap": 1.8, "move": 0.45, "dodge": false, "power_gap": 8.0, "ultimate_wait": 20.0, "charge_tick": 2.4, "ultimate_gap": 30.0, "ultimate_rate": 1.0},
+	{"fire_gap": 0.30, "move": 0.88, "dodge": true, "power_gap": 1.0, "ultimate_wait": 5.0, "charge_tick": 0.85, "ultimate_gap": 12.0, "ultimate_rate": 2.0},
+	{"fire_gap": 0.0, "move": 1.0, "dodge": true, "power_gap": 0.5, "ultimate_wait": 2.5, "charge_tick": 0.55, "ultimate_gap": 9.0, "ultimate_rate": 2.0},
 ]
 const AI_POWER_GAP = 5.0
 const WALLS = [Vector2(0, -HALF_LENGTH), Vector2(HALF_WIDTH, -HALF_LENGTH / 2), Vector2(HALF_WIDTH, HALF_LENGTH / 2), Vector2(0, HALF_LENGTH), Vector2(-HALF_WIDTH, HALF_LENGTH / 2), Vector2(-HALF_WIDTH, -HALF_LENGTH / 2)]
@@ -237,6 +237,7 @@ var ai_scan_index = 0
 var ai_best_score = -INF
 var ai_next_fire_check = 0.0
 var ai_next_power = 0.0
+var ai_next_decision = 0.0
 var ai_charge_time = 0.0
 var ai_charge_steps = 0
 var ai_next_ultimate = 0.0
@@ -553,6 +554,7 @@ func reset_round() -> void:
 	ai_best_score = -INF
 	ai_next_fire_check = 0.0
 	ai_next_power = 0.0
+	ai_next_decision = 0.0
 	ai_charge_time = 0.0
 	ai_charge_steps = 0
 	ai_next_ultimate = 0.0
@@ -755,12 +757,12 @@ func step(dt: float, commands: Array) -> void:
 			# While the lance is lit, the lance is the gun. The pilot used to keep firing
 			# ordinary rounds underneath it, and those are what people saw ricocheting.
 			shoot(team)
-	if not ai_profile.is_empty():
-		# A campaign boss winds its kit up with the clock as well as with the bricks it
-		# breaks. Leaning on bricks alone it almost never reached twenty: measured over a
-		# hundred seconds of play, the ultimate came out zero times.
+	var pace: Dictionary = ai_profile if not ai_profile.is_empty() else AI_LEVELS[clampi(ai_level, 0, AI_LEVELS.size() - 1)]
+	if not ai_profile.is_empty() or bool(commands[1].get("_ai", false)):
+		# A pilot winds its kit up with the clock as well as with the bricks it
+		# breaks, keeping powers and ultimates active throughout the match.
 		ai_charge_time += dt
-		var wind: float = float(ai_profile.get("charge_tick", 1.6))
+		var wind: float = float(pace.get("charge_tick", 1.6))
 		while ai_charge_time >= wind:
 			ai_charge_time -= wind
 			ai_charge_steps += 1
@@ -768,7 +770,7 @@ func step(dt: float, commands: Array) -> void:
 			# pace the late bosses were throwing four in a hundred seconds. On DIFICIL it
 			# winds at full pace, because a boss that sits on its ultimate for half the
 			# match is not a hard boss, it is a quiet one.
-			var half_pace: bool = float(ai_profile.get("ultimate_rate", 1.0)) < 1.5
+			var half_pace: bool = float(pace.get("ultimate_rate", 1.0)) < 1.5
 			for index in range(POWER_SLOTS):
 				if index == POWER_SLOTS - 1 and half_pace and ai_charge_steps % 2 == 1:
 					continue
@@ -1839,11 +1841,13 @@ func ai_command() -> Dictionary:
 	if phase != "play" or players[1].stun > 0:
 		return {"move": Vector2.ZERO, "fire": false}
 	# Spread a fine search across frames instead of running a full planner every tick.
+	var scan_gap = 0.04 if ai_level >= 2 else 0.05
+	var candidates_per_step = 4 # Bounded trajectory work on mobile, even on Hard.
 	if elapsed >= ai_next_scan:
-		ai_next_scan = elapsed + 0.05
+		ai_next_scan = elapsed + scan_gap
 		if ai_scan_index == 0:
 			ai_best_score = ai_angle_score(ai_target_angle)
-		for _candidate in range(4):
+		for _candidate in range(candidates_per_step):
 			# The step follows the arc, so the scan always covers it end to end.
 			var angle = 0.0 if ai_scan_index == 0 else ceilf(ai_scan_index / 2.0) * (track_limit / 24.0) * (1 if ai_scan_index % 2 else -1)
 			var score = ai_angle_score(angle)
@@ -1871,40 +1875,55 @@ func ai_command() -> Dictionary:
 		if absf(players[1].angle + dodge * 0.12) > track_limit:
 			dodge = -signf(players[1].angle)
 		move.x = clampf(dodge, -1, 1) * level.move
-		return {"move": move, "fire": false}
+		return {"move": move, "fire": false, "power": ai_evasive_power(level) if ai_level > 0 else -1, "_ai": true}
 	var fire = false
 	var power = -1
+	var outcome: Dictionary = {}
 	if players[1].cooldown <= 0 and elapsed >= ai_next_fire_check:
 		ai_next_fire_check = elapsed + 0.10
-		var outcome = predict_shot(1, players[1].angle)
+		outcome = predict_shot(1, players[1].angle)
 		fire = shot_value(outcome) > 0
 		if fire:
 			# Hold this validated angle on the firing frame; movement is the only aiming.
 			move = Vector2.ZERO
 			ai_next_fire_check = elapsed + 0.10 + level.fire_gap
-		# The ultimate is weighed first. Asked afterwards it never came out: the cheap
-		# powers spend the shared pause every few seconds and starve it forever.
-		power = ai_ultimate(level, fire and outcome.get("kind", "") == "brick")
-		if power < 0:
-			power = ai_power(outcome, level) if fire else ai_slot(["air"], level)
-		if power < 0:
+	# Evaluate powers independently of weapon cooldown and fire cadence. A ready
+	# shield/heal or ultimate must not wait for the next basic shot to be considered.
+	if elapsed >= ai_next_decision and elapsed >= ai_next_power:
+		ai_next_decision = elapsed + (0.12 if ai_level > 1 else (0.16 if ai_level == 1 else 0.5))
+		if outcome.is_empty(): outcome = predict_shot(1, players[1].angle)
+		var aimed = shot_value(outcome) > 0
+		if ai_level > 0 and team_health(1) < wall_health_full(1) * 0.45:
 			power = ai_defensive_power(level)
-	return {"move": move, "fire": fire, "power": power}
+		if power < 0: power = ai_ultimate(level, aimed)
+		if power < 0 and ai_level > 0: power = ai_defensive_power(level)
+		if power < 0: power = ai_power(outcome, level)
+		if power < 0 and aimed: power = ai_slot(["air"], level)
+		if power < 0: power = ai_defensive_power(level)
+		if power >= 0 and aimed: move = Vector2.ZERO
+	return {"move": move, "fire": fire, "power": power, "_ai": true}
+
+func ai_evasive_power(level: Dictionary) -> int:
+	if elapsed < ai_next_decision or elapsed < ai_next_power: return -1
+	ai_next_decision = elapsed + 0.18
+	var defensive = ai_defensive_power(level)
+	if defensive >= 0: return defensive
+	if power_id(1, POWER_SLOTS - 1) in ["singularity", "plating", "bloom", "plunder", "b_patch", "b_bar", "b_push", "sentries"]:
+		return ai_ultimate(level, false)
+	return -1
 
 func ai_power(outcome: Dictionary, level: Dictionary) -> int:
 	# The boss only spends a power on a shot already worth taking, and the heavier
 	# burst goes first so it does not sit unused behind the cheaper blast.
-	if elapsed < ai_next_power or outcome.get("kind", "") != "brick":
+	if elapsed < ai_next_power or outcome.get("kind", "") not in ["brick", "goal"]:
 		return -1
 	# Heavier powers first, so a cheap one does not keep the expensive kit idle.
-	return ai_slot(["laser", "pierce", "rapid", "magnet", "stun", "blast", "ghost"], level)
+	var wanted = ["pierce", "rapid", "magnet", "stun", "blast", "ghost"]
+	if ai_beam_target(): wanted.push_front("laser")
+	return ai_slot(wanted, level)
 
 func ai_ultimate(level: Dictionary, aimed: bool) -> int:
-	# The boss keeps its skin ultimate for the moment that ultimate is actually good for,
-	# and only once the level says it may: the first bosses sit on it for most of a match,
-	# the last ones bring it out early.
-	# Its own pause on top of the shared one: with the kit winding up on the clock, the last
-	# bosses were throwing four ultimates in a hundred seconds.
+	# Check availability and tactical value independently from the basic weapon.
 	if elapsed < float(level.get("ultimate_wait", 30.0)) or elapsed < ai_next_power or elapsed < ai_next_ultimate:
 		return -1
 	var id = power_id(1, POWER_SLOTS - 1)
@@ -1913,30 +1932,35 @@ func ai_ultimate(level: Dictionary, aimed: bool) -> int:
 	var ready = false
 	match id:
 		"sun_ray":
-			# A beam straight out of the gun: only worth it lined up on the wall.
-			ready = aimed
-		"meteors", "thunder":
+			ready = ai_beam_target()
+		"meteors", "thunder", "b_hail", "b_spark":
 			# They rain on the far half; anything still standing over there will do.
 			ready = brick_count(0) > 0
 		"bloom":
-			ready = team_health(1) < wall_health_full(1) * 0.7
+			ready = team_health(1) < wall_health_full(1) * (0.93 if ai_level > 0 else 0.7)
 		"plunder":
 			# Worth it when the boss would be taking a better wall than it gives, or when
 			# its own is battered enough that any trade is an improvement.
 			ready = brick_count(1) < brick_count(0) or team_health(1) < wall_health_full(1) * 0.55
 		"singularity":
 			# Its whole point is a field full of shots to swallow.
-			ready = balls.size() >= 3
+			ready = balls.filter(func(b): return b.owner == 0).size() >= (1 if ai_level > 0 else 3)
 		"sentries":
 			ready = turrets.filter(func(t): return t.alive and t.team == 1).is_empty()
 		"plating":
 			# Armour is worth most with a wall left to armour and a wall coming at it.
-			ready = team_health(1) < wall_health_full(1) * 0.85 and brick_count(1) > 4
+			ready = brick_count(1) > 0 and (ai_level > 0 or team_health(1) < wall_health_full(1) * 0.85)
 		"surge":
 			# Six seconds of turbocharged fire: only while there is something to shoot at.
 			ready = brick_count(0) > 0
 		"volley":
 			ready = brick_count(0) > 0
+		"b_patch":
+			ready = team_health(1) < wall_health_full(1) * 0.98
+		"b_quick", "b_forge", "b_aim", "b_drill":
+			ready = brick_count(0) > 0
+		"b_charge", "b_fan", "b_salvo":
+			ready = aimed
 		_:
 			ready = true
 	if not ready:
@@ -1972,30 +1996,41 @@ func ai_slot(wanted: Array, level: Dictionary) -> int:
 	return -1
 
 func ai_defensive_power(level: Dictionary) -> int:
-	# With its wall coming down, the boss reaches for whatever keeps the goal shut. Measured
-	# as a share of the wall it was given and not as a count of bricks: the walls went from
-	# forty to sixty-four, and against a fixed count of fourteen the boss simply never
-	# defended itself until it was already beaten.
 	if elapsed < ai_next_power:
 		return -1
 	var whole: int = maxi(bricks.size() / 2, 1)
 	var left: float = float(brick_count(1)) / float(whole)
 	var health: float = float(team_health(1)) / float(maxi(wall_health_full(1), 1))
+	var incoming_threat: bool = balls.any(func(b): return b.owner == 0 and b.v.y > 0)
 	var wanted: Array = []
 	if left <= 0.2:
 		wanted.append("rebuild")
-	if left <= 0.35:
+	if left <= (0.9 if ai_level > 0 else 0.35) or (ai_level > 0 and incoming_threat):
 		wanted.append_array(["walls", "plating"])
-	if health <= 0.75:
-		# Long before the wall falls: a patch is worth most while there is wall to patch.
+	if health < (0.98 if ai_level > 0 else 0.75):
 		wanted.append("weld")
-	if left <= 0.6:
-		wanted.append_array(["thorns", "mirror", "freeze", "stun"])
+	if left <= (0.9 if ai_level > 0 else 0.6) or (ai_level > 0 and incoming_threat):
+		wanted.append_array(["thorns", "mirror"])
+	if ai_level > 0 and powers[0].freeze_time <= 0 and players[0].stun <= 0:
+		wanted.append_array(["freeze", "stun"])
 	return ai_slot(wanted, level)
+
+func ai_beam_target() -> bool:
+	var origin: Vector2 = players[1].p
+	var heading = forward_direction(1, players[1].angle)
+	var side = Vector2(-heading.y, heading.x)
+	for brick in bricks:
+		if brick.team != 0 or not brick.alive: continue
+		var offset: Vector2 = brick.p - origin
+		if offset.dot(heading) > 0 and absf(offset.dot(side)) < brick_extent.x + 0.2:
+			return true
+	return false
 
 func ai_angle_score(angle: float) -> float:
 	var distance = absf(angle - players[1].angle)
-	var delay = distance * TRACK_WIDTH / SPEED
+	var pace: Dictionary = ai_profile if not ai_profile.is_empty() else AI_LEVELS[clampi(ai_level, 0, 2)]
+	var speed = SPEED * float(pace.move) * (FREEZE_WALK if powers[1].freeze_time > 0 else 1.0)
+	var delay = distance * TRACK_WIDTH / maxf(speed, 0.1)
 	return shot_value(predict_shot(1, angle, delay)) - distance * 2.0
 
 func shot_value(outcome: Dictionary) -> float:
