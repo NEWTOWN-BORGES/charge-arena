@@ -1,3 +1,5 @@
+> **2.9.4 — Muralhas:** colisões sólidas, Corsário corrigido, vida dos tijolos com barras grandes animadas e músicas exclusivas dos bots. [Alterações](docs/MURALHAS-2.9.4.md).
+
 > **2.9.3 — IA:** Normal/Difícil mais ativos, poderes sem esperar pelo tiro básico e compatibilidade dos saves da loja. [Alterações e testes](docs/IA-2.9.3.md).
 
 > **2.9.1:** notificações compactas com retratos dos desbloqueios; LAB com Sentinela e Alfa com Arconte. [Detalhes](docs/NOTIFICACOES-2.9.1.md). APKs em `builds/charge-arena-2.9.1-sentinela-lab.apk` e `builds/charge-arena-2.9.1-alfa.apk`.

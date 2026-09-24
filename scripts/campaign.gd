@@ -178,6 +178,15 @@ static func boss_kit(index: int) -> Array:
 			seat += 1
 	return BOSS_KITS[clampi(seat, 0, BOSS_KITS.size() - 1)].duplicate()
 
+static func menu_levels() -> Array:
+	return range(LEVELS.size()).filter(func(i): return not is_minor(i))
+
+static func menu_level(index: int) -> int:
+	var visible = menu_levels()
+	for candidate in visible:
+		if candidate >= index: return candidate
+	return visible.back()
+
 static func is_minor(index: int) -> bool:
 	# A station pilot: no skin of its own to win, and a plain ultimate.
 	return LEVELS[clampi(index, 0, LEVELS.size() - 1)].get("minor", false)
@@ -241,11 +250,11 @@ static func ai_profile(index: int, difficulty: int) -> Dictionary:
 	return profile
 
 func is_unlocked(index: int) -> bool:
-	return index >= 0 and index < LEVELS.size() and (unlock_all or index < mini(unlocked, LEVELS.size()))
+	return index >= 0 and index < LEVELS.size() and (unlock_all or index <= menu_level(mini(unlocked, LEVELS.size()) - 1))
 
 func suggested_level() -> int:
 	# The first playable level not yet won, for the menu to open on.
-	for index in range(LEVELS.size()):
+	for index in menu_levels():
 		if is_unlocked(index) and not completed.has(index):
 			return index
 	return next_level()
@@ -254,7 +263,7 @@ func is_completed(index: int) -> bool:
 	return completed.has(index)
 
 func next_level() -> int:
-	return mini(unlocked, LEVELS.size()) - 1
+	return menu_level(mini(unlocked, LEVELS.size()) - 1)
 
 func complete(index: int) -> bool:
 	# Returns true when this win opened a new level.

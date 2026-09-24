@@ -32,7 +32,7 @@ def note(n, duration, voice=0):
     envelope = np.minimum(t/.025, 1) * np.minimum(np.maximum(duration+.18-t, 0)/.18, 1)
     return sound * envelope * np.exp(-t * (.3 if voice % 3 else 1.1))
 
-def compose(index, target):
+def compose(index, target, rhythm_gain=1.0):
     bpm = [108, 112, 96, 104, 110, 92, 116, 118, 106, 114, 104][index]
     beat = 60/bpm
     length = 32*4*beat
@@ -62,17 +62,17 @@ def compose(index, target):
         for k, n in enumerate(chord):
             put(note(n+transpose, 4*beat, 2), pos, .045, (k-1.5)*.32)
         for tick in range(4):
-            put(note(chord[0]-12+transpose, beat*.68, 1), pos+tick*beat, .13)
+            put(note(chord[0]-12+transpose, beat*.68, 1), pos+tick*beat, .13 * (1 + (rhythm_gain - 1) * .5))
         # Short rhythm leaves negative space under the long melody.
         for tick in ([0, 2] if bridge else [0, 1.5, 2, 3.5]):
             t = np.arange(int(.24*SR))/SR
             kick = np.sin(2*np.pi*(48*t+65*.025*(1-np.exp(-t/.025))))*np.exp(-t*22)
-            put(kick, pos+tick*beat, .23)
+            put(kick, pos+tick*beat, .23 * rhythm_gain)
         for tick in [1,3]:
             t = np.arange(int(.16*SR))/SR
             noise = RNG.normal(0,1,len(t))
             snare = (noise - .85*np.roll(noise, 1))*np.exp(-t*35)*np.minimum(t/.003,1)
-            put(snare, pos+tick*beat, .025 if bridge else .05, -.15)
+            put(snare, pos+tick*beat, (.025 if bridge else .05) * rhythm_gain, -.15)
         for tick in range(8):
             t = np.arange(int(.055*SR))/SR
             hat = RNG.normal(0,1,len(t))*np.exp(-t*90)

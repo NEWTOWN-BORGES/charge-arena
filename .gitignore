@@ -3,3 +3,5 @@
 builds/
 *.tmp
 .test-user/
+
+__pycache__/

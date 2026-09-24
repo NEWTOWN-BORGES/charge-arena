@@ -158,10 +158,10 @@ func _ready() -> void:
 	sync_boss_skins()
 	hud.sync_campaign(campaign)
 	hud.level_selected.connect(start_level)
-	hud.next_level_requested.connect(func(): start_level(level_index + 1))
+	hud.next_level_requested.connect(func(): start_level(Campaign.menu_level(level_index + 1)))
 	hud.levels_requested.connect(show_levels)
 	hud.menu_level_changed.connect(step_menu_level)
-	menu_level = campaign.suggested_level()
+	menu_level = Campaign.menu_level(campaign.suggested_level())
 	hud.sync_menu_level(menu_level)
 	show_menu_preview()
 	hud.show_menu()
@@ -258,7 +258,7 @@ func start_level(index: int) -> void:
 	local_team = 0
 	network_status = ""
 	level_index = index
-	menu_level = index
+	menu_level = Campaign.menu_level(index)
 	hud.sync_menu_level(index)
 	use_map(level.map)
 	rules.ai_profile = Campaign.ai_profile(index, game_settings.difficulty)
@@ -271,7 +271,7 @@ func start_level(index: int) -> void:
 	arena.set_skin(1, level.boss, Campaign.is_minor(index), Campaign.level_hue(index))
 	hud.team_hues = arena.unit_hues
 	var rival_name: String = String(level.name).to_upper() if Campaign.is_minor(index) else String(Skins.CATALOG[level.boss].name)
-	hud.level_info = {"number": index + 1, "name": level.name, "challenge": level.challenge, "boss_name": rival_name, "has_next": index + 1 < Campaign.LEVELS.size()}
+	hud.level_info = {"number": Campaign.menu_levels().find(Campaign.menu_level(index)) + 1, "name": level.name, "challenge": level.challenge, "boss_name": rival_name, "has_next": index + 1 < Campaign.LEVELS.size()}
 	hud.level_result = ""
 	hud.level_skin = ""
 	hud.show_game(mode, local_team)
@@ -280,7 +280,10 @@ func start_level(index: int) -> void:
 	# in a row do not share one tune. A station hull is numbered past the catalogue, so the
 	# level names its theme instead - left to the hull number they all fell through to the
 	# last track in the list, which is the final boss's.
-	music.play_skin(Campaign.level_music(index))
+	if Campaign.is_minor(index):
+		music.play_bot(Campaign.level_music(index))
+	else:
+		music.play_skin(Campaign.level_music(index))
 
 func leave_campaign(layout: Dictionary = {}) -> void:
 	level_index = -1
@@ -291,7 +294,8 @@ func leave_campaign(layout: Dictionary = {}) -> void:
 	use_map(layout if not layout.is_empty() else Rules.default_map())
 
 func step_menu_level(step: int) -> void:
-	var chosen = clampi(menu_level + step, 0, Campaign.LEVELS.size() - 1)
+	var visible = Campaign.menu_levels()
+	var chosen: int = visible[clampi(visible.find(menu_level) + step, 0, visible.size() - 1)]
 	if chosen == menu_level:
 		return
 	menu_level = chosen
@@ -1413,7 +1417,12 @@ func start_cup() -> void:
 	cup_active = true
 	cup_resolved = false
 	last_phase = ""
-	music.play_skin(0 if not cup.entrance_passed else (cup.boss_id() if cup.local_wins() == cup.QUALIFIERS else cup.local_wins() + 1))
+	if not cup.entrance_passed:
+		music.play_skin(0)
+	elif cup.local_wins() == cup.QUALIFIERS:
+		music.play_skin(cup.boss_id())
+	else:
+		music.play_bot(cup.stage_index() * cup.QUALIFIERS + cup.local_wins() + 1)
 
 func finish_cup() -> void:
 	var won = rules.winner == 0

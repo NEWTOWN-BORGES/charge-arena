@@ -20,7 +20,7 @@ func advance(music, seconds: float) -> void:
 
 func run() -> void:
 	var menu_stream: AudioStreamOggVorbis = Music.TRACKS.menu
-	check(Music.TRACKS.size() == 15 and Music.TRACKS.has("skin_11"), "Menu, skin themes including Aurel and tournament cues are loaded")
+	check(Music.TRACKS.size() == 25 and Music.TRACKS.has("skin_11"), "Menu, skin themes including Aurel and tournament cues are loaded")
 	var theme_hashes = range(1, 11).map(func(index): return FileAccess.get_sha256("res://audio/polished/music_skin_%d.ogg" % index))
 	check(theme_hashes.all(func(hash): return hash != "") and theme_hashes.duplicate().reduce(func(unique, hash): return unique + ([] if hash in unique else [hash]), []).size() == 10, "All ten skin themes contain distinct audio")
 	check(absf(menu_stream.get_length() - 45.714) < 0.01 and absf(Music.TRACKS.match.get_length() - 64.0) < 0.03, "Original menu and standard skin duration unchanged")

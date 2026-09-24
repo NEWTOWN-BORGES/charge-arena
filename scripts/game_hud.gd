@@ -210,6 +210,11 @@ var viewer_bricks: Array = []
 var team_skins: Array = [0, 0]
 var team_tints: Array = [false, false]
 var team_hues: Array = ["", ""]
+var wall_health = [-1, -1]
+var wall_display = [-1.0, -1.0]
+var wall_trail = [-1.0, -1.0]
+var wall_delta = [0, 0]
+var wall_delta_time = [0.0, 0.0]
 var unlock_notice: Control
 var pause_panel: PanelContainer
 
@@ -775,6 +780,17 @@ func ask_redraw() -> void:
 	redraw_asked = true
 
 func _process(dt: float) -> void:
+	for t in range(2):
+		if wall_health[t] >= 0 and wall_display[t] >= 0:
+			var target = float(wall_health[t])
+			wall_display[t] = lerpf(wall_display[t], target, 1.0 - exp(-dt * 7.0))
+			if wall_delta_time[t] < 1.0 or wall_delta[t] >= 0:
+				wall_trail[t] = lerpf(wall_trail[t], target, 1.0 - exp(-dt * 3.5))
+			if absf(wall_display[t] - target) > 0.01 or absf(wall_trail[t] - target) > 0.01:
+				ask_redraw()
+		if wall_delta_time[t] > 0:
+			wall_delta_time[t] = maxf(0, wall_delta_time[t] - dt)
+			ask_redraw()
 	if fire_age < 0.24 or defense_notice_time > 0:
 		fire_age += dt
 		defense_notice_time = maxf(0.0, defense_notice_time - dt)
@@ -1503,7 +1519,7 @@ func build_levels_menu() -> void:
 	levels_grid.add_theme_constant_override("h_separation", 10)
 	levels_grid.add_theme_constant_override("v_separation", 10)
 	list.add_child(levels_grid)
-	for index in range(Campaign.LEVELS.size()):
+	for index in Campaign.menu_levels():
 		var card = Button.new()
 		card.focus_mode = Control.FOCUS_NONE
 		card.add_theme_stylebox_override("normal", style(Color("183840"), Color("334f51"), 16))
@@ -1536,7 +1552,7 @@ func draw_level_card(canvas: Control, index: int) -> void:
 		status = "✓ " + level.tag
 	elif not open:
 		status = "BLOQUEADO"
-	canvas.draw_string(font_bold, at, "NÍVEL %02d" % (index + 1), HORIZONTAL_ALIGNMENT_LEFT, -1, 11, LIME if done else CYAN)
+	canvas.draw_string(font_bold, at, "NÍVEL %02d" % (Campaign.menu_levels().find(index) + 1), HORIZONTAL_ALIGNMENT_LEFT, -1, 11, LIME if done else CYAN)
 	canvas.draw_string(font_bold, at + Vector2(0, 22 if wide else 19), level.name.to_upper(), HORIZONTAL_ALIGNMENT_LEFT, -1, 15 if wide else 12, WHITE)
 	canvas.draw_string(font, at + Vector2(0, 44 if wide else 37), status, HORIZONTAL_ALIGNMENT_LEFT, -1, 12 if wide else 10, LIME if done else MUTED)
 	if not open:
@@ -1549,12 +1565,12 @@ func choose_level(index: int) -> void:
 	level_selected.emit(index)
 
 func sync_menu_level(index: int) -> void:
-	menu_level = clampi(index, 0, Campaign.LEVELS.size() - 1)
+	menu_level = Campaign.menu_level(index)
 	refresh_menu_level()
 
 func refresh_menu_level() -> void:
 	var open = campaign_state == null or campaign_state.is_unlocked(menu_level)
-	campaign_button.text = ("JOGAR NÍVEL %d  →" % (menu_level + 1)) if open else ("NÍVEL %d BLOQUEADO" % (menu_level + 1))
+	campaign_button.text = ("JOGAR NÍVEL %d  →" % (Campaign.menu_levels().find(menu_level) + 1)) if open else ("NÍVEL %d BLOQUEADO" % (Campaign.menu_levels().find(menu_level) + 1))
 	campaign_button.disabled = not open
 	queue_redraw()
 
@@ -1596,14 +1612,16 @@ func draw_menu_level() -> void:
 	if campaign_state == null:
 		return
 	var level: Dictionary = Campaign.LEVELS[menu_level]
-	var total = Campaign.LEVELS.size()
+	var visible = Campaign.menu_levels()
+	var total = visible.size()
+	var page = visible.find(menu_level)
 	var open = campaign_state.is_unlocked(menu_level)
 	var done = campaign_state.is_completed(menu_level)
 	var area = swipe_area()
 	var center_x = area.get_center().x
 	var top = (safe_top + 92) if vertical else 34.0
 	var beaten: bool = skins_progress != null and int(level.boss) < Skins.CATALOG.size() and skins_progress.is_unlocked(level.boss)
-	centered("NÍVEL %02d / %02d" % [menu_level + 1, total], Vector2(center_x, top + 14), 12, LIME if done else CYAN, true)
+	centered("NÍVEL %02d / %02d" % [page + 1, total], Vector2(center_x, top + 14), 12, LIME if done else CYAN, true)
 	centered(level.name.to_upper(), Vector2(center_x, top + 42), 26, WHITE, true)
 	var line = level.challenge if open else "BLOQUEADO · vence o nível anterior"
 	centered(("✓  " if done else "") + line, Vector2(center_x, top + 64), 12, LIME if done else MUTED)
@@ -1624,15 +1642,15 @@ func draw_menu_level() -> void:
 	centered(rival_label, boss_at + Vector2(0, 93), 15, rival_hue if station else (WHITE if beaten else CORAL), true)
 	for i in range(total):
 		var dot = Vector2(center_x + (i - (total - 1) * 0.5) * 18, dots_y)
-		if i == menu_level:
+		if i == page:
 			draw_circle(dot, 5, LIME, true, -1, smooth)
 		else:
-			draw_circle(dot, 3.5, Color(WHITE, 0.55) if campaign_state.is_unlocked(i) else Color(WHITE, 0.18), true, -1, smooth)
+			draw_circle(dot, 3.5, Color(WHITE, 0.55) if campaign_state.is_unlocked(visible[i]) else Color(WHITE, 0.18), true, -1, smooth)
 	# Chevrons at the sides hint that the stadium can be swiped.
 	var hint_y = area.get_center().y + (20 if vertical else 0)
 	var reach = minf(area.size.x * 0.5 - 22, 330) if vertical else area.size.x * 0.5 - 22
 	for step in [-1, 1]:
-		var target = menu_level + step
+		var target = page + step
 		if target < 0 or target >= total:
 			continue
 		var tip = Vector2(center_x + step * reach, hint_y)
@@ -1649,9 +1667,10 @@ func close_levels() -> void:
 
 func sync_campaign(campaign) -> void:
 	campaign_state = campaign
-	var total = Campaign.LEVELS.size()
+	var visible = Campaign.menu_levels()
+	var total = visible.size()
 	refresh_menu_level()
-	levels_progress.text = "%d/%d CONCLUÍDOS" % [campaign.completed.size(), total]
+	levels_progress.text = "%d/%d CONCLUÍDOS" % [visible.filter(func(i): return i in campaign.completed).size(), total]
 	for card in level_cards:
 		card.get_child(0).queue_redraw()
 
@@ -1976,7 +1995,7 @@ func layout_vertical(menu_height: float) -> void:
 		var left_card = Rect2(8, bar_y, card_w, card_h)
 		var right_card = Rect2(size.x - 8 - card_w, bar_y, card_w, card_h)
 		card_rects = [left_card, right_card] if team == 0 else [right_card, left_card]
-		var band_top = bar_y + card_h + 10.0
+		var band_top = bar_y + card_h + 48.0
 		# The stadium stops where the stick begins. Measured from the stick itself, because
 		# a short screen pushes the two into each other and the field would cover the thumb.
 		var band_bottom = move_home.y - STICK_RADIUS - 10.0
@@ -2032,6 +2051,10 @@ func show_menu(message: String = "") -> void:
 	layout()
 
 func show_game(new_mode: String, local_team: int) -> void:
+	wall_health = [-1, -1]
+	wall_display = [-1.0, -1.0]
+	wall_trail = [-1.0, -1.0]
+	wall_delta_time = [0.0, 0.0]
 	show_pause(false)
 	skins_overlay.hide()
 	pvp_overlay.hide()
@@ -2127,7 +2150,19 @@ func panel(rect: Rect2, color: Color = Color(0.05, 0.10, 0.12, 0.88)) -> void:
 
 func update_match(rules, status: String) -> void:
 	# The HUD only reads display fields; no full network snapshot allocation per frame.
-	match_data = {"players": rules.players, "bricks": rules.bricks, "scores": rules.scores, "phase": rules.phase, "timer": rules.timer, "winner": rules.winner, "powers": rules.powers, "loadouts": rules.loadouts}
+	match_data = {"players": rules.players, "bricks": rules.bricks, "scores": rules.scores, "phase": rules.phase, "timer": rules.timer, "winner": rules.winner, "powers": rules.powers, "loadouts": rules.loadouts, "brick_lives": rules.brick_lives}
+	for t in range(2):
+		var hp = rules.team_health(t)
+		if rules.phase == "play" and wall_health[t] >= 0 and hp != wall_health[t]:
+			var difference = hp - wall_health[t]
+			wall_delta[t] = wall_delta[t] + difference if wall_delta_time[t] > 0.8 and signi(wall_delta[t]) == signi(difference) else difference
+			wall_delta_time[t] = 1.35
+		elif rules.phase == "countdown":
+			wall_delta_time[t] = 0
+		if wall_health[t] < 0 or rules.phase == "countdown":
+			wall_display[t] = float(hp)
+			wall_trail[t] = float(hp)
+		wall_health[t] = hp
 	network_status = status
 	if is_instance_valid(host_ai_button):
 		host_ai_button.visible = (mode == "host" and network_status != "")
@@ -2430,7 +2465,8 @@ func player_card(rect: Rect2, side: int, t: int) -> void:
 		if data.alive:
 			count += 1
 		health += data.hp
-	var status = "BALIZA ABERTA" if count == 0 else str(count) + " TIJOLOS  ·  " + str(health) + "/120"
+	var capacity = per_team * int(match_data.get("brick_lives", 3))
+	var status = "BALIZA ABERTA" if count == 0 else "%d TIJOLOS · %d/%d" % [count, health, capacity]
 	var status_color = LIME if count == 0 else MUTED
 	var stunned: bool = match_data.players[t].stun > 0
 	var tips = [["Move-te para apontar", WHITE, false], ["Dispara sozinho, sempre em frente" if auto_fire else "TIRO / Espaço / rato para disparar", MUTED, false]]
@@ -2440,7 +2476,7 @@ func player_card(rect: Rect2, side: int, t: int) -> void:
 		var is_left = (side == 0)
 		var avatar_x = at.x + 46.0 if is_left else at.x + rect.size.x - 46.0
 		var content_x = at.x + 92.0 if is_left else at.x + 12.0
-		var avatar_center = Vector2(avatar_x, at.y + rect.size.y * 0.5)
+		var avatar_center = Vector2(avatar_x, at.y + 43)
 
 		# The pilot's face is what the eye goes to, so it gets the room.
 		draw_circle(avatar_center, 40.0, Color(INK, 0.45), true, -1, smooth)
@@ -2461,18 +2497,12 @@ func player_card(rect: Rect2, side: int, t: int) -> void:
 		elif side == 1 and match_data.has("powers") and t < match_data.powers.size():
 			power_pips(Vector2(content_x, at.y + 84), t)
 	else:
-		var bricks_at = at + Vector2(23, 172)
-		for i in range(per_team):
-			var data: Dictionary = match_data.bricks[t * per_team + i]
-			var alive: bool = data.alive
-			var brick = Rect2(bricks_at + Vector2((i % 10) * 16, floori(i / 10.0) * 6), Vector2(12, 4))
-			draw_style_box(style(color.darkened((3 - data.hp) * 0.22) if alive else Color("284349"), Color.TRANSPARENT, 1), brick)
 		var center = at.x + 100
 		write(role, at + Vector2(17, 24), 10, MUTED, true)
 		portrait(Vector2(center, at.y + 85), pilot_hue(t, color), stunned, team_skins[t], null, team_tints[t])
 		centered(pilot, Vector2(center, at.y + 146), 22, WHITE, true)
 		player_life_bar(Vector2(center - 47, at.y + 158), match_data.players[t].hp, color)
-		centered(status, Vector2(center, at.y + 210), 10, status_color, true)
+		centered(status, Vector2(center, at.y + 215), 10, status_color, true)
 		# Your own hints go under the power buttons, which hang below your card; the rival's
 		# take the same band on the other side, where the buttons never reach.
 		var tip_x = 49.0 if side == 0 else size.x - 221
@@ -2481,6 +2511,49 @@ func player_card(rect: Rect2, side: int, t: int) -> void:
 		write(tips[1][0], Vector2(tip_x, tip_y + 24), 12, tips[1][1], tips[1][2])
 		if side == 1:
 			power_pips(Vector2(tip_x, tip_y + 48), t)
+
+	# A separate status band reaches from the outer card edge to its score digit.
+	var physical_left = rect.get_center().x < size.x * 0.5
+	var digit_x = score_rect.get_center().x + (-22.0 if physical_left else 22.0)
+	var bar_left = rect.position.x if physical_left else digit_x
+	var bar_right = digit_x if physical_left else rect.end.x
+	var bar_y = rect.end.y + 8.0 if vertical else score_rect.end.y + 10.0
+	wall_life_bar(Rect2(bar_left, bar_y, bar_right - bar_left, 26), t, health, capacity, color)
+
+func wall_life_bar(rect: Rect2, t: int, hp: int, capacity: int, color: Color) -> void:
+	var mirrored = rect.get_center().x > size.x * 0.5
+	var total = float(maxi(capacity, 1))
+	var ratio = clampf(maxf(0, wall_display[t]) / total, 0, 1)
+	var trail = clampf(maxf(0, wall_trail[t]) / total, 0, 1)
+	var healing = wall_delta[t] > 0 and wall_delta_time[t] > 0
+	var pulse = clampf(wall_delta_time[t] / 1.35, 0, 1)
+	var glow = Color("85ffb2") if healing else Color("ff9a7e")
+	if pulse > 0:
+		draw_style_box(style(Color(glow, pulse * 0.13), Color(glow, pulse * 0.3), 7), rect.grow(2))
+	draw_style_box(style(Color("10212b"), Color(color, 0.55), 5), rect)
+	if trail > ratio:
+		draw_style_box(style(Color("e19c65"), Color.TRANSPARENT, 5), Rect2(Vector2(rect.end.x - rect.size.x * trail if mirrored else rect.position.x, rect.position.y), Vector2(rect.size.x * trail, rect.size.y)))
+	if ratio > 0:
+		var fill = Color("f08075") if hp < capacity * 0.25 else color
+		if healing: fill = fill.lerp(Color("9effbd"), pulse * 0.6)
+		draw_style_box(style(fill, Color.TRANSPARENT, 5), Rect2(Vector2(rect.end.x - rect.size.x * ratio if mirrored else rect.position.x, rect.position.y), Vector2(rect.size.x * ratio, rect.size.y)))
+		draw_rect(Rect2(Vector2(rect.end.x - rect.size.x * ratio + 3 if mirrored else rect.position.x + 3, rect.position.y + 3), Vector2(maxf(0, rect.size.x * ratio - 6), 3)), Color(WHITE, 0.3))
+	if wall_display[t] > capacity:
+		var bonus = rect.size.x * (wall_display[t] - capacity) / wall_display[t]
+		draw_rect(Rect2(Vector2(rect.position.x if mirrored else rect.end.x - bonus, rect.position.y + 2), Vector2(bonus, rect.size.y - 4)), Color("edca80"))
+	var caption = "MURALHA  %d / %d" % [hp, capacity]
+	var baseline = Vector2(rect.get_center().x, rect.position.y + 17)
+	for offset in [Vector2(-1, 0), Vector2(1, 0), Vector2(0, -1), Vector2(0, 1)]:
+		centered(caption, baseline + offset, 13, Color(INK, 0.8), true)
+	centered(caption, baseline, 13, WHITE, true)
+	if wall_delta_time[t] > 0:
+		var amount = int(wall_delta[t])
+		var lift = (1.35 - wall_delta_time[t]) * 5
+		var tint = Color("a4ffc0") if amount > 0 else Color("ff998b")
+		tint.a = minf(1, wall_delta_time[t] * 3)
+		var badge = Rect2(rect.position.x if mirrored else rect.end.x - 55, rect.position.y - 24 - lift, 55, 21)
+		draw_style_box(style(Color(INK, tint.a * 0.95), Color(tint, tint.a * 0.45), 6), badge)
+		centered(("+" if amount > 0 else "") + str(amount), Vector2(badge.get_center().x, badge.position.y + 15), 15, tint, true)
 
 func player_life_bar_compact(at: Vector2, hp: int, color: Color) -> void:
 	for i in range(5):
@@ -2555,7 +2628,7 @@ func _draw() -> void:
 		centered(str(match_data.scores[0]) + "  :  " + str(match_data.scores[1]), Vector2(score_rect.get_center().x, s.y + 41), 31, WHITE, true)
 		write("EMBER", s + Vector2(218, 35), 12, CORAL, true)
 		draw_circle(s + Vector2(284, 30), 4, CORAL, true, -1, smooth)
-		var mode_at = Vector2(38, 116)
+		var mode_at = Vector2(38, 142)
 		var mode_name = "TREINO / PvE" if mode == "pve" else "DUELO / PvP"
 		if not level_info.is_empty():
 			mode_name = "CAMPANHA · NÍVEL %d" % level_info.number
@@ -2627,7 +2700,7 @@ func _draw() -> void:
 		draw_arc(fire_center, 46 * fire_size * press, 0, TAU, 48, CYAN, 2.0, smooth)
 		centered("TIRO", fire_center + Vector2(0, 5), 17, WHITE, true)
 	if defense_notice_time > 0 and match_data.phase == "play":
-		var notice_at = Vector2(arena_rect.get_center().x, arena_rect.position.y + 28) if vertical else Vector2(size.x * 0.62, 104)
+		var notice_at = Vector2(arena_rect.get_center().x, arena_rect.position.y + 28) if vertical else Vector2(size.x * 0.5, 145)
 		panel(Rect2(notice_at - Vector2(174, 23), Vector2(348, 40)))
 		centered(defense_notice, notice_at + Vector2(0, 3), 13, LIME, true)
 	draw_powers()

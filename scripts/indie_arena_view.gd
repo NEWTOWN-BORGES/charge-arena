@@ -1784,7 +1784,7 @@ func update_state(rules, local_team: int, dt: float, motion_alpha: float = 1.0) 
 			var data: Dictionary = rules.bricks[i]
 			var node: Node3D = brick_nodes[i]
 			# An arc, not a slide: sin gives it the whole hop in the length of the flight.
-			var hop: float = sin(clampf(crossing * (0.62 + Rules.float_scatter(i, 12.9898) * 0.95), 0.0, 1.0) * PI)
+			var hop: float = sin(pow(clampf(crossing, 0.0, 1.0), 0.62 + Rules.float_scatter(i, 12.9898) * 0.95) * PI)
 			node.position = Vector3(data.p.x, hop * (0.5 + Rules.float_scatter(i, 45.164) * 1.1), data.p.y)
 			node.rotation.y = -data.rotation + hop * (Rules.float_scatter(i, 91.7) - 0.5) * 3.4
 			update_brick_batch(i)

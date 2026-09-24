@@ -2,6 +2,17 @@ extends Node
 ## Menu music and one match theme per skin (campaign levels play their boss's theme). Tracks crossfade, dip during
 ## countdowns/goals, and pause while the app is in the background.
 const TRACKS = {
+	"bot_1": preload("res://audio/bots/music_bot_1.ogg"),
+	"bot_2": preload("res://audio/bots/music_bot_2.ogg"),
+	"bot_3": preload("res://audio/bots/music_bot_3.ogg"),
+	"bot_4": preload("res://audio/bots/music_bot_4.ogg"),
+	"bot_5": preload("res://audio/bots/music_bot_5.ogg"),
+	"bot_6": preload("res://audio/bots/music_bot_6.ogg"),
+	"bot_7": preload("res://audio/bots/music_bot_7.ogg"),
+	"bot_8": preload("res://audio/bots/music_bot_8.ogg"),
+	"bot_9": preload("res://audio/bots/music_bot_9.ogg"),
+	"bot_10": preload("res://audio/bots/music_bot_10.ogg"),
+
 	"cup": preload("res://audio/polished/music_cup.ogg"),
 	"cup_boss": preload("res://audio/polished/music_skin_1.ogg"),
 	"menu": preload("res://audio/polished/music_menu.ogg"),
@@ -65,6 +76,9 @@ func save_preferences(path: String = CONFIG_PATH) -> Error:
 func play(key: String) -> void:
 	if TRACKS.has(key):
 		track = key
+
+func play_bot(index: int) -> void:
+	play("bot_%d" % (posmod(index - 1, 10) + 1))
 
 func play_skin(index: int) -> void:
 	play("match" if index <= 0 else "skin_%d" % clampi(index, 1, 11))

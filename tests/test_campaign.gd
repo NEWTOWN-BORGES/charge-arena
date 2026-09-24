@@ -235,7 +235,7 @@ func run() -> void:
 	hud.close_pvp()
 
 	hud.open_levels()
-	check(hud.levels_overlay.visible and hud.level_cards.size() == Campaign.LEVELS.size(), "The level screen lists every arena")
+	check(hud.levels_overlay.visible and hud.level_cards.size() == Campaign.menu_levels().size(), "The level screen lists Aurora and boss arenas")
 	check(hud.levels_panel.get_rect().end.y > hud.size.y - 60, "In portrait the level list hangs from the bottom of the screen")
 	hud.level_cards[3].pressed.emit()
 	check(game.mode == "menu" and hud.levels_overlay.visible, "Locked levels cannot be started")

@@ -204,6 +204,7 @@ const BALL_LIFE = 12.0
 # A shot survives three ricochets; the fourth surface swallows it, so the arena never
 # fills up with balls looping forever.
 const MAX_BOUNCES = 3
+const PERIMETER_RADIUS = 0.28 # Half of the visible 0.56-wide arena wall.
 # AI difficulty: extra pause after each shot, movement speed, whether it dodges and how
 # long it waits between powers. The default (index 2, DIFÍCIL) is the full-strength
 # planner used by the AI tests.
@@ -408,11 +409,39 @@ static func map_bricks(layout: Dictionary, lives: int = BRICK_LIVES) -> Array:
 			brick.p.x *= 0.88 + variation * 0.018
 			brick.p.y += (1 if brick.team == 0 else -1) * (variation % 3) * 0.14
 	var narrow: float = narrow_of(layout)
-	if is_equal_approx(narrow, 1.0):
-		return bricks
+	var boundary = map_outline(layout)
+	var clearance = Vector2(BRICK_EXTENT.x * narrow, BRICK_EXTENT.y).length() * brick_scale(BRICK_MAX_LIVES) + PERIMETER_RADIUS + 0.04
 	for brick in bricks:
-		brick.p = Vector2(brick.p.x * narrow, brick.p.y)
+		brick.p = contain_point(boundary, Vector2(brick.p.x * narrow, brick.p.y), clearance)
+		brick.home = brick.p # Final map coordinates, including narrowing and variation.
 	return bricks
+
+static func contain_point(boundary: Array, point: Vector2, radius: float) -> Vector2:
+	var result = point
+	for pass_index in range(6):
+		var changed = false
+		var inside = point_inside(boundary, result)
+		var nearest = INF
+		var nearest_point = result
+		var nearest_normal = Vector2.ZERO
+		for i in range(boundary.size()):
+			var a: Vector2 = boundary[i]
+			var b: Vector2 = boundary[(i + 1) % boundary.size()]
+			var closest = Geometry2D.get_closest_point_to_segment(result, a, b)
+			var distance = result.distance_to(closest)
+			var inward = Vector2(-(b-a).y, (b-a).x).normalized()
+			if distance < nearest:
+				nearest = distance
+				nearest_point = closest
+				nearest_normal = inward
+			if inside and distance < radius:
+				result = closest + inward * (radius + 0.001)
+				changed = true
+		if not inside:
+			result = nearest_point + nearest_normal * (radius + 0.001)
+			changed = true
+		if not changed: break
+	return result
 
 static func track_limit_for(layout: Dictionary) -> float:
 	# How far this arena lets a pilot walk before it would scrape a wall, a barrier or a
@@ -1118,7 +1147,7 @@ func carry_bricks() -> void:
 		# Each brick has its own pace, so the two walls cross in a spread and not as a
 		# single sheet. They all land inside the flight, whatever pace they took.
 		var pace: float = 0.62 + float_scatter(index, 12.9898) * 0.95
-		brick.p = Vector2(brick.home).lerp(Vector2(twin.get("home", twin.p)), clampf(progress * pace, 0.0, 1.0))
+		brick.p = Vector2(brick.home).lerp(Vector2(twin.get("home", twin.p)), pow(clampf(progress, 0.0, 1.0), pace))
 	cached_firing_angles.clear()
 
 func singularity_front(team: int) -> float:
@@ -1420,15 +1449,15 @@ func step_laser(team: int, dt: float) -> void:
 	fire_laser(team)
 
 func laser_length(origin: Vector2, heading: Vector2) -> float:
-	# How far the beam runs before it meets a wall. It crosses bumpers and barriers.
+	# Sweep to the inner face, without the old quarter-unit overshoot through walls.
 	var limit = 2.0 * (HALF_LENGTH + HALF_WIDTH)
-	var step = 0.25
-	var travelled = step
-	while travelled < limit:
-		if not point_inside(walls, origin + heading * travelled):
-			return travelled
-		travelled += step
-	return limit
+	var direction = heading.normalized()
+	var reach = limit
+	for i in range(walls.size()):
+		var contact = sweep_capsule(origin, direction * limit, walls[i], walls[(i + 1) % walls.size()], PERIMETER_RADIUS + LASER_WIDTH * 0.5)
+		if contact.t >= 0.0 and contact.t <= 1.0:
+			reach = minf(reach, contact.t * limit)
+	return reach
 
 func laser_path(origin: Vector2, heading: Vector2) -> Array:
 	# The whole folded beam: the corner it meets, the one after that, and so on. Reflected
@@ -1729,16 +1758,17 @@ func advance_ball(ball: Dictionary, dt: float, sweep_obstacles: bool = false, pr
 				normal = contact.normal
 		for i in range(walls.size()):
 			var a: Vector2 = walls[i]
-			var edge: Vector2 = walls[(i + 1) % walls.size()] - a
-			var denominator = travel.cross(edge)
-			if absf(denominator) < 0.00001:
-				continue
-			var t = (a - start).cross(edge) / denominator
-			var u = (a - start).cross(travel) / denominator
-			if t >= 0 and t <= 1 and u >= 0 and u <= 1 and t < best:
-				best = t
+			var b: Vector2 = walls[(i + 1) % walls.size()]
+			var radius = PERIMETER_RADIUS + BALL_RADIUS
+			var contact = sweep_capsule(start, travel, a, b, radius)
+			var inward = Vector2(-(b-a).y, (b-a).x).normalized()
+			var closest = Geometry2D.get_closest_point_to_segment(start, a, b)
+			if start.distance_to(closest) < radius and travel.dot(inward) < 0:
+				contact = {"t": 0.0, "normal": inward}
+			if contact.t < best:
+				best = contact.t
 				kind = "wall"
-				normal = Vector2(-edge.y, edge.x).normalized()
+				normal = contact.normal
 		if kind == "":
 			ball.p += travel
 			return {}
