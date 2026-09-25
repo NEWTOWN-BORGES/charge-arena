@@ -670,6 +670,11 @@ func fit_content_scale() -> void:
 	var window = get_window()
 	window.content_scale_size = Vector2i(720, 1280) if window.size.y > window.size.x else Vector2i(1280, 720)
 
+func warm_up() -> void:
+	# Compile what a match can draw while nothing is happening yet: in the lobby, and in
+	# the countdown of every match, which is when a new arena has just been built.
+	arena.warm_shaders()
+
 func frame_arena() -> void:
 	if hud.mode == "menu" and hud.lobby != null:
 		# The lobby: the pilot, up close, where the lobby left room for it.

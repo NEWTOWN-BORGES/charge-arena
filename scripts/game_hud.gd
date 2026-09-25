@@ -2228,6 +2228,8 @@ func show_menu(message: String = "") -> void:
 	if message != "":
 		menu_status.text = message
 	layout()
+	if arena_view != null:
+		arena_view.warm_shaders()
 
 func show_game(new_mode: String, local_team: int) -> void:
 	wall_health = [-1, -1]
@@ -2247,6 +2249,9 @@ func show_game(new_mode: String, local_team: int) -> void:
 	host_ai_button.visible = (new_mode == "host")
 	reset_touch()
 	layout()
+	# The countdown is the quiet moment to compile what the match will draw.
+	if arena_view != null:
+		arena_view.warm_shaders()
 
 func reset_touch() -> void:
 	fire_id = -1

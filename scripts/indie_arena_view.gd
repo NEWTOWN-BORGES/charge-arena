@@ -89,6 +89,12 @@ var guide_angle = INF
 var soft_disc_nodes: Array = []
 var secondary_light: DirectionalLight3D
 var key_light: DirectionalLight3D
+# Shader warm-up: a handful of invisible samples, one per kind of effect material, drawn
+# for a few frames under a point light. The GL renderer compiles a shader the first time
+# it draws it - and again the first time a lamp touches it - so without this the first
+# ultimate of a session compiled half the arena on the spot and the match froze.
+var warm_root: Node3D
+var warm_frames = 0
 # A phone gets Refinado without the real shadows. On the GL renderer a shadowed sun makes
 # every lit piece draw a second time - the frame-rate drops - and the picture is lit
 # differently with and without it, so the shadows are decided once, never mid-match.
@@ -1484,6 +1490,45 @@ func build_atmosphere() -> void:
 	atmosphere.visible = quality_level == 2
 	add_child(atmosphere)
 
+func warm_shaders() -> void:
+	if not is_instance_valid(camera):
+		return
+	if is_instance_valid(warm_root):
+		warm_root.queue_free()
+	warm_root = Node3D.new()
+	warm_root.name = "ShaderWarmup"
+	add_child(warm_root)
+	# Just in front of the camera, far too small to cover a pixel, but inside the view, so
+	# every sample is really drawn.
+	var ahead: Vector3 = camera.global_position - camera.global_basis.z * 4.0
+	warm_root.position = to_local(ahead)
+	var tiny = Vector3.ONE * 0.004
+	# Glowing and plain, solid and see-through: the four surface kinds effects are made of.
+	for sample in [[Color(1, 1, 1, 1), true], [Color(1, 1, 1, 0.5), true], [Color(0.5, 0.5, 0.5, 1), false], [Color(0.05, 0.05, 0.08, 0.45), false]]:
+		sphere(warm_root, Vector3.ZERO, tiny, sample[0], sample[1])
+		var ring = torus(warm_root, Vector3.ZERO, 0.002, 0.001, sample[0], sample[1])
+		ring.scale = Vector3.ONE
+	box(warm_root, Vector3.ZERO, tiny, Color(0.9, 0.9, 0.9), false, 0.001)
+	soft_disc(warm_root, Vector3.ZERO, Vector2(0.004, 0.004), Color(0, 0, 0, 0.5)).visible = true
+	# Both kinds of particle card: light (added) and smoke (mixed).
+	for mixed in [false, true]:
+		var puff = CPUParticles3D.new()
+		puff.mesh = particle_mesh(0.004, Color.WHITE, mixed)
+		puff.amount = 2
+		puff.lifetime = 0.2
+		puff.color_ramp = fire_ramp()
+		puff.scale_amount_curve = fade_curve()
+		warm_root.add_child(puff)
+		puff.emitting = true
+	# And a point lamp reaching the whole arena, faint enough to change nothing on screen:
+	# every lit material gets its lamp-lit version compiled now instead of at the first blast.
+	var lamp = OmniLight3D.new()
+	lamp.light_energy = 0.02
+	lamp.omni_range = 60.0
+	lamp.shadow_enabled = false
+	warm_root.add_child(lamp)
+	warm_frames = 4
+
 func visor_glass() -> StandardMaterial3D:
 	# Polished dark glass: near-black, mirror-smooth, lacquered, so it catches the sky and
 	# the arena lights as a moving highlight - the difference between a painted face and a
@@ -1965,6 +2010,11 @@ func update_state(rules, local_team: int, dt: float, motion_alpha: float = 1.0) 
 			job_index += 1
 	for callback in ready:
 		callback.call()
+	if warm_frames > 0:
+		warm_frames -= 1
+		if warm_frames == 0 and is_instance_valid(warm_root):
+			warm_root.queue_free()
+			warm_root = null
 	# Camera shake: a quick decaying wobble, never enough to lose the ball.
 	if shake_power > 0.0:
 		shake_power *= exp(-dt * 17.0)
