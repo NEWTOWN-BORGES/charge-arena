@@ -15,6 +15,8 @@ const Skins = preload("res://scripts/skins.gd")
 const Powers = preload("res://scripts/powers.gd")
 const SOFT_DISC = preload("res://shaders/soft_disc.gdshader")
 const GLASS = preload("res://shaders/glass.gdshader")
+# Modelled in Blender by tools/blender/aurora_pilot.py; materials are named by role.
+const AURORA_MODEL = preload("res://art/pilots/aurora.glb")
 const GUIDE_DOTS = 30
 # Projectile size per power: normal, explosive, machine-gun round, air pellet.
 const POWER_BALL_SCALE = [1.0, 1.4, 0.95, 0.7]
@@ -1055,39 +1057,35 @@ func build_station_pilot(body: Node3D, shell: Color, light: Color, color: Color,
 	flash.name = "Flash"
 
 func build_aurora_pilot(body: Node3D, color: Color) -> void:
-	for side in [-1, 1]:
-		var leg = Node3D.new()
-		leg.name = "LegL" if side == -1 else "LegR"
-		leg.position = Vector3(side * 0.22, 0.31, 0)
-		body.add_child(leg)
-		sphere(leg, Vector3(0, -0.05, 0), Vector3(0.25, 0.38, 0.27), DARK)
-		box(leg, Vector3(0, -0.2, -0.09), Vector3(0.34, 0.2, 0.5), CREAM, false, 0.075)
-		box(leg, Vector3(0, -0.28, -0.075), Vector3(0.35, 0.065, 0.49), DARK)
-	box(body, Vector3(0, 0.73, 0), Vector3(0.66, 0.65, 0.5), color, false, 0.14)
-	box(body, Vector3(0, 0.67, -0.27), Vector3(0.37, 0.24, 0.055), CREAM)
-	box(body, Vector3(0, 0.69, -0.31), Vector3(0.08, 0.13, 0.02), color.darkened(0.2), true)
-	box(body, Vector3(0, 0.68, 0.34), Vector3(0.46, 0.49, 0.26), DARK, false, 0.08)
-	for x in [-0.15, 0.15]:
-		cylinder(body, Vector3(x, 0.66, 0.48), 0.07, 0.32, GOLD)
-	# Oversized ceramic helmet and tinted inset visor give each pilot a readable face.
-	sphere(body, Vector3(0, 1.26, -0.03), Vector3(0.93, 0.82, 0.82), CREAM)
-	sphere(body, Vector3(0, 1.29, -0.30), Vector3(0.77, 0.43, 0.34), DARK)
-	for x in [-0.17, 0.17]:
-		box(body, Vector3(x, 1.32, -0.473), Vector3(0.065, 0.115, 0.027), color.lightened(0.25), true, 0.01)
-	box(body, Vector3(0, 1.63, -0.035), Vector3(0.13, 0.045, 0.51), color)
-	for side in [-1, 1]:
-		sphere(body, Vector3(side * 0.45, 1.26, 0), Vector3(0.15, 0.35, 0.35), GOLD)
-		sphere(body, Vector3(side * 0.43, 0.87, -0.02), Vector3(0.32, 0.34, 0.39), color)
-		sphere(body, Vector3(side * 0.46, 0.65, -0.14), Vector3(0.24, 0.36, 0.24), DARK)
-	# Compact energy gauntlet, centered on the actual shot direction.
-	var gun = Node3D.new()
-	gun.name = "Gun"
-	body.add_child(gun)
-	box(gun, Vector3(0.29, 0.70, -0.46), Vector3(0.33, 0.32, 0.5), CREAM, false, 0.09)
-	box(gun, Vector3(0.29, 0.70, -0.74), Vector3(0.24, 0.24, 0.14), DARK)
-	sphere(gun, Vector3(0.29, 0.70, -0.83), Vector3(0.13, 0.13, 0.05), color.lightened(0.2), true)
-	var flash = sphere(gun, Vector3(0.29, 0.70, -0.88), Vector3.ONE * 0.01, Color("fff1c7"), true)
+	# Ceramic helmet with a recessed visor, backpack thrusters and an energy gauntlet
+	# centered on the actual shot direction. The model brings LegL, LegR and Gun.
+	add_modelled_pilot(body, AURORA_MODEL, {
+		"team": color, "cream": CREAM, "dark": DARK, "gold": GOLD,
+	}, {
+		"chest_light": color.darkened(0.2), "eyes": color.lightened(0.25), "muzzle": color.lightened(0.2),
+	})
+	var flash = sphere(body.get_node("Gun"), Vector3(0.29, 0.70, -0.88), Vector3.ONE * 0.01, Color("fff1c7"), true)
 	flash.name = "Flash"
+
+func add_modelled_pilot(body: Node3D, model: PackedScene, paint: Dictionary, glow: Dictionary) -> void:
+	# Moves a Blender pilot's parts into `body` and swaps each role material for the
+	# scene's own, so team colours, the Leve profile and the ceramic clearcoat still apply.
+	var scene = model.instantiate()
+	var source: Node = scene.get_node("Body")
+	for part in source.find_children("*", "", true, false):
+		part.owner = null
+	for part in source.get_children():
+		source.remove_child(part)
+		body.add_child(part)
+	scene.free()
+	var pending: Array = body.get_children()
+	while not pending.is_empty():
+		var node: Node = pending.pop_back()
+		pending.append_array(node.get_children())
+		if node is MeshInstance3D:
+			var role: String = node.mesh.surface_get_material(0).resource_name
+			node.material_override = material(glow[role], true) if glow.has(role) else material(paint[role])
+			node.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 
 func build_lighthouse_keeper(body: Node3D, color: Color, glow: Color) -> void:
 	# Keeper of the floating beacons: tall dome with a brass band, one glowing visor slit,
