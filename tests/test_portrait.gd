@@ -51,6 +51,24 @@ func touch(hud, id: int, position: Vector2, down: bool) -> void:
 	event.pressed = down
 	hud._input(event)
 
+func lobby_checks(hud, game, screen: Rect2, tag: String) -> void:
+	# Every control in the lobby on screen, none on top of another, the PLAY key in the
+	# thumb zone and the pilot standing in the open band, framed by a close camera.
+	var lobby = hud.lobby
+	var parts: Array = [lobby.profile, lobby.wallet, lobby.settings, lobby.skins_button, lobby.powers_button, lobby.story_button, lobby.pvp_button, lobby.difficulty_row, lobby.level_row, lobby.mode_card, lobby.play]
+	var rects: Array = parts.map(func(p): return p.get_global_rect())
+	check(rects.all(func(r): return screen.grow(1).encloses(r)), "%s: every control fits on screen" % tag)
+	var clear = true
+	for i in range(rects.size()):
+		for j in range(i + 1, rects.size()):
+			if rects[i].grow(-1).intersects(rects[j].grow(-1)):
+				clear = false
+				print("  overlap: ", parts[i], " / ", parts[j])
+	check(clear, "%s: no two controls overlap" % tag)
+	check(lobby.play.get_global_rect().end.y > screen.size.y - 110 and lobby.play.get_global_rect().end.x > screen.size.x * 0.5, "%s: JOGAR sits in the bottom thumb zone, on the right" % tag)
+	check(lobby.swipe_rect().has_point(lobby.focus), "%s: the pilot stands in the open band between the top bar and the controls" % tag)
+	check(game.arena.lobby_active and game.arena.camera.projection == Camera3D.PROJECTION_PERSPECTIVE, "%s: the arena camera frames the pilot up close" % tag)
+
 func run() -> void:
 	check(ProjectSettings.get_setting("display/window/handheld/orientation") == DisplayServer.SCREEN_PORTRAIT, "Android build is locked to portrait")
 	root.size = Vector2i(720, 1600)
@@ -63,17 +81,14 @@ func run() -> void:
 	check(root.content_scale_size == Vector2i(720, 1280) and hud.size.is_equal_approx(Vector2(720, 1600)), "A tall screen switches the HUD to 720 units wide")
 	check(hud.vertical, "HUD detects the vertical layout")
 
-	var arena = drawn_arena(game)
-	check(hud.arena_rect.grow(1).encloses(arena), "Menu: the whole stadium is framed above the menu")
-	check(screen.encloses(hud.menu.get_rect()), "Menu: the panel fits on screen")
-	check(arena.end.y + 50 <= hud.menu.position.y, "Menu: the slogan has room between the stadium and the panel")
+	lobby_checks(hud, game, screen, "Lobby")
 
 	for size in [Vector2i(720, 1600), Vector2i(720, 1280)]:
 		root.size = size
 		game.start_pve()
 		await settle()
 		screen = Rect2(Vector2.ZERO, hud.size)
-		arena = drawn_arena(game)
+		var arena = drawn_arena(game)
 		var tag = "%dx%d: " % [size.x, size.y]
 		var card_player: Rect2 = hud.card_rects[0]
 		var card_rival: Rect2 = hud.card_rects[1]
@@ -118,6 +133,6 @@ func run() -> void:
 	check(hud.score_rect == Rect2(488, 19, 304, 59) and hud.touch_top == 302.4, "Landscape score and touch zone keep their positions")
 	game.return_to_menu()
 	await settle()
-	check(game.arena.camera.h_offset == -4.5 and hud.menu.position.x == 48 and is_equal_approx(hud.menu.get_rect().end.y, 680), "Landscape menu sits bottom-left, within thumb reach, with the stadium to its right")
+	lobby_checks(hud, game, Rect2(Vector2.ZERO, hud.size), "Landscape lobby")
 	print("PORTRAIT_RESULT failures=", failures)
 	quit(failures)

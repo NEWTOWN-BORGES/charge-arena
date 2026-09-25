@@ -131,7 +131,7 @@ func prepare_fx_pool() -> void:
 		light_pool.append(lamp)
 
 func take_particle() -> CPUParticles3D:
-	if effects.size() >= effect_limit or active_particles >= [16, 32, 72][quality_level] or particle_pool.is_empty():
+	if effects.size() >= effect_limit or active_particles >= [16, 32, 44 if phone else 72][quality_level] or particle_pool.is_empty():
 		return null
 	var puff = particle_pool.pop_back()
 	active_particles += 1
@@ -353,7 +353,7 @@ func set_quality(level: int) -> void:
 			# indie look. Higher profiles restore the modeled ceramic shading.
 			mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED if quality_level == 0 or mat.get_meta("always_unshaded", false) else BaseMaterial3D.SHADING_MODE_PER_PIXEL
 			if mat.albedo_color == CREAM:
-				mat.clearcoat_enabled = quality_level >= 2
+				mat.clearcoat_enabled = quality_level >= 2 and not phone
 
 func world_label(text: String, pos: Vector3, color: Color, font_size: int = 48, horizontal: bool = true) -> Label3D:
 	var label = Label3D.new()
@@ -1456,7 +1456,7 @@ func build_atmosphere() -> void:
 	atmosphere = CPUParticles3D.new()
 	atmosphere.name = "Atmosphere"
 	atmosphere.mesh = particle_mesh(0.07, Color("bfe9ff"))
-	atmosphere.amount = 70
+	atmosphere.amount = 32 if phone else 70
 	atmosphere.lifetime = 9.0
 	atmosphere.preprocess = 9.0
 	atmosphere.randomness = 1.0
@@ -1817,9 +1817,57 @@ func view_aspect() -> float:
 	return view_bounds.size.x / view_bounds.size.y
 
 const LANDSCAPE_EYE = Vector3(0, 26, 15)
+# The lobby shot: the local pilot brought to the middle of the arena, on the dial, turned
+# three-quarters to a camera that drifts slowly round it, with the rival's end behind.
+const LOBBY_FOV = 30.0
+const LOBBY_STAND = Vector3(0, 0, 0.9)
+const LOBBY_TALL = 2.15
+var lobby_active = false
+var lobby_screen = Vector2(720, 1280)
+var lobby_focus = Vector2(400, 620)
+var lobby_height = 520.0
+var lobby_clock = 0.0
+
+func frame_lobby(screen: Vector2, focus: Vector2, height_px: float) -> void:
+	lobby_active = true
+	lobby_screen = screen
+	lobby_focus = focus
+	lobby_height = maxf(height_px, 120.0)
+	camera.projection = Camera3D.PROJECTION_PERSPECTIVE
+	camera.fov = LOBBY_FOV
+	view_bounds = Rect2()
+	place_lobby_camera()
+
+func place_lobby_camera() -> void:
+	var sway: float = sin(lobby_clock * 0.21) * 0.26
+	var target: Vector3 = LOBBY_STAND + Vector3(0, LOBBY_TALL * 0.46, 0)
+	var tan_half: float = tan(deg_to_rad(LOBBY_FOV) * 0.5)
+	# Far enough that the pilot's height fills the band it was given on screen.
+	var distance: float = LOBBY_TALL * lobby_screen.y / (lobby_height * 2.0 * tan_half)
+	var heading: float = 0.42 + sway
+	var direction = Vector3(sin(heading), 0.3, cos(heading)).normalized()
+	camera.h_offset = 0.0
+	camera.v_offset = 0.0
+	camera.position = target + direction * distance
+	camera.look_at(target)
+	# Then slide the frame so the pilot lands where the lobby wants it, clear of the rail.
+	var per_pixel: float = 2.0 * distance * tan_half / lobby_screen.y
+	camera.h_offset = -(lobby_focus.x - lobby_screen.x * 0.5) * per_pixel
+	camera.v_offset = (lobby_focus.y - lobby_screen.y * 0.5) * per_pixel
+	camera_home = camera.position
+
+func pose_lobby_pilot() -> void:
+	# The pilot stands on the dial and turns with the camera, always three-quarters to it.
+	var unit: Node3D = units[0]
+	unit.position = LOBBY_STAND
+	var body: Node3D = unit.get_node_or_null("Body")
+	if body != null:
+		var toward: Vector3 = camera.global_position - unit.global_position
+		body.rotation.y = atan2(-toward.x, -toward.z) + 0.38
 
 func frame_landscape(h_offset: float) -> void:
 	# Wide screens keep the original lean, which reads more like a stadium seen from a seat.
+	lobby_active = false
 	if camera.projection != Camera3D.PROJECTION_ORTHOGONAL:
 		camera.projection = Camera3D.PROJECTION_ORTHOGONAL
 		camera_home = Vector3.ZERO
@@ -1848,6 +1896,7 @@ func leaning() -> bool:
 	return map.get("lean", false)
 
 func frame_leaning(rect: Rect2, screen: Vector2) -> void:
+	lobby_active = false
 	# There is no closed form for fitting a perspective view to a rectangle — how big the
 	# stadium comes out depends on how far each corner is — so the seat is found by
 	# repeatedly projecting it, pulling back to fit and sliding sideways to centre.
@@ -1878,6 +1927,7 @@ func frame_rect(rect: Rect2, screen: Vector2, is_menu: bool = false) -> void:
 	# Fit the stadium inside the viewport band between top cards and bottom controls.
 	# In menu mode, restore the original camera seat so demo maps look as they did before.
 	# In match portrait mode, frame the arena closely without cutting off the sides.
+	lobby_active = false
 	if leaning() and not is_menu:
 		frame_leaning(rect, screen)
 		return
@@ -1920,7 +1970,13 @@ func update_state(rules, local_team: int, dt: float, motion_alpha: float = 1.0) 
 		shake_power *= exp(-dt * 17.0)
 		if shake_power < 0.0005: shake_power = 0.0
 		shake_seed += dt * 46.0
+		if lobby_active:
+			lobby_clock += dt
+			place_lobby_camera()
 		camera.position = camera_home + Vector3(sin(shake_seed) * 0.6, cos(shake_seed * 1.37) * 0.35, sin(shake_seed * 0.8) * 0.3) * shake_power
+	elif lobby_active:
+		lobby_clock += dt
+		place_lobby_camera()
 	elif camera.position != camera_home:
 		camera.position = camera_home
 	for id in brick_reactions.keys():
@@ -2100,6 +2156,8 @@ func update_state(rules, local_team: int, dt: float, motion_alpha: float = 1.0) 
 			projectiles.erase(id)
 			ball_previous.erase(id)
 	update_sentries(rules, dt)
+	if lobby_active:
+		pose_lobby_pilot()
 	var player: Dictionary = rules.players[local_team]
 	aim_line.visible = rules.phase == "play" and player.stun <= 0 and not guide_enabled
 	update_aim_guide(rules, local_team, dt)
@@ -2271,7 +2329,7 @@ func ember_ramp(color: Color) -> GradientTexture1D:
 func emitter(at: Vector3, color: Color, amount: int, life: float, speed: float, spread: float, size: float, gravity: float = -7.0, direction: Vector3 = Vector3.UP) -> CPUParticles3D:
 	# A one-shot puff of embers. CPU particles keep the GL compatibility renderer happy
 	# on phones, and the counts here stay small on purpose.
-	var count = maxi(4, int(amount * (0.45 if quality_level == 0 else (0.75 if quality_level == 1 else 1.4))))
+	var count = maxi(4, int(amount * (0.45 if quality_level == 0 else (0.75 if quality_level == 1 else (1.0 if phone else 1.4)))))
 	var puff = take_particle()
 	if puff == null: return null
 	puff.mesh = particle_mesh(size, color)
@@ -2480,7 +2538,7 @@ func fire_cloud(at: Vector3, radius: float, life: float) -> void:
 	var cloud = take_particle()
 	if cloud == null: return
 	cloud.mesh = particle_mesh(0.9, Color("ff8a2a"))
-	cloud.amount = [6, 9, 12][quality_level]
+	cloud.amount = [6, 9, 8 if phone else 12][quality_level]
 	cloud.lifetime = life
 	cloud.lifetime_randomness = 0.3
 	cloud.one_shot = true

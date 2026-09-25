@@ -17,6 +17,11 @@ func power_button_radius(index: int) -> float:
 const POWER_GAP = 100.0
 const POWER_RISE = 176.0
 const Powers = preload("res://scripts/powers.gd")
+const DISPLAY_FONT = preload("res://art/fonts/Rajdhani-Bold.ttf")
+const BODY_FONT = preload("res://art/fonts/Rajdhani-SemiBold.ttf")
+const Lobby = preload("res://scripts/lobby.gd")
+const YELLOW = Color("ffd23f")
+var lobby
 signal pvp_ai_requested
 signal play_requested
 signal host_requested
@@ -74,7 +79,7 @@ const WHITE = Color("f2eee4")
 const CYAN = Color("72ddc6")
 const CORAL = Color("ef947e")
 const LIME = Color("dbdf9a")
-var menu: PanelContainer
+var menu: Control
 var menu_status: Label
 var ip: LineEdit
 var back: Button
@@ -158,7 +163,7 @@ var skins_panel: PanelContainer
 var skins_button: Button
 var powers_button: Button
 var news_text = ""
-const MENU_HINT = "Toque: arrasta para mover · o disparo é automático · PC: A/D"
+const MENU_HINT = "Arrasta a arena para o lado para mudar de nível"
 var powers_overlay: ColorRect
 var powers_panel: PanelContainer
 var powers_wallet: Label
@@ -218,15 +223,24 @@ var wall_delta = [0, 0]
 var wall_delta_time = [0.0, 0.0]
 var unlock_notice: Control
 var pause_panel: PanelContainer
+var pause_info: Label
+# Full-screen menu pages, laid out together.
+var pages: Array = []
 
 func _ready() -> void:
 	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
-	font = ThemeDB.fallback_font
-	var bold = SystemFont.new()
-	bold.font_names = PackedStringArray(["Bahnschrift", "Arial", "sans-serif"])
-	bold.font_weight = 700
-	font_bold = bold
+	# Rajdhani ships inside the game, so a phone shows the same letters as a PC; the system
+	# font stands behind it for the few symbols it does not carry (arrows, ticks, stars).
+	var system_bold = SystemFont.new()
+	system_bold.font_names = PackedStringArray(["Bahnschrift", "Arial", "sans-serif"])
+	system_bold.font_weight = 700
+	var display: FontFile = DISPLAY_FONT.duplicate()
+	display.fallbacks = [system_bold]
+	font_bold = display
+	var body: FontFile = BODY_FONT.duplicate()
+	body.fallbacks = [ThemeDB.fallback_font]
+	font = body
 	build_menu()
 	back = make_button("MENU", false)
 	add_child(back)
@@ -249,6 +263,8 @@ func _ready() -> void:
 	host_ai_button.hide()
 	build_video_menu()
 	build_pause_menu()
+	# Options open from the pause too, so they have to sit over it.
+	move_child(pause_overlay, video_overlay.get_index())
 	build_skins_menu()
 	build_pvp_menu()
 	build_levels_menu()
@@ -275,24 +291,76 @@ func style(color: Color, border: Color = Color.TRANSPARENT, radius: int = 16) ->
 	return s
 
 func build_pause_menu() -> void:
+	# Pause: the match stays on screen behind a dark veil, and a column of big keys sits
+	# over it - no box. Continue is the bright one and the first, where the thumb is.
 	pause_overlay = ColorRect.new()
-	pause_overlay.color = Color(0.015, 0.035, 0.045, 0.88)
+	pause_overlay.color = Color(0.005, 0.02, 0.03, 0.84)
 	pause_overlay.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	add_child(pause_overlay)
 	pause_panel = PanelContainer.new()
-	pause_panel.add_theme_stylebox_override("panel", style(Color("122b32"), CYAN, 24))
+	pause_panel.add_theme_stylebox_override("panel", StyleBoxEmpty.new())
 	pause_overlay.add_child(pause_panel)
 	var list = VBoxContainer.new()
-	list.add_theme_constant_override("separation", 18)
+	list.add_theme_constant_override("separation", 14)
 	pause_panel.add_child(list)
-	list.add_child(label("JOGO EM PAUSA", 26, WHITE, true))
-	var resume = make_button("VOLTAR AO JOGO", true)
+	list.add_child(label("PAUSA", 72, WHITE, true))
+	list.add_child(accent_line(140))
+	pause_info = label("", 18, MUTED, true)
+	list.add_child(pause_info)
+	var gap = Control.new()
+	gap.custom_minimum_size.y = 26
+	list.add_child(gap)
+	var resume = make_button("CONTINUAR", true)
+	resume.custom_minimum_size.y = 84
+	resume.add_theme_font_size_override("font_size", 32)
 	list.add_child(resume)
 	resume.pressed.connect(func(): resume_requested.emit())
-	var leave = make_button("TERMINAR E IR AO MENU", false)
+	var options = make_button("OPÇÕES", false)
+	list.add_child(options)
+	options.pressed.connect(open_video)
+	var leave = make_button("SAIR PARA O LOBBY", false)
 	list.add_child(leave)
 	leave.pressed.connect(func(): quit_requested.emit())
 	pause_overlay.hide()
+
+func accent_line(width: float, color: Color = YELLOW) -> ColorRect:
+	var line = ColorRect.new()
+	line.color = color
+	line.custom_minimum_size = Vector2(width, 4)
+	line.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
+	return line
+
+func page(panel: PanelContainer, overlay: ColorRect) -> void:
+	# Menus are pages now, not boxes: the whole screen, a dark ground, the title in big
+	# type top left with a yellow bar under it, and the way back along the bottom.
+	panel.add_theme_stylebox_override("panel", page_style())
+	overlay.color = Color(0.012, 0.035, 0.048, 0.985)
+	pages.append(panel)
+
+func page_style() -> StyleBoxFlat:
+	if style_cache.has("page"):
+		return style_cache["page"]
+	var s = StyleBoxFlat.new()
+	s.bg_color = Color(0, 0, 0, 0)
+	s.content_margin_left = 24
+	s.content_margin_right = 24
+	s.content_margin_top = 22
+	s.content_margin_bottom = 18
+	style_cache["page"] = s
+	return s
+
+func page_title(text: String) -> VBoxContainer:
+	var block = VBoxContainer.new()
+	block.add_theme_constant_override("separation", 6)
+	block.add_child(label(text, 40, WHITE, true))
+	block.add_child(accent_line(96))
+	return block
+
+func spacer() -> Control:
+	var gap = Control.new()
+	gap.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	gap.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	return gap
 
 func build_skins_menu() -> void:
 	skins_overlay = ColorRect.new()
@@ -300,8 +368,8 @@ func build_skins_menu() -> void:
 	skins_overlay.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	add_child(skins_overlay)
 	skins_panel = PanelContainer.new()
-	skins_panel.add_theme_stylebox_override("panel", style(Color("122b32"), Color("496563"), 24))
 	skins_overlay.add_child(skins_panel)
+	page(skins_panel, skins_overlay)
 	var list = VBoxContainer.new()
 	list.add_theme_constant_override("separation", 10)
 	skins_panel.add_child(list)
@@ -310,7 +378,7 @@ func build_skins_menu() -> void:
 	var titles = VBoxContainer.new()
 	titles.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	header.add_child(titles)
-	titles.add_child(label("HANGAR · PILOTOS", 28, WHITE, true))
+	titles.add_child(page_title("HANGAR"))
 	titles.add_child(label("Roda com o dedo · usa + e − para ver os detalhes.", 17, MUTED))
 	skins_total = label("", 16, CYAN, true)
 	titles.add_child(skins_total)
@@ -601,9 +669,10 @@ func clear_viewer_shots() -> void:
 
 func sync_skins(skins) -> void:
 	skins_progress = skins
-	skins_button.text = "SKINS  %d/%d" % [skins.unlocked_count(), Skins.CATALOG.size()]
 	refresh_skins()
 	refresh_news()
+	if lobby != null:
+		lobby.refresh_pilot()
 
 func refresh_news() -> void:
 	# A pilot who has just won a skin, or saved enough for a power, should not have to go
@@ -640,10 +709,10 @@ func refresh_news() -> void:
 	# main action stays where the thumb rests.
 	menu_status.text = news_text if news_text != "" else MENU_HINT
 	menu_status.add_theme_color_override("font_color", LIME if news_text != "" else MUTED)
-	if skins_button != null:
-		skins_button.text = "SKINS  %d/%d%s" % [skins_progress.unlocked_count() if skins_progress != null else 0, Skins.CATALOG.size(), "  •" if not fresh_skins.is_empty() else ""]
-	if powers_button != null and power_shop != null:
-		powers_button.text = "PODERES  %d/%d%s" % [power_shop.owned.size(), Powers.CATALOG.size(), "  •" if not buyable.is_empty() else ""]
+	if lobby != null:
+		var skins_count = "%d/%d" % [skins_progress.unlocked_count() if skins_progress != null else 0, Skins.CATALOG.size()]
+		var powers_count = "%d/%d" % [power_shop.owned.size() if power_shop != null else 0, Powers.CATALOG.size()]
+		lobby.refresh_news(not fresh_skins.is_empty(), not buyable.is_empty(), skins_count, powers_count)
 
 func viewer_palette() -> Dictionary:
 	return Skins.colors(viewer_skin, CORAL, true) if viewer_locked else Skins.colors(viewer_skin, CYAN)
@@ -817,6 +886,13 @@ func _process(dt: float) -> void:
 
 func show_pause(value: bool) -> void:
 	reset_touch()
+	if value and pause_info != null:
+		if level_info.is_empty():
+			pause_info.text = "JOGO RÁPIDO  ·  PRIMEIRO A %d GOLOS" % Rules.WIN_SCORE
+		elif level_info.get("cup", false):
+			pause_info.text = "MODO HISTÓRIA  ·  %s" % String(level_info.name).to_upper()
+		else:
+			pause_info.text = "CAMPANHA  ·  NÍVEL %d  ·  %s" % [level_info.number, String(level_info.name).to_upper()]
 	pause_overlay.visible = value
 	queue_redraw()
 
@@ -828,9 +904,37 @@ func make_button(text: String, primary: bool) -> Button:
 	b.text = text
 	b.custom_minimum_size.y = 64
 	b.add_theme_font_override("font", font_bold)
-	b.add_theme_font_size_override("font_size", 21)
+	b.add_theme_font_size_override("font_size", 24)
 	paint_button(b, primary)
 	return b
+
+func key_style(face: Color, lip: Color, depth: int = 5, edge: Color = Color.TRANSPARENT) -> StyleBoxFlat:
+	# A solid key: the face, a darker lip along the bottom that reads as thickness, a soft
+	# shadow under it. Pressing it takes the lip away, so the key sinks under the thumb.
+	var key = "key" + str(face) + str(lip) + str(depth) + str(edge)
+	if style_cache.has(key):
+		return style_cache[key]
+	var s = StyleBoxFlat.new()
+	s.bg_color = face
+	s.border_color = lip
+	s.set_border_width_all(0)
+	s.border_width_bottom = depth
+	s.set_corner_radius_all(12)
+	s.corner_detail = 8
+	s.anti_aliasing = true
+	s.shadow_color = Color(0.0, 0.02, 0.03, 0.5)
+	s.shadow_size = 6
+	s.shadow_offset = Vector2(0, 3)
+	s.content_margin_left = 18
+	s.content_margin_right = 18
+	s.content_margin_top = 10 + (5 - depth)
+	s.content_margin_bottom = 10
+	if edge.a > 0.0:
+		s.border_color = edge
+		s.set_border_width_all(1)
+		s.border_width_bottom = depth
+	style_cache[key] = s
+	return s
 
 func raised_style(color: Color, border: Color, lift: int = 4) -> StyleBoxFlat:
 	# Ceramic key with a brass edge and a soft drop shadow, like the arena furniture.
@@ -845,13 +949,20 @@ func raised_style(color: Color, border: Color, lift: int = 4) -> StyleBoxFlat:
 	return s
 
 func paint_button(b: Button, primary: bool) -> void:
+	# Primary: the bright yellow key, the one thing on a screen you are meant to press.
+	# Secondary: a dark glass key with a thin cyan edge.
 	b.add_theme_color_override("font_color", INK if primary else WHITE)
 	b.add_theme_color_override("font_hover_color", INK if primary else WHITE)
 	b.add_theme_color_override("font_pressed_color", INK if primary else WHITE)
-	b.add_theme_stylebox_override("normal", raised_style(LIME if primary else Color("1b3940"), Color(BRASS, 0.55) if primary else Color("42625f")))
-	b.add_theme_stylebox_override("hover", raised_style(LIME.lightened(0.1) if primary else Color("2b4e52"), Color(BRASS, 0.75) if primary else Color("5b7d76"), 5))
-	b.add_theme_stylebox_override("pressed", raised_style(LIME.darkened(0.2) if primary else Color("426561"), Color(BRASS, 0.4) if primary else Color("6d8f88"), 1))
-	b.add_theme_stylebox_override("focus", style(Color.TRANSPARENT, CYAN))
+	if primary:
+		b.add_theme_stylebox_override("normal", key_style(YELLOW, Color("b27c10")))
+		b.add_theme_stylebox_override("hover", key_style(YELLOW.lightened(0.12), Color("b27c10")))
+		b.add_theme_stylebox_override("pressed", key_style(YELLOW.darkened(0.12), Color("8a5e08"), 1))
+	else:
+		b.add_theme_stylebox_override("normal", key_style(Color(0.05, 0.13, 0.16, 0.94), Color(0.0, 0.04, 0.05, 1.0), 5, Color(CYAN, 0.3)))
+		b.add_theme_stylebox_override("hover", key_style(Color(0.08, 0.19, 0.22, 0.96), Color(0.0, 0.04, 0.05, 1.0), 5, Color(CYAN, 0.55)))
+		b.add_theme_stylebox_override("pressed", key_style(Color(0.1, 0.24, 0.27, 1.0), Color(0.0, 0.04, 0.05, 1.0), 1, Color(CYAN, 0.8)))
+	b.add_theme_stylebox_override("focus", StyleBoxEmpty.new())
 
 func label(text: String, font_size: int, color: Color, bold: bool = false) -> Label:
 	var l = Label.new()
@@ -862,6 +973,21 @@ func label(text: String, font_size: int, color: Color, bold: bool = false) -> La
 	return l
 
 func build_menu() -> void:
+	# The lobby: the pilot in the arena behind, everything else arranged around it. The
+	# names below are the ones the rest of the game and the tests already use.
+	lobby = Lobby.new()
+	add_child(lobby)
+	lobby.build(self)
+	menu = lobby
+	menu_status = lobby.status
+	campaign_button = lobby.play
+	quick_button = lobby.quick_button
+	skins_button = lobby.skins_button
+	powers_button = lobby.powers_button
+	difficulty_buttons = lobby.difficulty_buttons
+
+func build_old_menu() -> void:
+	# The panel of buttons this lobby replaced, kept unbuilt for reference.
 	menu = PanelContainer.new()
 	menu.add_theme_stylebox_override("panel", style(Color(0.055, 0.105, 0.125, 0.97), Color("3c5756"), 22))
 	add_child(menu)
@@ -945,12 +1071,13 @@ func build_pvp_menu() -> void:
 	pvp_overlay.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	add_child(pvp_overlay)
 	pvp_panel = PanelContainer.new()
-	pvp_panel.add_theme_stylebox_override("panel", style(Color("122b32"), Color("496563"), 24))
 	pvp_overlay.add_child(pvp_panel)
+	page(pvp_panel, pvp_overlay)
 	var list = VBoxContainer.new()
 	list.add_theme_constant_override("separation", 14)
 	pvp_panel.add_child(list)
-	list.add_child(label("PvP · DOIS JOGADORES", 25, WHITE, true))
+	list.add_child(page_title("PvP"))
+	list.add_child(label("DOIS JOGADORES", 18, CYAN, true))
 	var about = label("Os dois aparelhos na mesma rede Wi-Fi e com esta versão. Um cria a sala; o outro escreve o IP que aparece e entra.", 14, MUTED)
 	about.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	about.custom_minimum_size.x = 400
@@ -978,6 +1105,7 @@ func build_pvp_menu() -> void:
 	pvp_ai.custom_minimum_size.y = 56
 	list.add_child(pvp_ai)
 	pvp_ai.pressed.connect(func(): close_pvp(); pvp_ai_requested.emit())
+	list.add_child(spacer())
 	var leave = make_button("VOLTAR", false)
 	list.add_child(leave)
 	leave.pressed.connect(close_pvp)
@@ -997,8 +1125,8 @@ func build_powers_menu() -> void:
 	powers_overlay.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	add_child(powers_overlay)
 	powers_panel = PanelContainer.new()
-	powers_panel.add_theme_stylebox_override("panel", style(Color("122b32"), Color("496563"), 24))
 	powers_overlay.add_child(powers_panel)
+	page(powers_panel, powers_overlay)
 	var list = VBoxContainer.new()
 	list.add_theme_constant_override("separation", 12)
 	powers_panel.add_child(list)
@@ -1007,7 +1135,7 @@ func build_powers_menu() -> void:
 	var titles = VBoxContainer.new()
 	titles.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	header.add_child(titles)
-	titles.add_child(label("PODERES", 25, WHITE, true))
+	titles.add_child(page_title("PODERES"))
 	titles.add_child(label("Compra com os tijolos que destruíres e leva dois para a partida.", 14, MUTED))
 	powers_wallet = label("", 15, CYAN, true)
 	titles.add_child(powers_wallet)
@@ -1015,6 +1143,7 @@ func build_powers_menu() -> void:
 	var scroll = ScrollContainer.new()
 	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
 	scroll.custom_minimum_size.y = 300
+	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	list.add_child(scroll)
 	var grid = GridContainer.new()
 	grid.columns = 3
@@ -1083,8 +1212,6 @@ func shop_entries() -> Array:
 
 func sync_powers(shop) -> void:
 	power_shop = shop
-	if powers_button != null:
-		powers_button.text = "PODERES  %d/%d" % [shop.owned.size(), Powers.CATALOG.size()]
 	refresh_powers()
 	refresh_news()
 
@@ -1502,8 +1629,8 @@ func build_levels_menu() -> void:
 	levels_overlay.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	add_child(levels_overlay)
 	levels_panel = PanelContainer.new()
-	levels_panel.add_theme_stylebox_override("panel", style(Color("122b32"), Color("496563"), 24))
 	levels_overlay.add_child(levels_panel)
+	page(levels_panel, levels_overlay)
 	var list = VBoxContainer.new()
 	list.add_theme_constant_override("separation", 12)
 	levels_panel.add_child(list)
@@ -1512,7 +1639,7 @@ func build_levels_menu() -> void:
 	var titles = VBoxContainer.new()
 	titles.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	header.add_child(titles)
-	titles.add_child(label("CAMPANHA", 25, WHITE, true))
+	titles.add_child(page_title("CAMPANHA"))
 	titles.add_child(label("Uma arena, um desafio e um boss por nível.", 14, MUTED))
 	levels_progress = label("", 13, CYAN, true)
 	levels_progress.size_flags_vertical = Control.SIZE_SHRINK_END
@@ -1535,6 +1662,7 @@ func build_levels_menu() -> void:
 		card.add_child(face)
 		card.pressed.connect(func(): choose_level(index))
 		level_cards.append(card)
+	list.add_child(spacer())
 	var leave = make_button("VOLTAR", false)
 	list.add_child(leave)
 	leave.pressed.connect(close_levels)
@@ -1571,15 +1699,17 @@ func sync_menu_level(index: int) -> void:
 	refresh_menu_level()
 
 func refresh_menu_level() -> void:
-	var open = campaign_state == null or campaign_state.is_unlocked(menu_level)
-	campaign_button.text = ("JOGAR NÍVEL %d  →" % (Campaign.menu_levels().find(menu_level) + 1)) if open else ("NÍVEL %d BLOQUEADO" % (Campaign.menu_levels().find(menu_level) + 1))
-	campaign_button.disabled = not open
+	if lobby != null:
+		lobby.refresh_mode()
 	queue_redraw()
 
 func menu_overlay_open() -> bool:
-	return video_overlay.visible or skins_overlay.visible or pvp_overlay.visible or levels_overlay.visible or powers_overlay.visible
+	return video_overlay.visible or skins_overlay.visible or pvp_overlay.visible or levels_overlay.visible or powers_overlay.visible or (lobby != null and lobby.sheet.visible)
 
 func swipe_area() -> Rect2:
+	# The arena around the pilot in the lobby: sideways there browses the campaign.
+	if lobby != null and mode == "menu":
+		return lobby.swipe_rect()
 	# Portrait: the stadium band above the menu. Landscape: everything right of the panel.
 	if vertical:
 		return arena_rect
@@ -1688,19 +1818,20 @@ func build_video_menu() -> void:
 	video_overlay.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	add_child(video_overlay)
 	video_panel = PanelContainer.new()
-	video_panel.add_theme_stylebox_override("panel", style(Color("122b32"), Color("496563"), 24))
 	video_overlay.add_child(video_panel)
+	page(video_panel, video_overlay)
 	var list = VBoxContainer.new()
 	list.add_theme_constant_override("separation", 12)
 	options_scroll = ScrollContainer.new()
 	options_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	options_scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	var option_stack = VBoxContainer.new()
 	option_stack.add_theme_constant_override("separation", 12)
 	video_panel.add_child(option_stack)
 	option_stack.add_child(options_scroll)
 	list.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	options_scroll.add_child(list)
-	list.add_child(label("OPÇÕES", 25, WHITE, true))
+	list.add_child(page_title("OPÇÕES"))
 	list.add_child(label("Imagem, som e ajudas de jogo.", 15, MUTED))
 	cup_difficulty = video_option(list, "Dificuldade da IA", ["Fácil", "Normal", "Difícil"])
 	cup_difficulty.item_selected.connect(func(index): difficulty_changed.emit(index))
@@ -1772,7 +1903,7 @@ func build_video_menu() -> void:
 	var image_title = label("IMAGEM E SOM", 18, CYAN, true)
 	list.add_child(image_title)
 	list.move_child(image_title, control_rows.size() + 2)
-	var done = make_button("FECHAR OPÇÕES", true)
+	var done = make_button("VOLTAR", true)
 	option_stack.add_child(done)
 	done.pressed.connect(close_video)
 	quality_choice.item_selected.connect(func(_index): emit_video())
@@ -1954,13 +2085,11 @@ func layout() -> void:
 	var skins_size = Vector2(minf(size.x - 48, 680 if skins_body.vertical else 1140), skin_room)
 	skins_panel.size = skins_size
 	skins_panel.position = Vector2((size.x - skins_size.x)*0.5, safe_top + 24)
-	options_scroll.custom_minimum_size = Vector2(510, minf(700, size.y - safe_top - safe_bottom - 184))
-	var panel_size = video_panel.get_combined_minimum_size().max(Vector2(510, 0))
-	video_panel.size = panel_size
-	video_panel.position = (size - panel_size) * 0.5
+	options_scroll.custom_minimum_size = Vector2(0, 200)
 	if is_instance_valid(pause_panel):
-		pause_panel.size = pause_panel.get_combined_minimum_size().max(Vector2(420, 0))
-		pause_panel.position = (size - pause_panel.size) * 0.5
+		var pause_width = minf(size.x - 64, 520)
+		pause_panel.size = pause_panel.get_combined_minimum_size().max(Vector2(pause_width, 0))
+		pause_panel.position = Vector2(32 if vertical else 80, (size.y - pause_panel.size.y) * (0.62 if vertical else 0.5))
 	# No stick any more: the pilot walks to whatever you point at. Under the right hand
 	# sit the two arrows that step from target to target; the power keys stay on the left.
 	move_home = Vector2(size.x * (0.70 if vertical else 0.88), size.y - safe_bottom - (132 if vertical else 139))
@@ -1969,15 +2098,12 @@ func layout() -> void:
 	var fire_margin = 46.0 * fire_size + 10.0
 	fire_center = Vector2(lerpf(fire_margin, size.x - fire_margin, fire_x), lerpf(safe_top + 160 + fire_margin, size.y - safe_bottom - fire_margin, fire_y))
 	move_center = move_home
-	var menu_height = menu.get_combined_minimum_size().y
+	var menu_height = 0.0
 	levels_grid.columns = 2 if vertical else 5
 	var levels_width = minf(size.x - 48, 660)
 	for card in level_cards:
 		card.custom_minimum_size = Vector2((levels_width - 46) * 0.5, 104) if vertical else Vector2(164, 172)
-	levels_panel.size = levels_panel.get_combined_minimum_size().max(Vector2(levels_width if vertical else 0.0, 0))
-	levels_panel.position = thumb_panel_position(levels_panel.size)
-	pvp_panel.size = pvp_panel.get_combined_minimum_size().max(Vector2(minf(size.x - 48, 520), 0))
-	pvp_panel.position = thumb_panel_position(pvp_panel.size)
+
 	var shop_scroll: ScrollContainer = powers_panel.get_child(0).get_child(1)
 	var shop_grid: GridContainer = shop_scroll.get_child(0)
 	shop_grid.columns = 2 if vertical else 3
@@ -1987,13 +2113,14 @@ func layout() -> void:
 	shop_scroll.custom_minimum_size.y = clampf(size.y - (620 if vertical else 500), 190, 430)
 	powers_detail.custom_minimum_size.x = minf(size.x - 96, 600)
 	power_demo.custom_minimum_size = Vector2(minf(size.x - 96, 600), 178 if vertical else 196)
-	powers_panel.size = powers_panel.get_combined_minimum_size().max(Vector2(minf(size.x - 48, 640) if vertical else 0.0, 0))
-	powers_panel.position = thumb_panel_position(powers_panel.size)
+	for full in pages:
+		var width = size.x if vertical else minf(size.x - 60, 1200)
+		full.position = Vector2((size.x - width) * 0.5, safe_top)
+		full.size = Vector2(width, size.y - safe_top - safe_bottom)
+	lobby.arrange(size, safe_top, safe_bottom, vertical)
 	if vertical:
 		layout_vertical(menu_height)
 	else:
-		menu.size = Vector2(450, menu_height)
-		menu.position = Vector2(48, maxf(76, size.y - menu.size.y - 40))
 		fps_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
 		fps_label.size = Vector2.ZERO
 		# In a match the stick and its caption own the bottom right corner, so the counter
@@ -2002,7 +2129,7 @@ func layout() -> void:
 		score_rect = Rect2(size.x * 0.5 - 152, 19, 304, 59)
 		card_rects = [Rect2(38, 184, 200, 222), Rect2(size.x - 238, 184, 200, 222)]
 		message_center = size * 0.5
-		arena_rect = Rect2(Vector2.ZERO, size)
+		arena_rect = lobby.swipe_rect() if mode == "menu" else Rect2(Vector2.ZERO, size)
 		touch_top = size.y * 0.42
 	# Powers: a row between the thumb controls on a phone, where the band under the arena is
 	# free; on a wide screen that band is the stadium itself, so they take the pocket under
@@ -2017,7 +2144,7 @@ func layout() -> void:
 		power_centers[index] = Vector2(reach, row_y)
 		reach += button + 14.0
 	for result_button in [next_button, replay, levels_button]:
-		result_button.size = Vector2(260, 50)
+		result_button.size = Vector2(340, 66)
 	place_result_buttons()
 	queue_redraw()
 	layout_changed.emit()
@@ -2031,14 +2158,9 @@ func layout_vertical(menu_height: float) -> void:
 	# The stick sits on the right of the band with its caption under it, so in a match the
 	# counter takes the left corner instead of landing on top of them.
 	fps_label.position = Vector2(mid - 120, bottom - 46) if mode == "menu" else Vector2(30, bottom - 26)
-	menu.size = Vector2(minf(size.x - 48, 520), menu_height)
-	menu.position = Vector2((size.x - menu.size.x) * 0.5, maxf(safe_top + 150, bottom - menu.size.y - 56))
 	if mode == "menu":
-		# The previewed level's name sits above its stadium, and under it come the boss card
-		# and the page dots. The stadium stops above the boss: it used to be framed down to
-		# the panel and drew straight over the face.
-		var top = safe_top + 172
-		arena_rect = Rect2(16, top, size.x - 32, maxf(menu.position.y - 221 - top, 120))
+		# The lobby: the stretch of arena around the pilot.
+		arena_rect = lobby.swipe_rect()
 	else:
 		# Top match info band sits comfortably below the header buttons (bar_y = safe_top + 48)
 		var bar_y = safe_top + 48.0
@@ -2084,12 +2206,14 @@ func place_result_buttons() -> void:
 	var row = 0
 	for result_button in [next_button, replay, levels_button]:
 		if result_button.visible:
-			result_button.position = message_center + Vector2(-130, 80 + row * 58)
+			result_button.position = message_center + Vector2(-170, 104 + row * 78)
 			row += 1
 
 func show_menu(message: String = "") -> void:
 	show_pause(false)
 	menu.show()
+	lobby.close_sheet()
+	lobby.refresh_pilot()
 	back.hide()
 	video_button.hide()
 	video_overlay.hide()
@@ -2640,6 +2764,9 @@ func _draw() -> void:
 		return
 	var top = Vector2(0, safe_top)
 	var bottom = size.y - safe_bottom
+	if mode == "menu":
+		# The lobby draws itself.
+		return
 	if vertical:
 		draw_circle(Vector2(28, 26) + top, 14, Color(CYAN, 0.12), true, -1, smooth)
 		var bolt = PackedVector2Array([Vector2(32, 16) + top, Vector2(23, 27) + top, Vector2(31, 27) + top, Vector2(25, 36) + top])
@@ -2653,14 +2780,7 @@ func _draw() -> void:
 		write("CHARGE ARENA", Vector2(82, 44) + top, 17, WHITE, true)
 		write("C I R C U I T O   A U R O R A", Vector2(82, 62) + top, 9, MUTED)
 	if mode == "menu":
-		# Flavour for the menu alone. In a match that strip belongs to the stick's caption and
-		# to the frame counter, and the three of them were landing on top of each other.
-		write("ARENA 01   /   AURORA", Vector2(34, bottom - 24), 10, MUTED)
-		write("ENCONTRA O TEU ÂNGULO", Vector2(size.x - 204, bottom - 24), 10, MUTED)
-		if not vertical:
-			write("UM DISPARO.", Vector2(size.x - 285, size.y - 126), 22, WHITE, true)
-			write("MIL POSSIBILIDADES.", Vector2(size.x - 285, size.y - 98), 22, LIME, true)
-		draw_menu_level()
+		# The lobby draws itself.
 		return
 	if match_data.is_empty():
 		return
@@ -2726,12 +2846,24 @@ func _draw() -> void:
 			sub = "TENTA OUTRA VEZ"
 	if message != "":
 		var c = message_center
-		var half_width = 204.0 if detail == "" else minf(size.x * 0.5 - 20, 290)
-		panel(Rect2(c.x - half_width, c.y - 62, half_width * 2, 124), Color(0.065, 0.125, 0.14, 0.96))
-		centered(message, Vector2(c.x, c.y - 4 - (8 if detail != "" else 0)), 36 if message.length() < 16 else 22, WHITE, true)
-		centered(sub, Vector2(c.x, c.y + 24), 11, LIME)
-		if detail != "":
-			centered(detail, Vector2(c.x, c.y + 44), 11, MUTED)
+		if match_data.phase == "countdown" and network_status == "":
+			# The count: one big numeral over the arena, the level under it.
+			centered(message, Vector2(c.x, c.y + 30), 120, Color(WHITE, 0.95), true)
+			centered(sub, Vector2(c.x, c.y + 70), 18, YELLOW, true)
+			if detail != "":
+				centered(detail, Vector2(c.x, c.y + 94), 15, MUTED)
+		else:
+			# A band right across the screen, edged in the colour of what happened.
+			var won: bool = match_data.phase in ["goal", "finished"] and match_data.winner == team
+			var edge: Color = CYAN if network_status != "" else (YELLOW if won else CORAL)
+			var band = Rect2(0, c.y - 74, size.x, 148 + (18 if detail != "" else 0))
+			draw_rect(band, Color(0.0, 0.025, 0.035, 0.86))
+			draw_rect(Rect2(0, band.position.y, size.x, 3), edge)
+			draw_rect(Rect2(0, band.end.y - 3, size.x, 3), Color(edge, 0.5))
+			centered(message, Vector2(c.x, c.y + 8), 58 if message.length() < 14 else 34, WHITE, true)
+			centered(sub, Vector2(c.x, c.y + 44), 17, edge, true)
+			if detail != "":
+				centered(detail, Vector2(c.x, c.y + 68), 15, MUTED)
 	# The stick: grabbed anywhere in the band, it slides the pilot along its arc.
 	var stick = move_center
 	draw_circle(stick + Vector2(0, 3), STICK_RADIUS, Color(0.01, 0.04, 0.05, 0.5), true, -1, smooth)

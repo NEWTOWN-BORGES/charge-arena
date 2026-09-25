@@ -21,16 +21,23 @@ var play: Button
 var nav: HBoxContainer
 var footer: VBoxContainer
 var result = ""
+# The HUD that holds this page, when there is one: its type and keys, so the story mode
+# looks like the rest of the game.
+var skin_source = null
 
 func _ready() -> void:
 	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	mouse_filter = Control.MOUSE_FILTER_STOP
+	if get_parent() != null and get_parent().has_method("paint_button"):
+		skin_source = get_parent()
 	var bg = ColorRect.new()
-	bg.color = Color("0b171f")
+	bg.color = Color(0.012, 0.035, 0.048, 1.0)
 	bg.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	bg.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(bg)
-	title = text("CHARGE / ARENA", 30, WHITE)
+	title = text("MODO HISTÓRIA", 40, WHITE)
+	if skin_source != null:
+		title.add_theme_font_override("font", skin_source.font_bold)
 	add_child(title)
 	subtitle = text("TAÇA AURORA   /   PRIMEIRO SETOR", 14, GOLD)
 	add_child(subtitle)
@@ -61,7 +68,7 @@ func _ready() -> void:
 	var modes = HBoxContainer.new()
 	modes.add_theme_constant_override("separation", 8)
 	footer.add_child(modes)
-	for entry in [["MENU 3D", "menu"], ["ARENAS", "arenas"], ["PvP LOCAL", "pvp"]]:
+	for entry in [["LOBBY", "menu"], ["ARENAS", "arenas"], ["PvP LOCAL", "pvp"]]:
 		var b = button(entry[0], false)
 		b.pressed.connect(func(): action.emit(entry[1]))
 		modes.add_child(b)
@@ -96,6 +103,12 @@ func button(value: String, primary: bool) -> Button:
 	b.text = value
 	b.custom_minimum_size.y = 56
 	b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	if skin_source != null:
+		# The same keys as every other page.
+		b.add_theme_font_override("font", skin_source.font_bold)
+		b.add_theme_font_size_override("font_size", 21)
+		skin_source.paint_button(b, primary)
+		return b
 	b.add_theme_font_size_override("font_size", 17)
 	b.add_theme_color_override("font_color", Color("102029") if primary else WHITE)
 	b.add_theme_color_override("font_hover_color", Color("102029") if primary else WHITE)
@@ -116,7 +129,7 @@ func arrange() -> void:
 		if screen.y > 0:
 			top += float(safe.position.y) / screen.y * size.y
 	title.position = Vector2(x, top)
-	subtitle.position = Vector2(x, top + 43)
+	subtitle.position = Vector2(x, top + 50)
 	nav.position = Vector2(x, top + 80)
 	nav.size = Vector2(w, 56)
 	footer.visible = tab == 0
@@ -134,7 +147,7 @@ func arrange() -> void:
 		tree_view.size = scroll.size
 	if wide:
 		# Desktop keeps the same reading order, with less vertical chrome.
-		title.add_theme_font_size_override("font_size", 26)
+		title.add_theme_font_size_override("font_size", 34)
 	queue_redraw()
 
 func card(kicker: String, headline: String, body: String, accent: Color = MINT) -> void:

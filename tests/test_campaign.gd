@@ -192,11 +192,11 @@ func run() -> void:
 	hud.sync_menu_level(0)
 	game.show_menu_preview()
 
-	var menu_buttons = hud.menu.find_children("*", "Button", true, false).filter(func(b): return b.visible)
-	var lowest = menu_buttons.reduce(func(low, b): return b if b.get_global_rect().end.y > low.get_global_rect().end.y else low)
-	check(lowest == hud.campaign_button and hud.campaign_button.size.y >= 60, "CAMPANHA is the largest button and the lowest one")
+	var menu_buttons = hud.menu.find_children("*", "Button", true, false).filter(func(b): return b.is_visible_in_tree())
+	var play_bottom: float = hud.campaign_button.get_global_rect().end.y
+	check(menu_buttons.all(func(b): return b.get_global_rect().end.y <= play_bottom + 0.5) and hud.campaign_button.size.y >= 60, "JOGAR is a big key and nothing sits below it")
 	check(hud.campaign_button.get_global_rect().end.y > hud.size.y - 110, "In portrait the main action sits in the bottom thumb zone")
-	check(hud.quick_button.visible and hud.campaign_button.text == "JOGAR NÍVEL 1  →", "The menu shows quick play and a button to play the previewed level")
+	check(hud.quick_button != null and hud.campaign_button.text == "JOGAR" and hud.lobby.level_title.text.begins_with("NÍVEL 01"), "The lobby names the previewed level over a JOGAR key, with quick play one tap away")
 
 	# Carousel: swipe the stadium sideways to browse levels; the arena follows once settled.
 	var area: Rect2 = hud.swipe_area()
@@ -218,7 +218,8 @@ func run() -> void:
 	check(game.menu_level == 1, "A tap or short drag does not change level")
 	swipe.call(middle + Vector2(0, -100), middle + Vector2(90, 120))
 	check(game.menu_level == 1, "A mostly vertical drag does not change level")
-	swipe.call(Vector2(hud.size.x * 0.5, hud.menu.get_rect().get_center().y), Vector2(hud.size.x * 0.5 - 200, hud.menu.get_rect().get_center().y))
+	var over_keys: Vector2 = hud.campaign_button.get_global_rect().get_center()
+	swipe.call(over_keys, over_keys - Vector2(200, 0))
 	check(game.menu_level == 1, "Swipes over the menu buttons are ignored")
 	swipe.call(middle - Vector2(120, 0), middle + Vector2(120, 0))
 	swipe.call(middle - Vector2(120, 0), middle + Vector2(120, 0))
@@ -229,7 +230,7 @@ func run() -> void:
 	game.step_menu_level(-(Campaign.LEVELS.size() - 1))
 	game._process(0.3)
 	await process_frame
-	check(game.arena.map.id == "treino" and hud.campaign_button.text == "JOGAR NÍVEL 1  →" and not hud.campaign_button.disabled, "Rapid browsing rebuilds only the level it settles on")
+	check(game.arena.map.id == "treino" and hud.lobby.level_title.text.begins_with("NÍVEL 01") and not hud.campaign_button.disabled, "Rapid browsing rebuilds only the level it settles on")
 	hud.open_pvp()
 	check(hud.pvp_overlay.visible and hud.ip.is_visible_in_tree(), "PvP moved to its own panel with the IP field")
 	hud.close_pvp()
@@ -277,7 +278,10 @@ func run() -> void:
 	game.return_to_menu()
 	hud.open_levels()
 	hud.close_levels()
+	hud.lobby.open_sheet()
 	hud.quick_button.pressed.emit()
+	check(not hud.lobby.sheet.visible and hud.lobby.lobby_mode == "rapido" and game.mode == "menu", "Choosing quick play in the mode sheet brings it back to the lobby, ready")
+	hud.campaign_button.pressed.emit()
 	check(game.mode == "pve" and game.level_index == -1 and game.rules.ai_profile.is_empty() and game.arena.map.id == "torre" and hud.level_info.is_empty(), "Quick play opens the tall arena with the chosen AI level")
 	game.return_to_menu()
 	DirAccess.remove_absolute(ProjectSettings.globalize_path(TMP))

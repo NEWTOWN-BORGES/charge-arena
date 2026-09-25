@@ -671,6 +671,10 @@ func fit_content_scale() -> void:
 	window.content_scale_size = Vector2i(720, 1280) if window.size.y > window.size.x else Vector2i(1280, 720)
 
 func frame_arena() -> void:
+	if hud.mode == "menu" and hud.lobby != null:
+		# The lobby: the pilot, up close, where the lobby left room for it.
+		arena.frame_lobby(hud.size, hud.lobby.focus, hud.lobby.pilot_height)
+		return
 	if hud.vertical:
 		arena.frame_rect(hud.arena_rect, hud.size, hud.mode == "menu")
 	else:

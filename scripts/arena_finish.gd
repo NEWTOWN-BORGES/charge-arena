@@ -6,6 +6,10 @@ const SURFACES = {
 	"graphite": [preload("res://art/materials/graphite_albedo.png"), preload("res://art/materials/graphite_roughness.png"), preload("res://art/materials/graphite_normal.png")]
 }
 static var studio_sky: Sky
+# A phone's Refinado keeps the colour detail and drops what costs most per pixel: the
+# roughness and relief maps (three reads each, from three sides) and the lacquer lobe.
+# Decided once at start, never mid-match. Tests flip it to walk the phone path.
+static var phone = OS.has_feature("mobile")
 
 static func environment(env: Environment, quality: int) -> void:
 	if studio_sky == null:
@@ -38,6 +42,9 @@ static func environment(env: Environment, quality: int) -> void:
 	env.glow_hdr_luminance_cap = 16.0
 	# Mid levels carry the wide halo; level 1 keeps a tight core on small lights.
 	var levels = [0.6, 0.9, 1.0, 0.85, 0.6, 0.0, 0.0] if quality == 2 else [0.0, 0.0, 1.0, 0.0, 1.0, 0.0, 0.0]
+	if quality == 2 and phone:
+		# Three blur levels instead of five: the same halo, fewer passes.
+		levels = [0.0, 1.0, 1.1, 0.0, 0.9, 0.0, 0.0]
 	for i in range(7):
 		env.set_glow_level(i, levels[i])
 	env.adjustment_enabled = quality > 0
@@ -65,17 +72,18 @@ static func surface(mat: StandardMaterial3D, quality: int) -> void:
 	if mat.transparency != BaseMaterial3D.TRANSPARENCY_DISABLED: return
 	var kind = "alloy" if mat.metallic > 0.5 else ("graphite" if mat.albedo_color.v < 0.35 else "ceramic")
 	mat.set_meta("surface_finish", kind)
+	var detail: bool = quality == 2 and not phone
 	mat.albedo_texture = SURFACES[kind][0] if quality > 0 else null
-	mat.roughness_texture = SURFACES[kind][1] if quality == 2 else null
-	mat.normal_enabled = quality == 2
-	mat.normal_texture = SURFACES[kind][2] if quality == 2 else null
+	mat.roughness_texture = SURFACES[kind][1] if detail else null
+	mat.normal_enabled = detail
+	mat.normal_texture = SURFACES[kind][2] if detail else null
 	mat.normal_scale = 0.28
 	mat.uv1_triplanar = true
 	mat.uv1_scale = Vector3.ONE * 2.0
 	mat.texture_filter = BaseMaterial3D.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS_ANISOTROPIC
 	mat.roughness = 0.65 if kind == "graphite" else (0.52 if kind == "alloy" else 0.7)
 	mat.metallic_specular = 0.7
-	mat.clearcoat_enabled = quality == 2 and kind != "graphite"
+	mat.clearcoat_enabled = detail and kind != "graphite"
 	mat.clearcoat = 0.45
 	mat.clearcoat_roughness = 0.25
 	# A light rim on every lit edge: pilots, bricks and walls separate from the floor.
