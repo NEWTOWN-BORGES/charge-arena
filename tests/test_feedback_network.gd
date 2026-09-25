@@ -18,7 +18,7 @@ func run() -> void:
 		if not game.connected: continue
 		connected_ticks += 1
 		if not host and game.rules.phase == "play" and not sent:
-			game.hud.fire_tap = true
+			game.hud.fire_tap = 1
 			sent = true
 		if game.shot_variants[1] == 2: observed = true
 		if connected_ticks > 180 and observed:

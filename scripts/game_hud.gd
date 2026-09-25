@@ -63,7 +63,8 @@ var fire_x = 0.95
 var fire_y = 0.99
 var auto_fire = true
 var fire_id = -1
-var fire_tap = false
+# Taps counted, not flagged: two taps between match ticks are two shots.
+var fire_tap = 0
 var fire_age = 1.0
 var fire_center = Vector2.ZERO
 var defense_notice = ""
@@ -2239,6 +2240,8 @@ func show_menu(message: String = "") -> void:
 		arena_view.warm_shaders()
 
 func show_game(new_mode: String, local_team: int) -> void:
+	if arena_view != null:
+		arena_view.refresh_bricks()
 	wall_health = [-1, -1]
 	wall_display = [-1.0, -1.0]
 	wall_trail = [-1.0, -1.0]
@@ -2262,7 +2265,7 @@ func show_game(new_mode: String, local_team: int) -> void:
 
 func reset_touch() -> void:
 	fire_id = -1
-	fire_tap = false
+	fire_tap = 0
 	touches.clear()
 	move_id = -1
 	move_vector = Vector2.ZERO
@@ -2299,7 +2302,7 @@ func _input(event: InputEvent) -> void:
 		if event.pressed:
 			if not auto_fire and fire_control == 0 and event.position.distance_to(fire_center) <= 49 * fire_size:
 				fire_id = event.index
-				fire_tap = true
+				fire_tap += 1
 				fire_age = 0.0
 				queue_redraw()
 				return
@@ -2316,7 +2319,7 @@ func _input(event: InputEvent) -> void:
 				move_id = event.index
 				move_center = event.position
 				if not auto_fire and fire_control == 1:
-					fire_tap = true
+					fire_tap += 1
 					fire_age = 0.0
 		else:
 			if event.index == fire_id: fire_id = -1

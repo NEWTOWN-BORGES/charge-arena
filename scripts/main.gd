@@ -30,7 +30,8 @@ var remote_power = -1
 # goes as soon as it can, so a quick tapper never loses one; holding the finger down does not
 # keep firing. Per team: the host keeps the guest's clicks the same way it keeps its own.
 const FIRE_BUFFER_MS = 900
-const MAX_QUEUED_SHOTS = 2
+# Ten taps are ten shots: each waits its turn behind the reload instead of being lost.
+const MAX_QUEUED_SHOTS = 10
 var queued_shots: Array = [0, 0]
 var queued_until: Array = [0, 0]
 var pending_clicks = 0
@@ -405,6 +406,7 @@ func close_network() -> void:
 	client_blast_spots.clear()
 
 func return_to_menu(message: String = "") -> void:
+	arena.set_view_team(0)
 	if hud.skins_overlay.visible:
 		hud.close_skins()
 	cup_active = false
@@ -454,6 +456,8 @@ func _notification(what: int) -> void:
 	if what == NOTIFICATION_APPLICATION_PAUSED:
 		pause_pve()
 		save_skins()
+	elif what == NOTIFICATION_APPLICATION_RESUMED and is_instance_valid(arena):
+		arena.refresh_bricks()
 	elif what == NOTIFICATION_WM_CLOSE_REQUEST:
 		save_skins()
 	elif what == NOTIFICATION_WM_GO_BACK_REQUEST:
@@ -464,6 +468,7 @@ func host_game() -> void:
 	close_network()
 	mode = "host"
 	local_team = 0
+	arena.set_view_team(0)
 	leave_campaign(Rules.pvp_map())
 	use_loadouts(PowerShop.STARTER_KIT.duplicate())
 	rules.reset_match()
@@ -501,6 +506,7 @@ func join_game(address: String) -> void:
 	multiplayer.multiplayer_peer = peer
 	mode = "client"
 	local_team = 1
+	arena.set_view_team(1)
 	connection_timer = 10.0
 	network_status = "A ligar ao rival…"
 	leave_campaign(Rules.pvp_map())
@@ -970,7 +976,7 @@ func local_command() -> Dictionary:
 	if hud.video_overlay.visible or pve_paused:
 		# Drop anything tapped while the match was on hold.
 		hud.take_power()
-		hud.fire_tap = false
+		hud.fire_tap = 0
 		hud.fire_id = -1
 		clear_shots()
 		return {"move": Vector2.ZERO, "fire": false, "power": -1}
@@ -982,18 +988,21 @@ func local_command() -> Dictionary:
 	if absf(stick) > STICK_DEADZONE:
 		var push = (absf(stick) - STICK_DEADZONE) / (1.0 - STICK_DEADZONE)
 		response = signf(stick) * lerpf(STICK_FLOOR, 1.0, pow(push, 1.2)) * game_settings.sensitivity_scale()
+		if arena.view_flipped:
+			response = -response
 	else:
 		# Thumb still: let the magnetism settle the pilot on the target it is beside.
 		response = magnet_pull()
 	var move = Vector2(response, 0)
 	if DisplayServer.get_name() != "headless":
 		var keys = Vector2(float(Input.is_physical_key_pressed(KEY_D) or Input.is_physical_key_pressed(KEY_RIGHT)) - float(Input.is_physical_key_pressed(KEY_A) or Input.is_physical_key_pressed(KEY_LEFT)), float(Input.is_physical_key_pressed(KEY_S) or Input.is_physical_key_pressed(KEY_DOWN)) - float(Input.is_physical_key_pressed(KEY_W) or Input.is_physical_key_pressed(KEY_UP)))
+		if arena.view_flipped:
+			keys.x = -keys.x
 		move += keys
 	# Manual fire: every click is one shot, whether it came from the button, the joystick,
 	# the mouse or the space bar.
-	if hud.fire_tap:
-		pending_clicks += 1
-	hud.fire_tap = false
+	pending_clicks += int(hud.fire_tap)
+	hud.fire_tap = 0
 	var clicks: int = 0 if game_settings.auto_fire else mini(pending_clicks, MAX_QUEUED_SHOTS)
 	pending_clicks = 0
 	var fire: bool = game_settings.auto_fire
@@ -1163,7 +1172,7 @@ func receive_state(data: Dictionary) -> void:
 	visual_packet_age = 0.0
 	packets_received += 1
 
-const IDLE_FPS = 30
+const IDLE_FPS = 45
 
 func idle_frame_rate() -> void:
 	# Outside a live match — menu, shop, skins, pause — the screen is nearly still, and

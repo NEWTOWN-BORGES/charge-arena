@@ -89,6 +89,11 @@ var guide_angle = INF
 var soft_disc_nodes: Array = []
 var secondary_light: DirectionalLight3D
 var key_light: DirectionalLight3D
+# Every player sees their own pilot at the bottom of the screen. The guest in a PvP match
+# plays the far end, so its camera takes the seat across the arena: the same view,
+# turned half round. Floor lettering turns with it, so it still reads.
+var view_flipped = false
+var floor_labels: Array = []
 # Shader warm-up: a handful of invisible samples, one per kind of effect material, drawn
 # for a few frames under a point light. The GL renderer compiles a shader the first time
 # it draws it - and again the first time a lamp touches it - so without this the first
@@ -372,8 +377,27 @@ func world_label(text: String, pos: Vector3, color: Color, font_size: int = 48, 
 	label.position = pos
 	if horizontal:
 		label.rotation_degrees.x = -90
+		label.rotation.y = PI if view_flipped else 0.0
+		floor_labels.append(label)
 	add_child(label)
 	return label
+
+func set_view_team(team: int) -> void:
+	# Seat the camera on this team's side of the arena.
+	var flipped = team == 1
+	if flipped == view_flipped:
+		return
+	view_flipped = flipped
+	camera_home = Vector3.ZERO
+	view_bounds = Rect2()
+	for label in floor_labels:
+		if is_instance_valid(label):
+			label.rotation.y = PI if view_flipped else 0.0
+	floor_labels = floor_labels.filter(func(l): return is_instance_valid(l))
+
+func eye(point: Vector3) -> Vector3:
+	# A camera seat, mirrored to the far end of the arena for the guest.
+	return Vector3(-point.x, point.y, -point.z) if view_flipped else point
 
 func platform(outline: Array, height: float, depth: float, color: Color) -> MeshInstance3D:
 	var st = SurfaceTool.new()
@@ -578,10 +602,19 @@ func batch_bricks() -> void:
 	for i in range(brick_nodes.size()):
 		update_brick_batch(i)
 
+func refresh_bricks() -> void:
+	# The whole wall written out again: at the start of every match and when the phone
+	# comes back from the background, so no brick can stay out of the shared draw.
+	for i in range(mini(brick_nodes.size(), brick_instances.size())):
+		update_brick_batch(i)
+
 func update_brick_batch(index: int) -> void:
 	for binding in brick_instances[index]:
 		var pose: Transform3D = global_transform.affine_inverse() * binding.part.global_transform
-		if not binding.part.is_visible_in_tree():
+		# Shown means the part and its brick, never the whole tree: a wall rebuilt while the
+		# arena was hidden behind the Taça hub was stored all collapsed, and came back into
+		# the match with only the bricks that had been hit since.
+		if not (binding.part.visible and binding.part.get_parent().visible):
 			# Collapsed where it stands, not parked a hundred units under the floor: the
 			# batch's bounding box is what the menu camera frames the stadium by, and a
 			# single hidden piece down there shrank the whole preview to a stamp.
@@ -1834,7 +1867,7 @@ func measure_view_bounds() -> Rect2:
 	var basis = camera.global_transform.basis
 	var bounds = Rect2()
 	var first = true
-	if camera_home != LANDSCAPE_EYE:
+	if camera_home != eye(LANDSCAPE_EYE):
 		for mark in stadium_marks():
 			var offset: Vector3 = mark - camera.global_position
 			var point = Vector2(offset.dot(basis.x), offset.dot(basis.y))
@@ -1917,8 +1950,8 @@ func frame_landscape(h_offset: float) -> void:
 		camera.projection = Camera3D.PROJECTION_ORTHOGONAL
 		camera_home = Vector3.ZERO
 		view_bounds = Rect2()
-	if camera_home != LANDSCAPE_EYE:
-		camera_home = LANDSCAPE_EYE
+	if camera_home != eye(LANDSCAPE_EYE):
+		camera_home = eye(LANDSCAPE_EYE)
 		camera.position = camera_home
 		camera.look_at(Vector3(0, -0.15, 0))
 		view_bounds = Rect2()
@@ -1949,7 +1982,7 @@ func frame_leaning(rect: Rect2, screen: Vector2) -> void:
 	camera.fov = LEAN_FOV
 	camera.h_offset = 0.0
 	camera.v_offset = 0.0
-	var direction: Vector3 = LEAN_DIR.normalized()
+	var direction: Vector3 = eye(LEAN_DIR).normalized()
 	var pivot := Vector3(0, 0.3, 0)
 	var distance := 34.0
 	for step in range(6):
@@ -1981,7 +2014,7 @@ func frame_rect(rect: Rect2, screen: Vector2, is_menu: bool = false) -> void:
 		camera.projection = Camera3D.PROJECTION_ORTHOGONAL
 		camera_home = Vector3.ZERO
 		view_bounds = Rect2()
-	var target_eye = LANDSCAPE_EYE if is_menu else PORTRAIT_EYE
+	var target_eye = eye(LANDSCAPE_EYE if is_menu else PORTRAIT_EYE)
 	if camera_home != target_eye:
 		camera_home = target_eye
 		camera.position = camera_home

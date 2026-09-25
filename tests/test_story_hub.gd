@@ -21,6 +21,18 @@ func finish(game, winner: int) -> void:
 	await process_frame
 	await process_frame
 
+func drawn_bricks(game) -> int:
+	# A brick is drawn when its body is in the shared batch at full size, not collapsed.
+	var arena = game.arena
+	var drawn = 0
+	for i in range(arena.brick_nodes.size()):
+		var biggest = 0.0
+		for binding in arena.brick_instances[i]:
+			biggest = maxf(biggest, binding.batch.get_instance_transform(binding.slot).basis.get_scale().y)
+		if biggest > 0.5:
+			drawn += 1
+	return drawn
+
 func run() -> void:
 	root.size = Vector2i(720, 1280)
 	var game = load("res://scenes/main.tscn").instantiate()
@@ -40,6 +52,13 @@ func run() -> void:
 	await process_frame
 	var hub = game.cup_screen
 	check(hub.visible and not game.arena.visible, "JOGAR in the story mode opens the Taça hub")
+	# Out to the lobby and back in, the way a player looks around first: the lobby is
+	# dressed while the arena is still hidden behind the hub.
+	game.cup_action("menu")
+	await process_frame
+	hud.campaign_button.pressed.emit()
+	await process_frame
+	check(hub.visible and not game.arena.visible, "And opens it again after a trip back to the lobby")
 	check(Press.has_new_edition(game.cup), "The opening edition waits unread at the kiosk")
 	hub.open_versus()
 	await process_frame
@@ -47,6 +66,7 @@ func run() -> void:
 	hub.overlay.enter.emit()
 	await process_frame
 	check(game.mode == "pve" and game.cup_active and not hub.visible and game.arena.map.id == "treino", "ENTRAR NA ARENA plays the admission on the campaign's first arena")
+	check(drawn_bricks(game) == game.rules.bricks.size(), "Every brick of the wall is drawn when the match starts (%d/%d)" % [drawn_bricks(game), game.rules.bricks.size()])
 	await finish(game, 0)
 	check(hub.visible and is_instance_valid(hub.overlay) and hub.overlay.outcome.won and game.cup.entrance_passed, "A win comes back to the hub with the result, not to a generic menu")
 	check(Press.editions_available(game.cup) == 2 and Press.has_new_edition(game.cup), "And a new edition is on the stand")
@@ -61,6 +81,8 @@ func run() -> void:
 	hub.overlay.enter.emit()
 	await process_frame
 	check(game.cup_active and game.rules.loadouts[1].size() == 3 and game.arena.unit_skins[1] == 1, "Round 1 brings the Faroleiro in its own skin and kit")
+	await process_frame
+	check(drawn_bricks(game) == game.rules.bricks.size(), "The second match draws its whole wall too, after the hub rebuilt it out of sight")
 	await finish(game, 1)
 	check(is_instance_valid(hub.overlay) and not hub.overlay.outcome.won and game.cup.losses_here() == 1 and game.cup.wins == 0, "A defeat is shown and remembered, and the round is still there")
 	check(Press.editions_available(game.cup) == 2 and Press.kiosk_line(game.cup) == Press.KIOSK_AFTER_DEFEAT[0], "Nothing is printed; Rosa has a word")

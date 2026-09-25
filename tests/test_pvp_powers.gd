@@ -12,6 +12,7 @@ var seen_local_ultimate = false
 var seen_remote_ultimate = false
 var asked_power = false
 var asked_ultimate = false
+var play_ticks = 0
 
 func _initialize() -> void:
 	call_deferred("run")
@@ -41,10 +42,12 @@ func run() -> void:
 			for team in range(2):
 				for slot in range(game.Rules.POWER_SLOTS):
 					game.rules.powers[team].charge[slot] = game.rules.power_charge_cost(team, slot)
-		if ticks > 120 and not asked_power:
+		if game.rules.phase == "play":
+			play_ticks += 1
+		if play_ticks > 20 and not asked_power:
 			asked_power = true
 			game.hud.request_power(0)
-		if ticks > 320 and not asked_ultimate:
+		if play_ticks > 220 and not asked_ultimate:
 			asked_ultimate = true
 			game.hud.request_power(game.Rules.POWER_SLOTS - 1)
 		# Read durable state, not the one-tick events: a 20 ms sampler misses a 16 ms event

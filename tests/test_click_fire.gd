@@ -71,6 +71,20 @@ func run() -> void:
 	game.rules.players[game.local_team].cooldown = 0.0
 	check(not game.local_command().fire, "Um toque antigo demais expira em vez de disparar muito depois")
 
+	# Ten quick taps, some of them between two ticks of the match: ten shots, one per reload.
+	game.rules.players[game.local_team].cooldown = 0.3
+	for tap in range(10):
+		touch(hud, hud.fire_center, true)
+		touch(hud, hud.fire_center, false)
+		if tap % 3 == 0:
+			game.local_command()
+	var fired = 0
+	for reload in range(14):
+		game.rules.players[game.local_team].cooldown = 0.0
+		if game.local_command().fire:
+			fired += 1
+	check(fired == 10, "Dez toques rápidos são dez tiros (%d)" % fired)
+
 	game.game_settings.fire_control = 1
 	hud.sync_game(game.game_settings)
 	ready_gun(game)
@@ -80,6 +94,16 @@ func run() -> void:
 	ready_gun(game)
 	check(not game.local_command().fire and hud.move_id == 1, "Mas arrastar ou manter o joystick só move, não dispara")
 	touch(hud, stick, false, 1)
+	game.rules.players[game.local_team].cooldown = 0.3
+	for tap in range(10):
+		touch(hud, stick, true, 1)
+		touch(hud, stick, false, 1)
+	fired = 0
+	for reload in range(14):
+		game.rules.players[game.local_team].cooldown = 0.0
+		if game.local_command().fire:
+			fired += 1
+	check(fired == 10, "Dez toques no joystick são dez tiros (%d)" % fired)
 
 	var key = InputEventKey.new()
 	key.keycode = KEY_SPACE
