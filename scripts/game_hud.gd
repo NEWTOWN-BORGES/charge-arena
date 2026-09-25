@@ -66,6 +66,19 @@ var fire_id = -1
 # Taps counted, not flagged: two taps between match ticks are two shots.
 var fire_tap = 0
 var fire_age = 1.0
+# The fire button answers the shot, not the finger: it squeezes to 94 % under the thumb,
+# pops to 103 % the instant the round leaves and settles back. A ring counts the reload
+# and pulses once when the gun is ready again.
+var fire_pop = 1.0
+var fire_cool_left = 0.0
+var fire_cool_total = 0.42
+var fire_ready_pulse = 1.0
+const FIRE_POP_SECONDS = 0.14
+const READY_PULSE_SECONDS = 0.24
+var feel = null
+signal effects_changed(reduced: bool)
+signal feel_panel_requested
+var effects_choice: OptionButton
 var fire_center = Vector2.ZERO
 var defense_notice = ""
 var defense_notice_time = 0.0
@@ -869,6 +882,14 @@ func _process(dt: float) -> void:
 	if fire_age < 0.24 or defense_notice_time > 0:
 		fire_age += dt
 		defense_notice_time = maxf(0.0, defense_notice_time - dt)
+		queue_redraw()
+	if fire_pop < FIRE_POP_SECONDS or fire_cool_left > 0.0 or fire_ready_pulse < READY_PULSE_SECONDS:
+		fire_pop += dt
+		fire_ready_pulse += dt
+		if fire_cool_left > 0.0:
+			fire_cool_left = maxf(0.0, fire_cool_left - dt)
+			if fire_cool_left == 0.0:
+				fire_ready_pulse = 0.0
 		queue_redraw()
 	redraw_wait += dt
 	if redraw_asked and redraw_wait >= REDRAW_INTERVAL:
@@ -1865,6 +1886,13 @@ func build_video_menu() -> void:
 	haptic_choice.text = "Vibração nos disparos e impactos"
 	haptic_choice.custom_minimum_size.y = 48
 	list.add_child(haptic_choice)
+	# Accessibility: fewer particles, no light flashes, no micro-pauses.
+	effects_choice = video_option(list, "Efeitos de combate", ["Completos", "Reduzidos"])
+	effects_choice.item_selected.connect(func(index): effects_changed.emit(index == 1))
+	var tuning = make_button("AFINAÇÃO DOS TIROS  ·  DEBUG", false)
+	tuning.custom_minimum_size.y = 48
+	tuning.pressed.connect(func(): feel_panel_requested.emit())
+	list.add_child(tuning)
 	automatic_choice = CheckButton.new()
 	automatic_choice.text = "Disparo automático (desligar para tiro manual)"
 	automatic_choice.custom_minimum_size.y = 48
@@ -2006,6 +2034,8 @@ func emit_feedback() -> void:
 func sync_game(settings) -> void:
 	camera_choice.select(settings.camera_feedback)
 	haptic_choice.set_pressed_no_signal(settings.haptics)
+	if feel != null and is_instance_valid(effects_choice):
+		effects_choice.select(1 if feel.effects_reduced else 0)
 	automatic_choice.set_pressed_no_signal(settings.auto_fire)
 	sfx_slider.set_value_no_signal(settings.sfx_volume * 100.0)
 	auto_fire = settings.auto_fire
@@ -2304,6 +2334,7 @@ func _input(event: InputEvent) -> void:
 				fire_id = event.index
 				fire_tap += 1
 				fire_age = 0.0
+				if feel != null: feel.mark_input()
 				queue_redraw()
 				return
 			# Power buttons sit between the thumb controls, so they are tested first.
@@ -2321,6 +2352,7 @@ func _input(event: InputEvent) -> void:
 				if not auto_fire and fire_control == 1:
 					fire_tap += 1
 					fire_age = 0.0
+					if feel != null: feel.mark_input()
 		else:
 			if event.index == fire_id: fire_id = -1
 			if event.index == move_id:
@@ -2889,6 +2921,9 @@ func _draw() -> void:
 	for side in [-1, 1]:
 		var tip = stick + Vector2(side * (STICK_RADIUS - 15), 0)
 		draw_polyline(PackedVector2Array([tip - Vector2(side * 8, 9), tip, tip - Vector2(side * 8, -9)]), Color(CYAN, 0.45), 2.6, smooth)
+	if not auto_fire and fire_control == 1:
+		# Joystick fire: the base answers the shot the way the button would.
+		draw_reload(stick, STICK_RADIUS + 5)
 	var knob = stick + move_vector * 39
 	draw_circle(knob + Vector2(0, 3), 26, Color(0.02, 0.05, 0.06, 0.45), true, -1, smooth)
 	draw_circle(knob, 26, CYAN.darkened(0.2 if move_id >= 0 else 0.55), true, -1, smooth)
@@ -2897,15 +2932,44 @@ func _draw() -> void:
 	centered("MOVER, APONTAR E DISPARAR" if not auto_fire and fire_control == 1 else "MOVER E APONTAR", stick + Vector2(0, 84), 10, CYAN, true)
 	centered("DISPARO AUTOMÁTICO  ·  MIRA ASSISTIDA" if auto_fire else "MIRA ASSISTIDA", stick + Vector2(0, 99), 9, Color(LIME, 0.75), true)
 	if not auto_fire and fire_control == 0:
-		var press = 0.93 + 0.07 * clampf(fire_age / 0.16, 0.0, 1.0)
+		var press = fire_scale(fire_id >= 0)
 		draw_circle(fire_center, 46 * fire_size * press, CYAN.darkened(0.6), true, -1, smooth)
 		draw_arc(fire_center, 46 * fire_size * press, 0, TAU, 48, CYAN, 2.0, smooth)
+		draw_reload(fire_center, 46 * fire_size + 6)
 		centered("TIRO", fire_center + Vector2(0, 5), 17, WHITE, true)
 	if defense_notice_time > 0 and match_data.phase == "play":
 		var notice_at = Vector2(arena_rect.get_center().x, arena_rect.position.y + 28) if vertical else Vector2(size.x * 0.5, 145)
 		panel(Rect2(notice_at - Vector2(174, 23), Vector2(348, 40)))
 		centered(defense_notice, notice_at + Vector2(0, 3), 13, LIME, true)
 	draw_powers()
+
+func fire_scale(pressed: bool) -> float:
+	# 100 -> 94 under the thumb -> 103 as the round leaves -> back to rest.
+	var rest = 0.94 if pressed else 1.0
+	if fire_pop >= FIRE_POP_SECONDS:
+		return rest
+	return lerpf(rest, 1.03, sin(clampf(fire_pop / FIRE_POP_SECONDS, 0.0, 1.0) * PI))
+
+func draw_reload(center: Vector2, radius: float) -> void:
+	# The reload, clockwise from the top; then one ring opening outwards: ready.
+	if fire_cool_left > 0.0:
+		var done = 1.0 - fire_cool_left / maxf(fire_cool_total, 0.001)
+		draw_arc(center, radius, -PI * 0.5, -PI * 0.5 + TAU * done, 48, Color(CYAN, 0.75), 3.0, smooth)
+	elif fire_ready_pulse < READY_PULSE_SECONDS:
+		var t = fire_ready_pulse / READY_PULSE_SECONDS
+		draw_arc(center, radius + t * 12.0, 0, TAU, 48, Color(LIME, 0.8 * (1.0 - t)), 2.4, smooth)
+
+func on_weapon_fired(info: Dictionary) -> void:
+	if not bool(info.get("local", false)):
+		return
+	fire_age = 0.0
+	fire_pop = 0.0
+	# The machine gun's stream has no reload of its own to count.
+	if int(info.get("power", 0)) != 2:
+		fire_cool_total = Rules.FIRE_INTERVAL
+		fire_cool_left = fire_cool_total
+		fire_ready_pulse = READY_PULSE_SECONDS
+	queue_redraw()
 
 func stun_banner_rect() -> Rect2:
 	# Over the thumb band on a phone, under the score on a wide screen.

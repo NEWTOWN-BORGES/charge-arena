@@ -13,6 +13,7 @@ var seen_remote_ultimate = false
 var asked_power = false
 var asked_ultimate = false
 var play_ticks = 0
+var linked_ticks = 0
 
 func _initialize() -> void:
 	call_deferred("run")
@@ -34,8 +35,11 @@ func run() -> void:
 		ticks += 1
 		if not game.connected:
 			continue
+		# Counted from the moment the pair is connected: the guest can take a while to
+		# start, and a clock from launch would close the top-up before the match began.
+		linked_ticks += 1
 		var mine: int = game.local_team
-		if role == "host" and ticks < 100:
+		if role == "host" and linked_ticks < 100:
 			# The host owns the simulation, so it is the one that hands out charge. It stops
 			# well before either side presses a key: topping up on the same tick a power is
 			# spent hides the very spending this test is looking for.

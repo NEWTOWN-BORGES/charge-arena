@@ -51,7 +51,8 @@ func setup(story: Dictionary) -> void:
 	size = Vector2i(960, 600)
 	own_world_3d = true
 	msaa_3d = Viewport.MSAA_4X
-	render_target_update_mode = SubViewport.UPDATE_ONCE
+	# Drawn continuously while it develops; the paper reads it back and lets it go.
+	render_target_update_mode = SubViewport.UPDATE_ALWAYS
 	stage = Node3D.new()
 	add_child(stage)
 	model = Models.new()

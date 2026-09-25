@@ -34,7 +34,10 @@ func run() -> void:
 			brick.hp = 0
 			brick.alive = false
 	game.arena.update_state(game.rules, 0, 1.0 / 60)
-	check(is_equal_approx(game.arena.goals[1].material_override.get_shader_parameter("unlocked"), 1.0), "Removing both banks changes the goal shield to its open state")
+	var opening: float = game.arena.goals[1].material_override.get_shader_parameter("unlocked")
+	for n in range(30):
+		game.arena.update_state(game.rules, 0, 1.0 / 60)
+	check(opening < 1.0 and is_equal_approx(game.arena.goals[1].material_override.get_shader_parameter("unlocked"), 1.0), "Removing both banks opens the goal shield, in a ramp rather than a switch")
 	game.rules.reset_round()
 	game.arena.update_state(game.rules, 0, 1.0 / 60)
 	check(game.arena.brick_nodes.all(func(b): return b.visible and is_equal_approx(b.scale.x, 1.0)), "New round restores all brick models at full size")

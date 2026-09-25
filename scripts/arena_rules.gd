@@ -1850,7 +1850,7 @@ func advance_ball(ball: Dictionary, dt: float, sweep_obstacles: bool = false, pr
 					if ball.get("power", 0) == 1:
 						explode(ball)
 					balls.erase(ball)
-					events.append({"kind": "spent", "p": ball.p, "team": ball.owner, "surface": kind, "heading": ball.v.normalized()})
+					events.append({"kind": "spent", "p": ball.p, "team": ball.owner, "surface": kind, "heading": ball.v.normalized(), "normal": normal})
 					return {"kind": "spent"}
 				if kind == "obstacle":
 					# Reflect relative to the moving surface, preserving the arcade shot speed.
@@ -1864,7 +1864,7 @@ func advance_ball(ball: Dictionary, dt: float, sweep_obstacles: bool = false, pr
 					ball.damage = BOOST_DAMAGE
 				ball.p += normal * 0.005
 				if not preview:
-					events.append({"kind": "boost" if kind == "boost" else "bounce", "p": ball.p, "team": ball.owner, "surface": kind, "heading": ball.v.normalized()})
+					events.append({"kind": "boost" if kind == "boost" else "bounce", "p": ball.p, "team": ball.owner, "surface": kind, "heading": ball.v.normalized(), "normal": normal})
 				remaining *= 1.0 - best
 	return {}
 

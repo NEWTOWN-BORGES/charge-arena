@@ -115,18 +115,30 @@ static func spec(cup, who: String, player_skin: int) -> Array:
 	var hue = String(e.hue)
 	return [int(e.skin), hue if hue != "" else "ef947e"]
 
+class Snapshot extends SubViewport:
+	## A still that develops over a moment instead of in one frame, then holds its picture.
+	## Drawn once, a phone could send that single frame out before the model's materials
+	## were ready, and the portrait stayed empty for good.
+	var settle = 0.9
+	func _ready() -> void:
+		render_target_update_mode = SubViewport.UPDATE_ALWAYS
+	func _process(dt: float) -> void:
+		settle -= dt
+		if settle <= 0.0:
+			render_target_update_mode = SubViewport.UPDATE_DISABLED
+			set_process(false)
+
 static func pilot_render(cup, who: String, player_skin: int, turn: float = 0.0, pixels: Vector2i = Vector2i(420, 480)) -> TextureRect:
 	# A still of the real model, lit like a portrait, rendered once into a texture.
 	var image = TextureRect.new()
 	image.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	image.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
 	image.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	var viewport = SubViewport.new()
+	var viewport = Snapshot.new()
 	viewport.size = pixels
 	viewport.transparent_bg = true
 	viewport.own_world_3d = true
 	viewport.msaa_3d = Viewport.MSAA_4X
-	viewport.render_target_update_mode = SubViewport.UPDATE_ONCE
 	image.add_child(viewport)
 	var models = Models.new()
 	models.quality_level = 2

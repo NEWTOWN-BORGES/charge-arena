@@ -65,6 +65,19 @@ var fps_measuring = false
 # Stereo position of the event being played, set while play_events walks the list.
 var event_pan = 0.0
 const CombatAudio = preload("res://scripts/combat_audio.gd")
+const CombatFeel = preload("res://scripts/combat_feel.gd")
+const FeelPanel = preload("res://scripts/feel_panel.gd")
+# The gun-feel hub: shots, impacts, broken bricks and goals are announced here once, and
+# every feedback system - picture, camera, sound, hand, HUD - listens.
+var feel
+var feel_panel: Control
+# A PvP guest tells its own tap at once and recognises the host's shot when it arrives.
+var predicted_shots: Array = []
+var predicted_ready_ms = 0
+# Mix: sounds under this level are pushed down by arena_duck_db while a big moment speaks.
+var duck_below = 6
+var duck_target_db = 0.0
+var duck_left = 0.0
 var video = VideoSettings.new()
 var music
 var visual_packet_age = 0.0
@@ -108,7 +121,12 @@ func configure_test_access(enabled: bool) -> void:
 	campaign.unlock_all = true
 
 func _ready() -> void:
+	feel = CombatFeel.new()
+	feel.name = "CombatFeel"
+	add_child(feel)
+	feel.load_preferences()
 	arena = ArenaView.new()
+	arena.feel = feel
 	add_child(arena)
 	arena.build()
 	var layer = CanvasLayer.new()
@@ -130,6 +148,9 @@ func _ready() -> void:
 	hud.video_changed.connect(change_video)
 	hud.video_opened.connect(func(): mouse_firing = false)
 	hud.audio_changed.connect(change_audio)
+	hud.feel = feel
+	hud.effects_changed.connect(change_effects)
+	hud.feel_panel_requested.connect(open_feel_panel)
 	video.load_preferences()
 	video.apply(get_viewport(), arena)
 	hud.smooth = video.smooth_hud
@@ -186,6 +207,7 @@ func _ready() -> void:
 	multiplayer.connection_failed.connect(func(): return_to_menu.call_deferred("Não foi possível ligar. Confirma o IP e a rede."))
 	multiplayer.server_disconnected.connect(func(): return_to_menu.call_deferred("O anfitrião saiu da partida."))
 	build_audio()
+	connect_feel()
 	cup.restore()
 	# Reconcile earned rewards when upgrading an older tournament save.
 	for reward in cup.defeated_bosses():
@@ -352,6 +374,7 @@ func use_map(layout: Dictionary) -> void:
 	remove_child(old)
 	old.queue_free()
 	arena = ArenaView.new()
+	arena.feel = feel
 	add_child(arena)
 	arena.build(layout)
 	video.apply(get_viewport(), arena)
@@ -407,6 +430,7 @@ func close_network() -> void:
 
 func return_to_menu(message: String = "") -> void:
 	arena.set_view_team(0)
+	predicted_shots.clear()
 	if hud.skins_overlay.visible:
 		hud.close_skins()
 	cup_active = false
@@ -571,6 +595,7 @@ func _unhandled_input(event: InputEvent) -> void:
 		mouse_firing = event.pressed and mode != "menu"
 		if mouse_firing:
 			pending_clicks += 1
+			feel.mark_input()
 
 func _unhandled_key_input(event: InputEvent) -> void:
 	if event.is_pressed() and event is InputEventKey and mode == "menu" and not hud.menu_overlay_open():
@@ -580,6 +605,7 @@ func _unhandled_key_input(event: InputEvent) -> void:
 	if event.is_pressed() and not event.is_echo() and event is InputEventKey and mode != "menu":
 		if event.keycode == KEY_SPACE:
 			pending_clicks += 1
+			feel.mark_input()
 			return
 		# On a PC the three powers are on the number keys; phones use the HUD buttons.
 		var slot = [KEY_1, KEY_2, KEY_3].find(event.keycode)
@@ -725,7 +751,7 @@ func change_feedback(camera: int, haptics: bool, automatic: bool, volume: float)
 	game_settings.auto_fire = automatic
 	game_settings.sfx_volume = volume
 	arena.shake_scale = [0.0, 0.45, 1.0][camera]
-	if camera == 0: arena.shake_power = 0.0
+	if camera == 0: arena.clear_shake()
 	mouse_firing = false
 	clear_shots()
 	save_game_settings()
@@ -779,15 +805,33 @@ func update_sustained_haptics() -> void:
 	sustained_next_ms = now + int(profile.y)
 
 func update_feedback_mix(dt: float) -> void:
+	# Ducking follows the hierarchy: while a big moment speaks, everything under its level
+	# steps back - an ultimate for 180 ms, the last brick for a quarter second, a goal for
+	# a second - and comes back smoothly.
 	release_focus = maxf(0.0, release_focus - dt)
+	duck_left = maxf(0.0, duck_left - dt)
 	var focus = release_focus > 0.0
 	for state in rules.powers:
 		if state.ultimate_windup > 0.0 and state.ultimate_windup < 0.18: focus = true
-	arena_duck_db = move_toward(arena_duck_db, -4.5 if focus else 0.0, dt * (70.0 if focus else 24.0))
+	var target = 0.0
+	if focus:
+		target = -4.5
+		duck_below = maxi(duck_below, 6) if duck_left > 0.0 else 6
+	if duck_left > 0.0:
+		target = minf(target, duck_target_db)
+	arena_duck_db = move_toward(arena_duck_db, target, dt * (70.0 if target < arena_duck_db else 24.0))
 	var volume = linear_to_db(maxf(game_settings.sfx_volume, 0.0001))
 	for voice in audio_voices:
 		if voice.playing:
-			voice.volume_db = float(voice.get_meta("mix_gain", -18.0)) + volume + (arena_duck_db if voice.get_meta("secondary", false) else 0.0)
+			voice.volume_db = float(voice.get_meta("mix_gain", -18.0)) + volume + (arena_duck_db if int(voice.get_meta("level", 5)) < duck_below else 0.0)
+
+func duck(kind: String) -> void:
+	var spec: Array = CombatFeel.DUCKING[kind]
+	# The deeper duck wins while both run.
+	if duck_left <= 0.0 or float(spec[1]) <= duck_target_db:
+		duck_below = int(spec[0])
+		duck_target_db = float(spec[1])
+		duck_left = float(spec[2])
 
 func change_sensitivity(level: int) -> void:
 	game_settings.configure(game_settings.difficulty, game_settings.aim_guide, level)
@@ -827,32 +871,20 @@ func play_events() -> void:
 		ArenaView.CombatFinish.event(arena, event, rules)
 		if event.kind == "shot":
 			var team = int(event.team)
-			arena.shot_feedback(team)
-			if team == local_team:
-				arena.shake(0.016)
-				haptic(8, 0.12)
-				hud.fire_age = 0.0
-			var skin = int(arena.unit_skins[team])
-			# Intermediate opponents share the Aurora base, never a missing sample.
-			if skin >= Skins.CATALOG.size(): skin = 0
-			var variant = int(shot_variants[team]) % 3
-			shot_variants[team] += 1
-			play_tone("shot_%d_%d" % [skin, variant], 0.0 if team == local_team else -5.0)
-		elif event.kind == "boost":
-			play_tone("boost")
-		elif event.kind in ["bounce", "spent"]:
-			arena.impact_feedback(event)
-			play_tone("metal" if event.get("surface", "") == "obstacle" else "ricochet")
-		elif event.kind == "player_hit":
-			arena.impact_feedback(event)
-			play_tone("shield")
+			# A guest already told its own tap; the host's word on it is not told twice.
+			if team == local_team and mode == "client" and consume_prediction():
+				continue
+			feel.fire({"team": team, "p": event.p, "power": int(event.get("power", 0)), "local": team == local_team, "predicted": false})
+		elif event.kind in ["boost", "bounce", "spent", "player_hit"]:
+			feel.impact(event)
 		elif event.kind == "power":
 			# Both sides are announced: a power launched at you should never be silent.
 			arena.power_flash(event.p, String(event.get("id", "")))
+			arena.dissipate(event.p, Rules.power_color(String(event.get("id", ""))))
 			var ability_cue = "ability_" + String(event.get("id", ""))
 			play_tone(ability_cue if tones.has(ability_cue) else "power")
 			arena.shake(0.22)
-			if int(event.team) == local_team: haptic(22, 0.30)
+			if int(event.team) == local_team: haptic_kind("power")
 		elif event.kind == "laser":
 			arena.laser_beam(event.p, event.heading, event.team)
 			play_tone("laser_tick", -2.0)
@@ -862,8 +894,7 @@ func play_events() -> void:
 			for spot in back:
 				arena.gain_mark(spot, int(event.get("gain", 0)), Rules.power_color("rebuild"))
 		elif event.kind == "mirror":
-			arena.impact_feedback(event)
-			play_tone("shield")
+			feel.impact(event)
 		elif event.kind == "shock":
 			arena.shock_pulse(event.p)
 		elif event.kind == "ultimate_charge":
@@ -871,9 +902,10 @@ func play_events() -> void:
 			play_tone("charging")
 		elif event.kind == "ultimate":
 			release_focus = 0.14
+			duck("ultimate")
 			arena.ultimate_accent(event.p, String(event.get("id", "")))
 			if int(event.team) == local_team:
-				haptic(48 if String(event.get("id", "")) in ["meteors", "sun_ray", "singularity"] else 30, 0.55)
+				haptic_kind("ultimate")
 			play_tone("unleash")
 			if tones.has(String(event.get("id", ""))):
 				play_tone(String(event.id))
@@ -948,21 +980,13 @@ func play_events() -> void:
 			play_tone("power")
 		elif event.kind == "power_ready" and event.team == local_team:
 			play_tone("ready")
-		elif event.kind in ["brick", "brick_hit"]:
-			arena.impact_feedback(event)
-			impact_variant = (impact_variant + 1) % 3
-			var cue = ("break_" if event.kind == "brick" else "hit_") + str(impact_variant)
-			play_tone("shield" if event.get("soaked", false) else cue)
-			if event.kind == "brick":
-				var team = int(event.team)
-				var repeated = rules.elapsed - float(break_times[team]) < 0.18
-				break_times[team] = rules.elapsed
-				arena.shake(0.13 if repeated else 0.075)
-				if team != local_team: haptic(16, 0.24)
+		elif event.kind == "brick_hit":
+			feel.impact(event)
+			if int(event.get("bite", 0)) > 0:
+				arena.damage_mark(int(event.team), event.p, int(event.bite))
+		elif event.kind == "brick":
+			feel.destroyed(event)
 			if event.get("defense_open", false):
-				play_tone("defense")
-				arena.shake(0.19)
-				haptic(25, 0.34)
 				hud.defense_notice = "DEFESA ABERTA — ATACA A BALIZA!" if int(event.team) != local_team else "A TUA BALIZA ESTÁ DESPROTEGIDA!"
 				hud.defense_notice_time = 1.25
 			if int(event.get("bite", 0)) > 0:
@@ -1041,6 +1065,7 @@ func read_power() -> int:
 	# and one that simply waited its turn.
 	var asked: int = hud.take_power()
 	if asked >= 0:
+		arena.anticipate(local_team, Rules.power_color(rules.power_id(local_team, asked)))
 		held_power = asked
 		held_power_until = Time.get_ticks_msec() + POWER_HOLD_MS
 	if held_power < 0:
@@ -1085,6 +1110,7 @@ func _physics_process(dt: float) -> void:
 		return
 	var command = local_command()
 	if mode == "client":
+		predict_fire(int(command.get("clicks", 0)))
 		for click in range(int(command.get("clicks", 0))):
 			submit_fire_tap.rpc_id(1)
 		if command.power >= 0:
@@ -1234,9 +1260,7 @@ func _process(dt: float) -> void:
 		if rules.phase == "finished" and mode == "pve" and level_index >= 0:
 			finish_level()
 		if rules.phase == "goal" or rules.phase == "finished":
-			play_tone("goal")
-			arena.shake(1.05)
-			haptic(65, 0.75)
+			feel.goal({"winner": rules.winner, "local": rules.winner == local_team})
 			save_skins()
 		last_phase = rules.phase
 	for i in range(2):
@@ -1279,6 +1303,184 @@ func build_audio() -> void:
 	tones = preload("res://scripts/combat_audio.gd").TRACKS.duplicate()
 	for skin in range(Skins.CATALOG.size()):
 		tones["shot_%d" % skin] = tones["shot_%d_0" % skin]
+	# The layers the skin samples sit on: TAP (the trigger, in the hand), FSHH (the round
+	# leaving), THOCK (a brick's weight under its CRACK) and the low door of an opening goal.
+	tones["shot_tap"] = tap_wave()
+	tones["shot_air"] = air_wave()
+	tones["thud"] = sweep_wave(0.11, 150.0, 55.0, 0.35)
+	tones["goal_open"] = sweep_wave(0.75, 72.0, 36.0, 0.12)
+
+func tap_wave() -> AudioStreamWAV:
+	# 35 ms: a 3 ms click of noise, a bright 1.9 kHz tick and a short 180 Hz knock.
+	var wave = AudioStreamWAV.new()
+	wave.format = AudioStreamWAV.FORMAT_16_BITS
+	wave.mix_rate = 22050
+	var count = int(22050 * 0.035)
+	var bytes = PackedByteArray()
+	bytes.resize(count * 2)
+	var noise = RandomNumberGenerator.new()
+	noise.seed = 1907
+	for i in range(count):
+		var t = float(i) / 22050.0
+		var click = noise.randf_range(-1.0, 1.0) * maxf(0.0, 1.0 - t / 0.003)
+		var tick = sin(t * TAU * 1900.0) * exp(-t * 180.0) * 0.55
+		var knock = sin(t * TAU * 180.0) * exp(-t * 70.0) * 0.6
+		bytes.encode_s16(i * 2, int(clampf(click * 0.7 + tick + knock, -1.0, 1.0) * 19000))
+	wave.data = bytes
+	return wave
+
+func air_wave() -> AudioStreamWAV:
+	# 120 ms of soft, darkened noise that swells for 20 ms and trails away: the round going.
+	var wave = AudioStreamWAV.new()
+	wave.format = AudioStreamWAV.FORMAT_16_BITS
+	wave.mix_rate = 22050
+	var count = int(22050 * 0.12)
+	var bytes = PackedByteArray()
+	bytes.resize(count * 2)
+	var noise = RandomNumberGenerator.new()
+	noise.seed = 2210
+	var smooth = 0.0
+	for i in range(count):
+		var t = float(i) / 22050.0
+		smooth = lerpf(smooth, noise.randf_range(-1.0, 1.0), 0.3)
+		var envelope = minf(t / 0.02, 1.0) * pow(1.0 - float(i) / count, 2.0)
+		bytes.encode_s16(i * 2, int(clampf(smooth * envelope * 1.4, -1.0, 1.0) * 19000))
+	wave.data = bytes
+	return wave
+
+# --- Gun feel: the listeners ---------------------------------------------------------
+
+func connect_feel() -> void:
+	# One announcement, many listeners, each doing one job.
+	feel.weapon_fired.connect(func(info): arena.on_weapon_fired(info))
+	feel.weapon_fired.connect(fire_audio)
+	feel.weapon_fired.connect(func(info): if info.local: haptic_kind("fire"))
+	feel.weapon_fired.connect(hud.on_weapon_fired)
+	feel.projectile_impact.connect(func(info): arena.impact_feedback(info))
+	feel.projectile_impact.connect(impact_audio)
+	feel.projectile_impact.connect(impact_camera)
+	feel.brick_destroyed.connect(destroy_feedback)
+	feel.goal_scored.connect(goal_feedback)
+
+func fire_audio(info: Dictionary) -> void:
+	var team = int(info.team)
+	var skin = int(arena.unit_skins[team])
+	# Intermediate opponents share the Aurora base, never a missing sample.
+	if skin >= Skins.CATALOG.size(): skin = 0
+	var variant = int(shot_variants[team]) % 3
+	shot_variants[team] += 1
+	var local = bool(info.local)
+	# Body, energy and tail are the skin's own sample; a small pitch drift keeps a hundred
+	# shots from sounding like one copied a hundred times.
+	play_tone("shot_%d_%d" % [skin, variant], 0.0 if local else -5.0, feel.pitch())
+	# The machine gun keeps its own voice; a single shot gets the trigger and the air.
+	if local and int(info.get("power", 0)) != 2:
+		play_tone("shot_tap", -6.0, feel.pitch())
+		play_tone("shot_air", -12.0, feel.pitch())
+
+func impact_audio(event: Dictionary) -> void:
+	match CombatFeel.material_of(event):
+		"metal": play_tone("metal", 0.0, feel.pitch())
+		"shield": play_tone("shield", 0.0, feel.pitch())
+		"boost": play_tone("boost")
+		"brick":
+			impact_variant = (impact_variant + 1) % 3
+			play_tone("hit_" + str(impact_variant), 0.0, feel.pitch())
+		_: play_tone("ricochet", 0.0, feel.pitch())
+
+func impact_camera(event: Dictionary) -> void:
+	# Only the local shooter's hits move the camera, and only a hair.
+	if String(event.kind) == "brick_hit" and int(event.team) != local_team:
+		var heading: Vector2 = event.get("heading", Vector2.ZERO)
+		arena.feel_shake("brick_hit", Vector3(heading.x, 0, heading.y), feel.value("camera_destroy_strength"))
+
+func destroy_feedback(event: Dictionary) -> void:
+	# THOCK -> CRACK: the knock of the brick giving, then its break a beat later.
+	var team = int(event.team)
+	var last: bool = event.get("defense_open", false)
+	var mine = team != local_team
+	arena.impact_feedback(event)
+	impact_variant = (impact_variant + 1) % 3
+	var cue = "break_" + str(impact_variant)
+	if event.get("soaked", false):
+		play_tone("shield")
+	else:
+		play_tone("thud", -4.0, feel.pitch())
+		arena.schedule(0.028, func(): play_tone(cue, 0.0, feel.pitch()))
+	duck("brick")
+	var repeated = rules.elapsed - float(break_times[team]) < 0.18
+	break_times[team] = rules.elapsed
+	var heading: Vector2 = event.get("heading", Vector2.ZERO)
+	var along = Vector3(heading.x, 0, heading.y)
+	if last:
+		# The goal opens: CRACK, a held breath, a pulse, the shield gives, a low door.
+		arena.hitstop(feel.hitstop_for("last_brick"))
+		arena.feel_shake("last_brick", along, feel.value("camera_destroy_strength"))
+		haptic_kind("last_brick")
+		duck("last_brick")
+		arena.schedule(0.12, func():
+			play_tone("defense")
+			play_tone("goal_open", -2.0))
+	else:
+		if mine:
+			arena.hitstop(feel.hitstop_for("brick"))
+			haptic_kind("destroy")
+		arena.feel_shake("brick", along, feel.value("camera_destroy_strength") * (1.6 if repeated else 1.0) * (1.0 if mine else 0.6))
+
+func goal_feedback(info: Dictionary) -> void:
+	play_tone("goal")
+	duck("goal")
+	arena.goal_payoff(int(info.winner))
+	haptic_kind("goal")
+
+func haptic_kind(kind: String) -> void:
+	var spec: Vector2 = feel.haptic_for(kind)
+	if spec.x > 0.0:
+		haptic(int(spec.x), spec.y)
+
+func predict_fire(clicks: int) -> void:
+	# The guest's own tap is told at once - gun, flash, sound, hand - instead of a round
+	# trip later. The host still decides; its shot is recognised and not told twice.
+	if clicks <= 0 or game_settings.auto_fire or not rules.can_fire(local_team):
+		return
+	var now = Time.get_ticks_msec()
+	if now < predicted_ready_ms:
+		return
+	predicted_ready_ms = now + int(Rules.FIRE_INTERVAL * 1000.0) - 40
+	predicted_shots.append(now)
+	feel.fire({"team": local_team, "p": rules.players[local_team].p, "power": 0, "local": true, "predicted": true})
+
+func consume_prediction() -> bool:
+	var now = Time.get_ticks_msec()
+	# A tap the host turned down (stunned, out of play) is forgotten after 0.7 s.
+	while not predicted_shots.is_empty() and now - int(predicted_shots[0]) > 700:
+		predicted_shots.pop_front()
+	if predicted_shots.is_empty():
+		return false
+	predicted_shots.pop_front()
+	return true
+
+func change_effects(reduced: bool) -> void:
+	feel.effects_reduced = reduced
+	if feel.save_preferences() != OK:
+		hud.video_note.text = "Aplicado nesta sessão. Não foi possível guardar as opções."
+
+func open_feel_panel() -> void:
+	if is_instance_valid(feel_panel):
+		return
+	feel_panel = FeelPanel.new()
+	feel_panel.feel = feel
+	feel_panel.range_requested.connect(start_feel_range)
+	hud.add_child(feel_panel)
+
+func start_feel_range() -> void:
+	# The test range: a quick match with the rival standing still, to fire, hit, break and
+	# score against while tuning.
+	if is_instance_valid(feel_panel):
+		feel_panel.queue_free()
+	hud.close_video()
+	start_pve()
+	pause_ai = true
 
 func roar_wave(seconds: float, base_hz: float, grit: float) -> AudioStreamWAV:
 	# A held, throaty beam: two detuned saws under a slow tremolo.
@@ -1364,14 +1566,32 @@ func sweep_wave(seconds: float, from_hz: float, to_hz: float, grit: float) -> Au
 	wave.data = bytes
 	return wave
 
-func play_tone(sound: String, gain_db: float = 0.0) -> void:
+static func sound_level(sound: String) -> int:
+	# Where each sound sits in the hierarchy: ambient < ricochet < shot < impact <
+	# destruction < power < ultimate < goal.
+	if sound.begins_with("shot_"):
+		return 2
+	if sound in ["bounce", "ricochet", "metal", "sentry"]:
+		return 1
+	if sound.begins_with("hit_") or sound in ["shield", "boost"]:
+		return 3
+	if sound.begins_with("break_") or sound in ["thud", "blast"]:
+		return 4
+	if sound == "goal":
+		return 7
+	if sound in ["charging", "unleash", "defense", "goal_open", "sun_ray", "thunder", "meteor", "singularity", "void_wave", "void_burst", "sentries", "bloom", "plunder"]:
+		return 6
+	return 5
+
+func play_tone(sound: String, gain_db: float = 0.0, pitch: float = 1.0) -> void:
 	if audio_voices.is_empty() or not tones.has(sound):
 		return
 	var now = Time.get_ticks_msec()
 	var weapon = sound.begins_with("shot_")
-	var priority = 0 if weapon or sound in ["bounce", "ricochet", "metal"] else (3 if sound in ["charging", "unleash", "goal"] else 2)
+	var level = sound_level(sound)
+	var priority = level
 	# Dense combat should not turn one event into a stack of identical loud transients.
-	if not weapon and priority < 3 and now - int(sound_times.get(sound, -1000)) < 28 and audio_voices.any(func(v): return v.playing and v.stream == tones[sound]):
+	if not weapon and level < 6 and now - int(sound_times.get(sound, -1000)) < 28 and audio_voices.any(func(v): return v.playing and v.stream == tones[sound]):
 		return
 	sound_times[sound] = now
 	var voice: AudioStreamPlayer = null
@@ -1387,11 +1607,11 @@ func play_tone(sound: String, gain_db: float = 0.0) -> void:
 		return
 	voice.set_meta("priority", priority)
 	voice.set_meta("started", now)
-	voice.volume_db = (-17.5 if weapon else (-14.0 if priority == 3 else (-23.0 if priority == 0 else -18.0))) + gain_db
+	voice.set_meta("level", level)
+	voice.volume_db = (-17.5 if weapon else (-14.0 if sound in ["charging", "unleash", "goal"] else (-23.0 if level == 1 else -18.0))) + gain_db
 	voice.set_meta("mix_gain", voice.volume_db)
-	voice.set_meta("secondary", weapon or sound in ["bounce", "metal", "ricochet", "sentry", "hit_0", "hit_1", "hit_2", "break_0", "break_1", "break_2"])
-	voice.volume_db += linear_to_db(maxf(game_settings.sfx_volume, 0.0001)) + (arena_duck_db if voice.get_meta("secondary") else 0.0)
-	voice.pitch_scale = 1.0
+	voice.volume_db += linear_to_db(maxf(game_settings.sfx_volume, 0.0001)) + (arena_duck_db if level < duck_below else 0.0)
+	voice.pitch_scale = pitch
 	voice.bus = CombatAudio.bus_for(event_pan)
 	voice.stream = tones[sound]
 	voice.play()

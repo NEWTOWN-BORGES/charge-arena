@@ -41,8 +41,10 @@ func run() -> void:
 	check(view.units[0].get_node("Body/Gun/Flash").scale.x > 0.3, "Muzzle responds immediately")
 	view.update_state(rules, 0, 0.06)
 	check(view.units[0].get_node("Body/Gun").position.z > 0.15, "Recoil reaches peak at 60 ms")
-	view.update_state(rules, 0, 0.16)
-	check(view.units[0].get_node("Body/Gun").position.z == 0.0, "Recoil settles after 210 ms")
+	view.update_state(rules, 0, 0.1)
+	check(view.units[0].get_node("Body/Gun").position.z < 0.12, "Recoil is on its way back 160 ms in")
+	view.update_state(rules, 0, 0.15)
+	check(view.units[0].get_node("Body/Gun").position.z == 0.0, "Recoil has settled by 310 ms")
 	check(rules.players == positions, "Recoil never changes player or aiming physics")
 	for quality in range(3):
 		view.set_quality(quality)

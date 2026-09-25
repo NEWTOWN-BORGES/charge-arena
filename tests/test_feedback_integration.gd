@@ -32,8 +32,10 @@ func run() -> void:
 	game.rules.shoot(1)
 	game.play_events()
 	check(game.arena.shot_age == [0.0, 0.0], "Both pilots receive event-driven recoil")
-	check(game.audio_voices.filter(func(v): return v.playing and v.get_meta("weapon_voice")).size() == 2, "Both sides audible with independent voices")
-	var started: Array = game.audio_voices.filter(func(v): return v.playing and v.get_meta("weapon_voice"))
+	var skin_samples = func(v): return v.playing and v.get_meta("weapon_voice") and v.stream != game.tones["shot_tap"] and v.stream != game.tones["shot_air"]
+	check(game.audio_voices.filter(skin_samples).size() == 2, "Both sides audible with independent voices")
+	check(game.audio_voices.any(func(v): return v.playing and v.stream == game.tones["shot_tap"]), "The local shot carries its trigger layer")
+	var started: Array = game.audio_voices.filter(skin_samples)
 	var stream = started[0].stream
 	for n in range(40): game.play_tone("blast")
 	check(started[0].playing and started[0].stream == stream, "Impact saturation cannot steal weapon tails")

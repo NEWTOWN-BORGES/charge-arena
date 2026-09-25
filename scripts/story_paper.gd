@@ -283,12 +283,38 @@ func develop(target: TextureRect) -> void:
 	if String(shot.get("set", "")) != "":
 		story["set"] = shot.set
 	viewport.setup(story)
-	await RenderingServer.frame_post_draw
-	if is_instance_valid(target) and DisplayServer.get_name() != "headless":
-		var picture_data = viewport.get_texture().get_image()
-		if picture_data != null: target.texture = ImageTexture.create_from_image(picture_data)
-	viewport.queue_free()
+	# Developed over several frames, not one: on a phone the first frame after a set is
+	# built could go out before its materials were ready, and the photograph stayed blank.
+	var started = Time.get_ticks_msec()
+	var frames = 0
+	while frames < 8 or Time.get_ticks_msec() - started < 600:
+		await RenderingServer.frame_post_draw
+		frames += 1
+	if not is_instance_valid(target) or DisplayServer.get_name() == "headless":
+		viewport.queue_free()
+		render_busy = false
+		return
+	var picture_data = viewport.get_texture().get_image()
+	if picture_data != null and not blank(picture_data):
+		target.texture = ImageTexture.create_from_image(picture_data)
+		viewport.queue_free()
+	else:
+		# The picture could not be read back: show it live instead, and stop drawing it.
+		remove_child(viewport)
+		target.add_child(viewport)
+		viewport.render_target_update_mode = SubViewport.UPDATE_DISABLED
+		target.texture = viewport.get_texture()
 	render_busy = false
+
+static func blank(picture: Image) -> bool:
+	# A failed read comes back as one flat colour; any real photograph varies.
+	var first = picture.get_pixel(0, 0)
+	for gx in range(1, 9):
+		for gy in range(1, 7):
+			var c = picture.get_pixel(picture.get_width() * gx / 9, picture.get_height() * gy / 7)
+			if absf(c.r - first.r) + absf(c.g - first.g) + absf(c.b - first.b) > 0.04:
+				return false
+	return true
 
 class Sheet extends PanelContainer:
 	## Newsprint: cream paper, a fold across the middle, crop marks at the corners and a
