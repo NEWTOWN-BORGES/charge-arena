@@ -26,7 +26,14 @@ var remote_id = 0
 var remote_command = {"move": Vector2.ZERO, "fire": false}
 # Powers arrive on their own reliable channel, so a tap is never lost in the input stream.
 var remote_power = -1
-var remote_fire_tap = false
+# One shot per click. A click made while the gun is still reloading is kept for a moment and
+# goes as soon as it can, so a quick tapper never loses one; holding the finger down does not
+# keep firing. Per team: the host keeps the guest's clicks the same way it keeps its own.
+const FIRE_BUFFER_MS = 900
+const MAX_QUEUED_SHOTS = 2
+var queued_shots: Array = [0, 0]
+var queued_until: Array = [0, 0]
+var pending_clicks = 0
 var pending_events: Array = []
 var remote_power_until = 0
 var remote_age = 0.0
@@ -53,6 +60,7 @@ var last_phase = ""
 var last_stuns: Array = [0.0, 0.0]
 var packets_received = 0
 var mouse_firing = false
+var fps_measuring = false
 var video = VideoSettings.new()
 var music
 var visual_packet_age = 0.0
@@ -377,7 +385,7 @@ func show_levels() -> void:
 	hud.open_levels()
 
 func close_network() -> void:
-	remote_fire_tap = false
+	clear_shots()
 	mouse_firing = false
 	connected = false
 	remote_id = 0
@@ -425,6 +433,7 @@ func pause_pve() -> void:
 		return
 	pve_paused = true
 	mouse_firing = false
+	clear_shots()
 	hud.show_pause(true)
 
 func resume_pve() -> void:
@@ -432,6 +441,7 @@ func resume_pve() -> void:
 		return
 	hud.show_pause(false)
 	mouse_firing = false
+	clear_shots()
 	pve_paused = false
 	arena.capture_motion(rules)
 
@@ -532,6 +542,7 @@ func replay() -> void:
 		rules.reset_match()
 		hud.reset_touch()
 		mouse_firing = false
+		clear_shots()
 
 func _input(event: InputEvent) -> void:
 	# Release even if the pointer ends over a UI button.
@@ -547,6 +558,8 @@ func _unhandled_input(event: InputEvent) -> void:
 		if event.device == InputEvent.DEVICE_ID_EMULATION:
 			return
 		mouse_firing = event.pressed and mode != "menu"
+		if mouse_firing:
+			pending_clicks += 1
 
 func _unhandled_key_input(event: InputEvent) -> void:
 	if event.is_pressed() and event is InputEventKey and mode == "menu" and not hud.menu_overlay_open():
@@ -554,6 +567,9 @@ func _unhandled_key_input(event: InputEvent) -> void:
 			step_menu_level(-1 if event.keycode == KEY_LEFT else 1)
 			return
 	if event.is_pressed() and not event.is_echo() and event is InputEventKey and mode != "menu":
+		if event.keycode == KEY_SPACE:
+			pending_clicks += 1
+			return
 		# On a PC the three powers are on the number keys; phones use the HUD buttons.
 		var slot = [KEY_1, KEY_2, KEY_3].find(event.keycode)
 		if slot < 0:
@@ -691,6 +707,7 @@ func change_feedback(camera: int, haptics: bool, automatic: bool, volume: float)
 	arena.shake_scale = [0.0, 0.45, 1.0][camera]
 	if camera == 0: arena.shake_power = 0.0
 	mouse_firing = false
+	clear_shots()
 	save_game_settings()
 
 func haptic(milliseconds: int, strength: float) -> void:
@@ -936,6 +953,7 @@ func local_command() -> Dictionary:
 		hud.take_power()
 		hud.fire_tap = false
 		hud.fire_id = -1
+		clear_shots()
 		return {"move": Vector2.ZERO, "fire": false, "power": -1}
 	# Past a small dead zone the pilot leaves at once: the first sliver of the push is
 	# already worth a third of the speed, so nudging the stick never feels like nothing
@@ -952,12 +970,41 @@ func local_command() -> Dictionary:
 	if DisplayServer.get_name() != "headless":
 		var keys = Vector2(float(Input.is_physical_key_pressed(KEY_D) or Input.is_physical_key_pressed(KEY_RIGHT)) - float(Input.is_physical_key_pressed(KEY_A) or Input.is_physical_key_pressed(KEY_LEFT)), float(Input.is_physical_key_pressed(KEY_S) or Input.is_physical_key_pressed(KEY_DOWN)) - float(Input.is_physical_key_pressed(KEY_W) or Input.is_physical_key_pressed(KEY_UP)))
 		move += keys
-	# Manual fire is optional; a short mobile tap survives until this simulation tick.
-	var tap: bool = hud.fire_tap and not game_settings.auto_fire
-	var fire = game_settings.auto_fire or hud.fire_id >= 0 or (game_settings.fire_control == 1 and hud.move_id >= 0) or tap or mouse_firing
+	# Manual fire: every click is one shot, whether it came from the button, the joystick,
+	# the mouse or the space bar.
+	if hud.fire_tap:
+		pending_clicks += 1
 	hud.fire_tap = false
-	if DisplayServer.get_name() != "headless": fire = fire or Input.is_physical_key_pressed(KEY_SPACE)
-	return {"move": Vector2(clampf(move.x, -1, 1), 0), "fire": fire, "tap": tap, "power": read_power()}
+	var clicks: int = 0 if game_settings.auto_fire else mini(pending_clicks, MAX_QUEUED_SHOTS)
+	pending_clicks = 0
+	var fire: bool = game_settings.auto_fire
+	if mode != "client":
+		for click in range(clicks):
+			queue_shot(local_team)
+		fire = fire or take_queued_shot(local_team)
+	return {"move": Vector2(clampf(move.x, -1, 1), 0), "fire": fire, "tap": clicks > 0, "clicks": clicks, "power": read_power()}
+
+func queue_shot(team: int) -> void:
+	queued_shots[team] = mini(int(queued_shots[team]) + 1, MAX_QUEUED_SHOTS)
+	queued_until[team] = Time.get_ticks_msec() + FIRE_BUFFER_MS
+
+func take_queued_shot(team: int) -> bool:
+	if int(queued_shots[team]) <= 0:
+		return false
+	if Time.get_ticks_msec() > int(queued_until[team]):
+		queued_shots[team] = 0
+		return false
+	if not rules.can_fire(team, 1.0 / Engine.physics_ticks_per_second):
+		return false
+	queued_shots[team] = int(queued_shots[team]) - 1
+	# A second click waiting behind this one gets its own moment from here.
+	queued_until[team] = Time.get_ticks_msec() + FIRE_BUFFER_MS
+	return true
+
+func clear_shots() -> void:
+	queued_shots = [0, 0]
+	queued_until = [0, 0]
+	pending_clicks = 0
 
 func read_power() -> int:
 	# A key pressed a moment too early — during the countdown, or while another power is
@@ -1010,13 +1057,14 @@ func _physics_process(dt: float) -> void:
 		return
 	var command = local_command()
 	if mode == "client":
-		if command.get("tap", false): submit_fire_tap.rpc_id(1)
+		for click in range(int(command.get("clicks", 0))):
+			submit_fire_tap.rpc_id(1)
 		if command.power >= 0:
 			submit_power.rpc_id(1, command.power)
 		network_tick += dt
 		if network_tick >= 1.0 / 30:
 			network_tick = 0
-			submit_input.rpc_id(1, command.move, command.fire and not command.get("tap", false))
+			submit_input.rpc_id(1, command.move, command.fire)
 		return
 	var other: Dictionary
 	if mode == "pve":
@@ -1034,8 +1082,8 @@ func _physics_process(dt: float) -> void:
 			elif rules.can_activate_power(1 - local_team, remote_power):
 				remote_slot = remote_power
 				remote_power = -1
-		other = {"move": Vector2.ZERO if stale else remote_command.move, "fire": (false if stale else remote_command.fire) or remote_fire_tap, "power": remote_slot}
-		remote_fire_tap = false
+		var remote_team: int = 1 - local_team
+		other = {"move": Vector2.ZERO if stale else remote_command.move, "fire": (false if stale else remote_command.fire) or take_queued_shot(remote_team), "power": remote_slot}
 	arena.capture_motion(rules)
 	rules.step(dt, [command, other])
 	bank_bricks()
@@ -1067,7 +1115,7 @@ func submit_input(move: Vector2, firing: bool) -> void:
 @rpc("any_peer", "call_remote", "reliable")
 func submit_fire_tap() -> void:
 	if mode == "host" and multiplayer.get_remote_sender_id() == remote_id:
-		remote_fire_tap = true
+		queue_shot(1 - local_team)
 
 @rpc("any_peer", "call_remote", "reliable")
 func submit_power(power: int) -> void:
@@ -1136,9 +1184,21 @@ func _process(dt: float) -> void:
 	if fps_timer >= 0.5:
 		fps_timer = 0
 		var measured = Engine.get_frames_per_second()
-		if mode != "menu" and video.adapt(get_viewport(), measured):
-			hud.video_note.text = "Ajuste automático ativo: resolução 3D %d%%, limite %d FPS." % [roundi(video.runtime_scale * 100), video.runtime_fps]
-		hud.fps_label.text = "%d FPS  /  alvo %d" % [measured, video.runtime_fps]
+		# Only a match in play is a fair reading: the countdown, a goal, a pause or the menu
+		# run at the resting rate on purpose, and used to be taken for a phone that could not
+		# keep up - which is how a game set to 90 ended up stuck at 30.
+		var measuring: bool = mode != "menu" and rules.phase == "play" and Engine.max_fps == video.runtime_fps
+		if measuring and not fps_measuring:
+			video.hold()
+		fps_measuring = measuring
+		if measuring and video.adapt(get_viewport(), measured):
+			hud.video_note.text = "Ajuste automático ativo: resolução 3D %d%%, limite %d FPS." % [roundi(video.runtime_scale * 100), video.runtime_fps] if video.adjusted() else video.AUTO_NOTE
+		if video.panel_cap > 0 and video.runtime_fps < video.fps:
+			hud.fps_label.text = "%d FPS  /  alvo %d (ecrã a %d Hz)" % [measured, video.runtime_fps, video.panel_cap]
+		elif video.runtime_fps < video.fps:
+			hud.fps_label.text = "%d FPS  /  alvo %d (auto, escolhido %d)" % [measured, video.runtime_fps, video.fps]
+		else:
+			hud.fps_label.text = "%d FPS  /  alvo %d" % [measured, video.runtime_fps]
 	if rules.phase == "finished" and cup_active and not cup_resolved:
 		cup_resolved = true
 		finish_cup.call_deferred()

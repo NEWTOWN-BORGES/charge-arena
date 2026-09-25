@@ -52,6 +52,7 @@ func run() -> void:
 	game.change_fire_layout(1, 1.3, 0.2, 0.8)
 	touch.position = game.hud.move_home
 	touch.pressed = true
+	game.rules.players[0].cooldown = 0.0
 	game.hud._input(touch)
 	check(game.local_command().fire, "Joystick press fires without a separate button")
 	var drag = InputEventScreenDrag.new()
@@ -59,7 +60,7 @@ func run() -> void:
 	drag.position = touch.position + Vector2(-25, 0)
 	game.hud._input(drag)
 	var held: Dictionary = game.local_command()
-	check(held.fire and held.move.x < 0, "Joystick aims and fires simultaneously")
+	check(not held.fire and held.move.x < 0, "Holding the joystick aims without firing again: one touch, one shot")
 	touch.pressed = false
 	game.hud._input(touch)
 	check(not game.local_command().fire, "Joystick release stops manual fire")

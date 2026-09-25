@@ -824,6 +824,14 @@ func step(dt: float, commands: Array) -> void:
 			else:
 				advance_ball(ball, dt, true)
 
+func can_fire(team: int, dt: float = 0.0) -> bool:
+	# Whether a shot asked for on the tick about to run would leave the barrel. A click is
+	# kept until this says yes, so one pressed during the reload is not thrown away.
+	if phase != "play" or team < 0 or team >= players.size():
+		return false
+	var p: Dictionary = players[team]
+	return p.cooldown <= dt and p.stun <= dt and powers[team].laser_time <= 0 and powers[team].rapid_time <= 0
+
 func can_activate_power(team: int, index: int) -> bool:
 	if team < 0 or team >= powers.size() or index < 0 or index >= POWER_SLOTS:
 		return false

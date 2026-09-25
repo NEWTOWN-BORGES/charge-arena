@@ -38,17 +38,38 @@ func run() -> void:
 	check(restored.fps == 60, "A setting of 120 saved by an older build lands on 60")
 	restored.configure(90, 2, false, false)
 	restored.apply(root, game.arena)
-	for i in range(4):
+	for i in range(Settings.GRACE_WINDOWS + 4):
 		restored.adapt(root, 45, true)
-	check(restored.runtime_fps == 60 and is_equal_approx(root.scaling_3d_scale, 1.0) and root.msaa_3d == Settings.AA_LEVELS[2], "Refinado falls from 90 to 60 FPS without lowering graphics")
-	for i in range(4):
+	check(restored.runtime_fps == 90 and root.msaa_3d == Viewport.MSAA_4X, "A phone that cannot hold 90 gives up antialiasing before a single frame")
+	for i in range(200):
+		if restored.runtime_fps < 90:
+			break
 		restored.adapt(root, 45, true)
-	check(restored.runtime_fps == 30 and is_equal_approx(root.scaling_3d_scale, 1.0), "And from 60 to 30 while preserving native 3D resolution")
+	check(restored.runtime_fps == 60 and root.msaa_3d == Viewport.MSAA_2X and is_equal_approx(root.scaling_3d_scale, Settings.MIN_RENDER_SCALES[2]), "Then 3D resolution, and only then 90 becomes 60")
+	for i in range(Settings.GRACE_WINDOWS + Settings.RECOVER_WINDOWS):
+		restored.adapt(root, 60, true)
+	check(restored.runtime_fps == 90, "Steady play climbs back to the 90 that was chosen instead of staying down for good")
+	var climbed: int = restored.level
+	for i in range(Settings.GRACE_WINDOWS + 4):
+		restored.adapt(root, 45, true)
+	check(restored.level == climbed + 1 and restored.recover_after == Settings.RECOVER_WINDOWS * 2, "A climb that does not hold falls back and waits twice as long before trying again")
+	restored.hold()
+	for i in range(Settings.GRACE_WINDOWS):
+		restored.adapt(root, 5, true)
+	check(restored.level == climbed + 1, "Readings right after a pause or a countdown are not taken for a slow phone")
+	restored.configure(90, 2, true, false)
+	restored.apply(root, game.arena)
+	for i in range(Settings.GRACE_WINDOWS + 1):
+		restored.adapt(root, 60, true, 60.0)
+	check(restored.panel_cap == 60 and restored.runtime_fps == 60 and root.msaa_3d == Settings.AA_LEVELS[2] and is_equal_approx(root.scaling_3d_scale, 1.0), "A screen refreshing at 60 Hz caps the target at 60 without taking a thing from the picture")
+	for i in range(Settings.GRACE_WINDOWS + 1):
+		restored.adapt(root, 60, true, 120.0)
+	check(restored.panel_cap == 0 and restored.runtime_fps == 90, "And when the screen goes faster, the 90 comes back")
 	restored.configure(60, 0, false, false)
 	restored.apply(root, game.arena)
-	for i in range(2):
+	for i in range(Settings.GRACE_WINDOWS + 2):
 		restored.adapt(root, 20, true)
-	check(root.scaling_3d_scale < Settings.RENDER_SCALES[0], "Only Leve may reduce 3D resolution on a weak phone")
+	check(root.scaling_3d_scale < Settings.RENDER_SCALES[0], "Leve lowers its 3D resolution on a weak phone")
 	settings.configure(90, 2, true, true)
 	game.hud.sync_video(settings)
 	check(game.hud.fps_choice.selected == Settings.FPS_OPTIONS.find(90) and game.hud.quality_choice.selected == 2 and game.hud.fps_label.visible, "Settings menu and real FPS counter reflect selected preferences")

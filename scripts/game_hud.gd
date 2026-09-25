@@ -1849,7 +1849,7 @@ func draw_fire_preview() -> void:
 	var text_value = "AUTO" if auto_fire else ("TIRO" if fire_control == 0 else "JOY + TIRO")
 	var text_width = font_bold.get_string_size(text_value, HORIZONTAL_ALIGNMENT_LEFT, -1, 14).x
 	c.draw_string(font_bold, center + Vector2(-text_width * 0.5, 5), text_value, HORIZONTAL_ALIGNMENT_LEFT, -1, 14, WHITE)
-	var caption = "%d%% · tamanho do botão" % roundi(fire_size * 100) if not auto_fire and fire_control == 0 else ("Dispara sozinho" if auto_fire else "Mantém o dedo no joystick")
+	var caption = "%d%% · tamanho do botão" % roundi(fire_size * 100) if not auto_fire and fire_control == 0 else ("Dispara sozinho" if auto_fire else "Cada toque no joystick é um tiro")
 	c.draw_string(font, Vector2(165, 179), caption, HORIZONTAL_ALIGNMENT_LEFT, -1, 13, MUTED)
 
 func select_fire_mode(index: int) -> void:
@@ -1906,7 +1906,7 @@ func sync_video(settings) -> void:
 	sync_choice.set_pressed_no_signal(settings.vsync)
 	counter_choice.set_pressed_no_signal(settings.show_fps)
 	fps_label.visible = settings.show_fps
-	video_note.text = "Refinado e Equilibrado preservam os gráficos e reduzem apenas 90→60→30 FPS. Só o perfil Leve pode baixar a resolução 3D."
+	video_note.text = settings.AUTO_NOTE
 
 func emit_video() -> void:
 	video_changed.emit([30, 60, 90][fps_choice.selected], quality_choice.selected, sync_choice.button_pressed, counter_choice.button_pressed)

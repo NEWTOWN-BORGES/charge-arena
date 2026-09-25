@@ -11,6 +11,7 @@ const EFFECT_LIMITS = [20, 48, 96]
 const RENDER_SCALES = [0.72, 0.88, 1.0]
 const MIN_RENDER_SCALES = [0.50, 0.62, 0.72]
 const CONFIG_PATH = "user://video_settings.cfg"
+const AUTO_NOTE = "Para manter os FPS escolhidos, o telemóvel baixa primeiro o antialiasing e a resolução 3D, e só depois os FPS. Volta a subir sozinho quando o jogo estabiliza."
 var fps = 60
 # A phone starts on the performance profile; a PC has no reason to.
 var quality = 2 if OS.has_feature("open_test") else (0 if OS.has_feature("mobile") else 2)
@@ -21,6 +22,18 @@ var runtime_fps = 60
 var smooth_hud = true
 var low_windows = 0
 var stable_windows = 0
+# The automatic adjustment: how far down the ladder of cheaper steps it has gone.
+const GRACE_WINDOWS = 3
+const RECOVER_WINDOWS = 40
+const MAX_RECOVER_WINDOWS = 240
+var ladder: Array = []
+var level = 0
+var runtime_msaa = Viewport.MSAA_8X
+var recover_after = RECOVER_WINDOWS
+var since_raise = -1
+var grace = 0
+# The screen's own refresh rate when that, and not the phone, is what holds the frames down.
+var panel_cap = 0
 
 func load_preferences(path: String = CONFIG_PATH) -> void:
 	var config = ConfigFile.new()
@@ -43,8 +56,17 @@ func configure(new_fps: int, new_quality: int, sync: bool, counter: bool) -> voi
 	show_fps = counter
 	runtime_scale = RENDER_SCALES[quality]
 	runtime_fps = fps
+	reset_adjustment()
+
+func reset_adjustment() -> void:
 	low_windows = 0
 	stable_windows = 0
+	ladder = []
+	level = 0
+	recover_after = RECOVER_WINDOWS
+	since_raise = -1
+	grace = GRACE_WINDOWS
+	panel_cap = 0
 
 func save_preferences(path: String = CONFIG_PATH) -> Error:
 	var config = ConfigFile.new()
@@ -59,6 +81,8 @@ func save_preferences(path: String = CONFIG_PATH) -> Error:
 func apply(viewport: Viewport, arena) -> void:
 	runtime_fps = fps
 	runtime_scale = RENDER_SCALES[quality]
+	runtime_msaa = AA_LEVELS[quality]
+	reset_adjustment()
 	Engine.max_fps = runtime_fps
 	viewport.msaa_3d = AA_LEVELS[quality]
 	viewport.screen_space_aa = SCREEN_AA[quality]
@@ -74,47 +98,109 @@ func apply(viewport: Viewport, arena) -> void:
 	arena.trail_interval = [0.11, 0.06, 0.035][quality]
 	arena.set_quality(quality)
 
-func adapt(viewport: Viewport, measured_fps: float, force_mobile: bool = false) -> bool:
+func adapt(viewport: Viewport, measured_fps: float, force_mobile: bool = false, refresh_rate: float = -2.0) -> bool:
+	# Keeps the frame rate the player chose. When the phone cannot hold it, the picture gives
+	# way first - MSAA, then 3D resolution - and only then the frame rate. And it climbs back:
+	# after a stretch of steady play it tries the step above again, so one hitch (a shader
+	# compiling the first time an ultimate goes off) no longer leaves the game at 30 for good.
 	if (not OS.has_feature("mobile") and not force_mobile) or fps < 60:
 		return false
-	var expected = float(runtime_fps)
+	var refresh: float = DisplayServer.screen_get_refresh_rate() if refresh_rate == -2.0 else refresh_rate
+	if panel_cap > 0 and refresh > panel_cap + 5.0:
+		# The screen went faster (an adaptive panel picking a higher mode): lift the cap.
+		panel_cap = 0
+		ladder = build_ladder(refresh)
+		level = 0
+		use_step(viewport)
+		return true
+	if ladder.is_empty():
+		ladder = build_ladder(refresh)
+	if grace > 0:
+		# The counter averages the last second, so right after a change it still reports the
+		# frames from before it.
+		grace -= 1
+		return false
+	var expected = float(ladder[level][2])
+	if measured_fps < expected * 0.84 and panel_cap == 0 and refresh > 0 and refresh < expected - 1.0 and absf(measured_fps - refresh) <= 3.0:
+		# Running at exactly the screen's rate: it is the panel that stops at 60, not the
+		# phone. No picture it gives up would show one more frame, so none is given up.
+		panel_cap = roundi(refresh)
+		ladder = build_ladder(refresh)
+		level = 0
+		use_step(viewport)
+		return true
 	if measured_fps < expected * 0.84:
 		low_windows += 1
 		stable_windows = 0
 	else:
 		low_windows = 0
 		stable_windows += 1
+		if since_raise >= 0:
+			since_raise += 1
+			if since_raise >= RECOVER_WINDOWS:
+				# The step up held: the next one is tried at the normal pace again.
+				since_raise = -1
+				recover_after = RECOVER_WINDOWS
 	var required_windows = 4 if quality > 0 else 2
-	if low_windows < required_windows:
-		return false
-	low_windows = 0
-	# Equilibrado and Refinado preserve their exact visual profile and give up frames
-	# instead: 90 -> 60 -> 30. With 120 gone from the options, the ladder reaches all the
-	# way down rather than stopping at 60 on a phone that cannot hold it.
-	if quality > 0:
-		if runtime_fps > 60:
-			runtime_fps = 60
-		elif runtime_fps > 30:
-			runtime_fps = 30
-		else:
+	if low_windows >= required_windows:
+		low_windows = 0
+		if level >= ladder.size() - 1:
 			return false
-		Engine.max_fps = runtime_fps
+		if since_raise >= 0:
+			# It went up and could not stay there: wait twice as long before the next try.
+			recover_after = mini(recover_after * 2, MAX_RECOVER_WINDOWS)
+			since_raise = -1
+		level += 1
+		use_step(viewport)
 		return true
-	# Leve is the performance profile for weaker phones and may lower its 3D
-	# resolution before using a stable 45/30 FPS fallback.
-	var minimum = MIN_RENDER_SCALES[quality]
-	if runtime_scale > minimum + 0.01:
-		runtime_scale = maxf(minimum, runtime_scale - 0.08)
-		viewport.scaling_3d_scale = runtime_scale
+	if level > 0 and stable_windows >= recover_after:
+		level -= 1
+		since_raise = 0
+		use_step(viewport)
 		return true
-	if runtime_fps > 45:
-		# 45 divides a 90 Hz display evenly. On a 60 Hz panel it causes uneven
-		# pacing, so go straight to the stable 30 FPS fallback.
-		var refresh_rate = DisplayServer.screen_get_refresh_rate()
-		runtime_fps = 45 if refresh_rate >= 85.0 else 30
-	elif runtime_fps > 30:
-		runtime_fps = 30
-	else:
-		return false
+	return false
+
+func build_ladder(refresh_rate: float) -> Array:
+	# Each step is [MSAA, 3D scale, frame limit]; the first is the profile as chosen.
+	var msaa = AA_LEVELS[quality]
+	var scale = RENDER_SCALES[quality]
+	var top: int = mini(fps, panel_cap) if panel_cap > 0 else fps
+	var steps: Array = [[msaa, scale, top]]
+	if msaa == Viewport.MSAA_8X:
+		# The dearest thing on a phone's tiled GPU, and the one least missed at a glance.
+		msaa = Viewport.MSAA_4X
+		steps.append([msaa, scale, top])
+		msaa = Viewport.MSAA_2X
+		steps.append([msaa, scale, top])
+	while scale > MIN_RENDER_SCALES[quality] + 0.01:
+		scale = maxf(MIN_RENDER_SCALES[quality], scale - 0.08)
+		steps.append([msaa, scale, top])
+	if top > 60:
+		steps.append([msaa, scale, 60])
+	# 45 divides a 90 Hz panel evenly; on a 60 Hz one it paces unevenly, so it is skipped.
+	if top > 45 and refresh_rate >= 85.0:
+		steps.append([msaa, scale, 45])
+	if top > 30:
+		steps.append([msaa, scale, 30])
+	return steps
+
+func use_step(viewport: Viewport) -> void:
+	var step: Array = ladder[level]
+	runtime_msaa = step[0]
+	runtime_scale = step[1]
+	runtime_fps = step[2]
+	viewport.msaa_3d = runtime_msaa
+	viewport.scaling_3d_scale = runtime_scale
 	Engine.max_fps = runtime_fps
-	return true
+	low_windows = 0
+	stable_windows = 0
+	grace = GRACE_WINDOWS
+
+func hold() -> void:
+	# Play resumed after a pause or a countdown: ignore the next readings, which still
+	# carry the resting frame rate.
+	grace = GRACE_WINDOWS
+	low_windows = 0
+
+func adjusted() -> bool:
+	return level > 0
