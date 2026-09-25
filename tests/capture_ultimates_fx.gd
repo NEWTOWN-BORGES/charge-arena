@@ -19,6 +19,7 @@ func run() -> void:
 	root.size = Vector2i(1280, 720)
 	var game = load("res://scenes/main.tscn").instantiate()
 	root.add_child(game)
+	if root.focus_exited.is_connected(game.pause_pve): root.focus_exited.disconnect(game.pause_pve)
 	game.power_shop.config_path = TMP
 	await create_timer(0.8).timeout
 	game.start_pve()

@@ -1,3 +1,5 @@
+> **2.9.5 — Controlos e efeitos:** três modos de disparo no início das Opções, tamanho/posição do botão e reutilização de partículas/luzes para reduzir picos nas habilidades. [Validação](docs/CONTROLOS-FX-2.9.5.md).
+
 > **2.9.4 — Muralhas:** colisões sólidas, Corsário corrigido, vida dos tijolos com barras grandes animadas e músicas exclusivas dos bots. [Alterações](docs/MURALHAS-2.9.4.md).
 
 > **2.9.3 — IA:** Normal/Difícil mais ativos, poderes sem esperar pelo tiro básico e compatibilidade dos saves da loja. [Alterações e testes](docs/IA-2.9.3.md).

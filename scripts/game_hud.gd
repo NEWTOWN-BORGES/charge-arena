@@ -44,6 +44,7 @@ var haptic_choice: CheckButton
 var automatic_choice: CheckButton
 var sfx_slider: HSlider
 signal fire_layout_changed(control: int, radius_scale: float, x: float, y: float)
+var fire_preview: Control
 var fire_control_choice: OptionButton
 var fire_size_slider: HSlider
 var fire_x_slider: HSlider
@@ -1728,13 +1729,13 @@ func build_video_menu() -> void:
 	automatic_choice.text = "Disparo automático (desligar para tiro manual)"
 	automatic_choice.custom_minimum_size.y = 48
 	list.add_child(automatic_choice)
-	fire_control_choice = video_option(list, "Tiro manual", ["Botão separado", "No joystick (manter o dedo)"])
+	fire_control_choice = video_option(list, "Modo de disparo", ["Automático", "Botão separado", "No próprio joystick"])
 	fire_size_slider = volume_slider(list, "Tamanho do botão (%)")
 	fire_size_slider.min_value = 70
 	fire_size_slider.max_value = 150
 	fire_x_slider = volume_slider(list, "Posição horizontal (%)")
 	fire_y_slider = volume_slider(list, "Posição vertical (%)")
-	fire_control_choice.item_selected.connect(func(_v): emit_fire_layout())
+	fire_control_choice.item_selected.connect(select_fire_mode)
 	fire_size_slider.value_changed.connect(fire_slider_changed)
 	fire_x_slider.value_changed.connect(fire_slider_changed)
 	fire_y_slider.value_changed.connect(fire_slider_changed)
@@ -1752,6 +1753,24 @@ func build_video_menu() -> void:
 	video_note.custom_minimum_size = Vector2(470, 63)
 	video_note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	list.add_child(video_note)
+	# Keep touch customisation immediately visible, rather than buried below graphics.
+	var controls_title = label("CONTROLOS · EDITAR BOTÃO DE TIRO", 18, CYAN, true)
+	list.add_child(controls_title)
+	var controls_help = label("Escolhe o modo de tiro e ajusta o botão. As alterações ficam guardadas.", 14, MUTED)
+	controls_help.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	list.add_child(controls_help)
+	automatic_choice.hide()
+	fire_preview = Control.new()
+	fire_preview.custom_minimum_size = Vector2(0, 190)
+	fire_preview.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	fire_preview.draw.connect(draw_fire_preview)
+	list.add_child(fire_preview)
+	var control_rows = [controls_title, controls_help, fire_control_choice.get_parent(), fire_preview, fire_size_slider.get_parent(), fire_x_slider.get_parent(), fire_y_slider.get_parent(), sensitivity_choice.get_parent()]
+	for index in range(control_rows.size()):
+		list.move_child(control_rows[index], index + 2)
+	var image_title = label("IMAGEM E SOM", 18, CYAN, true)
+	list.add_child(image_title)
+	list.move_child(image_title, control_rows.size() + 2)
 	var done = make_button("FECHAR OPÇÕES", true)
 	option_stack.add_child(done)
 	done.pressed.connect(close_video)
@@ -1768,6 +1787,7 @@ func video_option(parent: VBoxContainer, title: String, options: Array) -> Optio
 	parent.add_child(row)
 	var caption = label(title, 15, WHITE)
 	caption.custom_minimum_size.x = 132
+	caption.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	row.add_child(caption)
 	var option = OptionButton.new()
 	option.custom_minimum_size = Vector2(328, 48)
@@ -1785,6 +1805,7 @@ func volume_slider(parent: VBoxContainer, title: String) -> HSlider:
 	parent.add_child(row)
 	var caption = label(title, 15, WHITE)
 	caption.custom_minimum_size.x = 132
+	caption.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	row.add_child(caption)
 	var slider = HSlider.new()
 	slider.min_value = 0
@@ -1805,8 +1826,39 @@ func volume_slider(parent: VBoxContainer, title: String) -> HSlider:
 func fire_slider_changed(_value: float) -> void:
 	emit_fire_layout()
 
+func draw_fire_preview() -> void:
+	var c = fire_preview
+	var bounds = Rect2(Vector2.ZERO, c.size)
+	c.draw_style_box(style(Color("0d2029"), Color("34535b"), 14), bounds)
+	c.draw_string(font_bold, Vector2(14, 23), "PRÉ-VISUALIZAÇÃO EM TEMPO REAL", HORIZONTAL_ALIGNMENT_LEFT, -1, 13, CYAN)
+	var scale_value = minf(125.0 / size.x, 148.0 / size.y)
+	var screen = Rect2(Vector2(20, 33), size * scale_value)
+	c.draw_style_box(style(Color("18343c"), Color("698b91"), 7), screen)
+	var pitch = screen.grow(-8)
+	pitch.size.y *= 0.68
+	c.draw_style_box(style(Color("23444a"), Color("547d7e"), 5), pitch)
+	c.draw_line(Vector2(pitch.position.x, pitch.get_center().y), Vector2(pitch.end.x, pitch.get_center().y), Color("547d7e"), 1)
+	c.draw_circle(screen.position + move_home * scale_value, STICK_RADIUS * scale_value, Color(CYAN, 0.5))
+	if not auto_fire and fire_control == 0:
+		c.draw_circle(screen.position + fire_center * scale_value, 46 * fire_size * scale_value, CORAL)
+	var center = Vector2(c.size.x * 0.68, 105)
+	var radius = 46 * fire_size if not auto_fire and fire_control == 0 else 46.0
+	c.draw_circle(center, radius, CYAN.darkened(0.65))
+	c.draw_arc(center, radius, 0, TAU, 64, CYAN, 2, true)
+	var text_value = "AUTO" if auto_fire else ("TIRO" if fire_control == 0 else "JOY + TIRO")
+	var text_width = font_bold.get_string_size(text_value, HORIZONTAL_ALIGNMENT_LEFT, -1, 14).x
+	c.draw_string(font_bold, center + Vector2(-text_width * 0.5, 5), text_value, HORIZONTAL_ALIGNMENT_LEFT, -1, 14, WHITE)
+	var caption = "%d%% · tamanho do botão" % roundi(fire_size * 100) if not auto_fire and fire_control == 0 else ("Dispara sozinho" if auto_fire else "Mantém o dedo no joystick")
+	c.draw_string(font, Vector2(165, 179), caption, HORIZONTAL_ALIGNMENT_LEFT, -1, 13, MUTED)
+
+func select_fire_mode(index: int) -> void:
+	# One choice, so automatic fire cannot accidentally override joystick fire.
+	automatic_choice.set_pressed_no_signal(index == 0)
+	emit_feedback()
+	fire_layout_changed.emit(maxi(0, index - 1), fire_size, fire_x, fire_y)
+
 func emit_fire_layout() -> void:
-	fire_layout_changed.emit(fire_control_choice.selected, fire_size_slider.value / 100.0, fire_x_slider.value / 100.0, fire_y_slider.value / 100.0)
+	fire_layout_changed.emit(maxi(0, fire_control_choice.selected - 1), fire_size_slider.value / 100.0, fire_x_slider.value / 100.0, fire_y_slider.value / 100.0)
 
 func emit_feedback() -> void:
 	feedback_changed.emit(camera_choice.selected, haptic_choice.button_pressed, automatic_choice.button_pressed, sfx_slider.value / 100.0)
@@ -1821,7 +1873,8 @@ func sync_game(settings) -> void:
 	fire_size = settings.fire_size
 	fire_x = settings.fire_x
 	fire_y = settings.fire_y
-	fire_control_choice.select(fire_control)
+	fire_control_choice.select(0 if auto_fire else fire_control + 1)
+	if is_instance_valid(fire_preview): fire_preview.queue_redraw()
 	fire_size_slider.set_value_no_signal(fire_size * 100.0)
 	fire_x_slider.set_value_no_signal(fire_x * 100.0)
 	fire_y_slider.set_value_no_signal(fire_y * 100.0)
@@ -1859,6 +1912,7 @@ func emit_video() -> void:
 
 func open_video() -> void:
 	reset_touch()
+	options_scroll.scroll_vertical = 0
 	video_overlay.show()
 	video_opened.emit()
 

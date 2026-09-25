@@ -1,10 +1,10 @@
 extends SceneTree
-# Requires this repository's Git history: compares simulation with the pre-feedback build.
+# Requires this repository's Git history: compares simulation with the pre-optimisation build (including the 2.9.4 wall fixes).
 func _initialize() -> void: call_deferred("run")
 func run() -> void:
 	var output: Array = []
-	if OS.execute("git", ["show", "6e08c74:scripts/arena_rules.gd"], output) != 0:
-		push_error("Pre-feedback revision unavailable")
+	if OS.execute("git", ["show", "3bd4bb1:scripts/arena_rules.gd"], output) != 0:
+		push_error("Pre-optimisation revision unavailable")
 		quit(1)
 		return
 	var reference = GDScript.new()
@@ -26,5 +26,5 @@ func run() -> void:
 			push_error("Simulation diverged at tick %d" % tick)
 			quit(1)
 			return
-	print("FEEDBACK_PARITY_PASS: 1200 ticks identical to pre-feedback physics")
+	print("FEEDBACK_PARITY_PASS: 1200 ticks identical to 2.9.4 physics")
 	quit()

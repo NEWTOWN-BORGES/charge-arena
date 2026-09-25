@@ -96,6 +96,38 @@ var brick_reactions: Dictionary = {}
 var shake_seed = 0.0
 # Effects waiting for their moment: {"time": seconds, "call": Callable}.
 var pending: Array = []
+# Reuse render resources instead of creating/destroying emitters during ultimates.
+const PARTICLE_POOL_LIMIT = 48
+const LIGHT_POOL_LIMIT = 8
+var particle_pool: Array[CPUParticles3D] = []
+var light_pool: Array[OmniLight3D] = []
+var active_particles = 0
+var active_lights = 0
+
+func prepare_fx_pool() -> void:
+	for i in range(PARTICLE_POOL_LIMIT):
+		var puff = CPUParticles3D.new()
+		puff.emitting = false
+		puff.hide()
+		add_child(puff)
+		particle_pool.append(puff)
+	for i in range(LIGHT_POOL_LIMIT):
+		var lamp = OmniLight3D.new()
+		lamp.shadow_enabled = false
+		lamp.hide()
+		add_child(lamp)
+		light_pool.append(lamp)
+
+func take_particle() -> CPUParticles3D:
+	if effects.size() >= effect_limit or active_particles >= [16, 32, 48][quality_level] or particle_pool.is_empty():
+		return null
+	var puff = particle_pool.pop_back()
+	active_particles += 1
+	puff.emitting = false
+	puff.transform = Transform3D.IDENTITY
+	puff.show()
+	return puff
+
 
 func material(color: Color, luminous: bool = false) -> StandardMaterial3D:
 	var key = str(color) + str(luminous)
@@ -318,6 +350,7 @@ func platform(outline: Array, height: float, depth: float, color: Color) -> Mesh
 	return mesh(self, st.commit(), Vector3.ZERO, color)
 
 func build(new_map: Dictionary = {}) -> void:
+	prepare_fx_pool()
 	map = new_map if not new_map.is_empty() else Rules.default_map()
 	walls = Rules.map_outline(map)
 	var environment = WorldEnvironment.new()
@@ -1724,11 +1757,19 @@ func frame_rect(rect: Rect2, screen: Vector2, is_menu: bool = false) -> void:
 
 func update_state(rules, local_team: int, dt: float, motion_alpha: float = 1.0) -> void:
 	clock += dt
-	for job in pending.duplicate():
+	# A delayed frame must not launch every queued cosmetic burst at once.
+	for job in pending:
 		job.time -= dt
-		if job.time <= 0:
-			pending.erase(job)
-			job.call.call()
+	var ready: Array = []
+	var job_index = 0
+	while job_index < pending.size() and ready.size() < 4:
+		if pending[job_index].time <= 0:
+			ready.append(pending[job_index].call)
+			pending.remove_at(job_index)
+		else:
+			job_index += 1
+	for callback in ready:
+		callback.call()
 	# Camera shake: a quick decaying wobble, never enough to lose the ball.
 	if shake_power > 0.0:
 		shake_power *= exp(-dt * 17.0)
@@ -1924,7 +1965,8 @@ func update_state(rules, local_team: int, dt: float, motion_alpha: float = 1.0) 
 			burst(Vector2((i - 2) * 0.45, -(Rules.HALF_LENGTH - 1.03) if rules.winner == 0 else Rules.HALF_LENGTH - 1.03), CYAN if rules.winner == 0 else CORAL, true)
 	phase_before = rules.phase
 	update_power_effects(rules, dt)
-	for effect in effects.duplicate():
+	for effect_index in range(effects.size() - 1, -1, -1):
+		var effect: Dictionary = effects[effect_index]
 		effect.ttl -= dt
 		if effect.gravity:
 			effect.v.y -= dt * 6
@@ -1951,12 +1993,21 @@ func update_state(rules, local_team: int, dt: float, motion_alpha: float = 1.0) 
 			# Lightning does not fade: it stutters and is gone.
 			effect.node.visible = fmod(effect.ttl, 0.07) > 0.025
 		if effect.ttl <= 0:
-			if effect.get("pooled", false):
+			if effect.get("particle_pool", false):
+				effect.node.emitting = false
+				effect.node.hide()
+				particle_pool.append(effect.node)
+				active_particles -= 1
+			elif effect.get("light_pool", false):
+				effect.node.hide()
+				light_pool.append(effect.node)
+				active_lights -= 1
+			elif effect.get("pooled", false):
 				effect.node.hide()
 				feedback_pool.append(effect.node)
 			else:
 				effect.node.queue_free()
-			effects.erase(effect)
+			effects.remove_at(effect_index)
 
 func update_aim_guide(rules, local_team: int, dt: float) -> void:
 	# Dotted path of the shot the local pilot would fire now, ricochets included, and a ring
@@ -2071,7 +2122,8 @@ func emitter(at: Vector3, color: Color, amount: int, life: float, speed: float, 
 	# A one-shot puff of embers. CPU particles keep the GL compatibility renderer happy
 	# on phones, and the counts here stay small on purpose.
 	var count = maxi(4, int(amount * (0.45 if quality_level == 0 else (0.75 if quality_level == 1 else 1.0))))
-	var puff = CPUParticles3D.new()
+	var puff = take_particle()
+	if puff == null: return null
 	puff.mesh = particle_mesh(size, color)
 	puff.amount = count
 	puff.lifetime = life
@@ -2099,9 +2151,9 @@ func emitter(at: Vector3, color: Color, amount: int, life: float, speed: float, 
 	puff.color = color
 	puff.color_ramp = ember_ramp(color)
 	puff.position = at
-	add_child(puff)
+	puff.restart()
 	puff.emitting = true
-	effects.append({"node": puff, "v": Vector3.ZERO, "ttl": life + 0.35, "life": life + 0.35, "gravity": false, "base": Vector3.ONE, "keep": true})
+	effects.append({"node": puff, "particle_pool": true, "v": Vector3.ZERO, "ttl": life + 0.35, "life": life + 0.35, "gravity": false, "base": Vector3.ONE, "keep": true})
 	return puff
 
 func dust(at: Vector3, color: Color, amount: int, life: float, speed: float, size: float) -> void:
@@ -2109,7 +2161,8 @@ func dust(at: Vector3, color: Color, amount: int, life: float, speed: float, siz
 	if effects.size() >= effect_limit:
 		return
 	var count = maxi(3, int(amount * [0.45, 0.7, 1.0][quality_level]))
-	var cloud = CPUParticles3D.new()
+	var cloud = take_particle()
+	if cloud == null: return
 	cloud.mesh = particle_mesh(size, Color(color, 0.5))
 	cloud.amount = count
 	cloud.lifetime = life
@@ -2136,9 +2189,9 @@ func dust(at: Vector3, color: Color, amount: int, life: float, speed: float, siz
 	cloud.color = Color(color, 0.45)
 	cloud.color_ramp = smoke_ramp(color)
 	cloud.position = at
-	add_child(cloud)
+	cloud.restart()
 	cloud.emitting = true
-	effects.append({"node": cloud, "v": Vector3.ZERO, "ttl": life + 0.4, "life": life + 0.4, "gravity": false, "base": Vector3.ONE, "keep": true})
+	effects.append({"node": cloud, "particle_pool": true, "v": Vector3.ZERO, "ttl": life + 0.4, "life": life + 0.4, "gravity": false, "base": Vector3.ONE, "keep": true})
 
 func swell_curve() -> Curve:
 	if not shapes.has("swell_curve"):
@@ -2182,14 +2235,16 @@ func flash(at: Vector3, color: Color, energy: float, life: float, reach: float =
 	if quality_level == 0:
 		energy *= 0.6
 		life *= 0.7
-	var lamp = OmniLight3D.new()
+	if light_pool.is_empty() or active_lights >= [2, 4, 8][quality_level]: return
+	var lamp = light_pool.pop_back()
+	active_lights += 1
+	lamp.show()
 	lamp.position = at
 	lamp.light_color = color
 	lamp.light_energy = energy
 	lamp.omni_range = reach
 	lamp.shadow_enabled = false
-	add_child(lamp)
-	effects.append({"node": lamp, "v": Vector3.ZERO, "ttl": life, "life": life, "gravity": false, "base": Vector3.ONE, "keep": true, "lamp": energy})
+	effects.append({"node": lamp, "light_pool": true, "v": Vector3.ZERO, "ttl": life, "life": life, "gravity": false, "base": Vector3.ONE, "keep": true, "lamp": energy})
 
 func schedule(seconds: float, call: Callable) -> void:
 	pending.append({"time": seconds, "call": call})
@@ -2298,8 +2353,9 @@ func meteor_fall(at: Vector2, radius: float, warm: bool) -> void:
 	effects.append({"node": rock, "v": velocity, "ttl": fall, "life": fall, "gravity": false, "base": Vector3.ONE, "keep": true, "spin": true})
 	# The tail: embers left behind along the way down.
 	var tail = emitter(start, color, 20, fall + 0.2, 1.8, 18.0, radius * 0.75, -1.2, -velocity.normalized())
-	tail.emitting = false
-	tail.emitting = true
+	if tail != null:
+		tail.emitting = false
+		tail.emitting = true
 	# Landing: crater ring, dust, a flash and a mark that stays a moment.
 	# The dust, the light and the crater belong to the landing, not to the launch.
 	schedule(fall, func(): meteor_impact(at, radius, color, hot))
