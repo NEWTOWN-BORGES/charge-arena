@@ -38,12 +38,12 @@ func run() -> void:
 	check(restored.fps == 60, "A setting of 120 saved by an older build lands on 60")
 	restored.configure(90, 2, false, false)
 	restored.apply(root, game.arena)
+	var lit: bool = game.arena.key_light.shadow_enabled
+	var energy: float = game.arena.key_light.light_energy
 	for i in range(Settings.GRACE_WINDOWS + 4):
 		restored.adapt(root, 45, true)
-	check(restored.runtime_fps == 90 and not restored.runtime_shadows and not game.arena.key_light.shadow_enabled and root.msaa_3d == Settings.AA_LEVELS[2], "A phone that cannot hold 90 on Refinado gives up the real shadows first")
-	for i in range(Settings.GRACE_WINDOWS + 4):
-		restored.adapt(root, 45, true)
-	check(restored.runtime_fps == 90 and root.msaa_3d == Viewport.MSAA_4X, "Then antialiasing, still before a single frame")
+	check(restored.runtime_fps == 90 and root.msaa_3d == Viewport.MSAA_4X, "A phone that cannot hold 90 gives up antialiasing before a single frame")
+	check(game.arena.key_light.shadow_enabled == lit and game.arena.key_light.light_energy == energy, "And the lighting never changes mid-match: that is what turned the arena dark")
 	for i in range(200):
 		if restored.runtime_fps < 90:
 			break
@@ -68,6 +68,16 @@ func run() -> void:
 	for i in range(Settings.GRACE_WINDOWS + 1):
 		restored.adapt(root, 60, true, 120.0)
 	check(restored.panel_cap == 0 and restored.runtime_fps == 90, "And when the screen goes faster, the 90 comes back")
+	restored.mobile = true
+	restored.configure(90, 2, false, false)
+	restored.apply(root, game.arena)
+	check(root.msaa_3d == Viewport.MSAA_4X and restored.build_ladder(60.0)[0][0] == Viewport.MSAA_4X, "A phone's Refinado stops at 4x MSAA, as far as mobile GPUs go")
+	game.arena.phone = true
+	game.arena.set_quality(2)
+	check(not game.arena.key_light.shadow_enabled and game.arena.key_light.light_energy > 2.5, "A phone's Refinado has no real shadows, with the sun made up for it from the start")
+	game.arena.phone = false
+	game.arena.set_quality(2)
+	restored.mobile = false
 	restored.configure(60, 0, false, false)
 	restored.apply(root, game.arena)
 	for i in range(Settings.GRACE_WINDOWS + 2):

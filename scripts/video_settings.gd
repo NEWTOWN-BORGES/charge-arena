@@ -34,9 +34,9 @@ var since_raise = -1
 var grace = 0
 # The screen's own refresh rate when that, and not the phone, is what holds the frames down.
 var panel_cap = 0
-# The arena being drawn, so a step of the ladder can switch its shadows off.
-var arena_ref = null
-var runtime_shadows = true
+# A phone: capped at 4x MSAA, which is as far as most mobile GPUs go, and tiled GPUs pay
+# dearly for it. Tests set this to walk the phone path on a PC.
+var mobile = OS.has_feature("mobile")
 
 func load_preferences(path: String = CONFIG_PATH) -> void:
 	var config = ConfigFile.new()
@@ -82,14 +82,12 @@ func save_preferences(path: String = CONFIG_PATH) -> Error:
 	return config.save(path)
 
 func apply(viewport: Viewport, arena) -> void:
-	arena_ref = arena
-	runtime_shadows = true
 	runtime_fps = fps
 	runtime_scale = RENDER_SCALES[quality]
-	runtime_msaa = AA_LEVELS[quality]
+	runtime_msaa = profile_msaa()
 	reset_adjustment()
 	Engine.max_fps = runtime_fps
-	viewport.msaa_3d = AA_LEVELS[quality]
+	viewport.msaa_3d = runtime_msaa
 	viewport.screen_space_aa = SCREEN_AA[quality]
 	viewport.use_debanding = quality > 0
 	viewport.scaling_3d_mode = Viewport.SCALING_3D_MODE_BILINEAR
@@ -166,43 +164,37 @@ func adapt(viewport: Viewport, measured_fps: float, force_mobile: bool = false, 
 	return false
 
 func build_ladder(refresh_rate: float) -> Array:
-	# Each step is [MSAA, 3D scale, frame limit, shadows]; the first is the profile as chosen.
-	var msaa = AA_LEVELS[quality]
+	# Each step is [MSAA, 3D scale, frame limit]; the first is the profile as chosen. Nothing
+	# here changes the lighting: a step that did (switching the shadows off) turned the
+	# whole arena darker in the middle of a match.
+	var msaa = profile_msaa()
 	var scale = RENDER_SCALES[quality]
 	var top: int = mini(fps, panel_cap) if panel_cap > 0 else fps
-	var shadows: bool = quality == 2
-	var steps: Array = [[msaa, scale, top, shadows]]
-	if shadows:
-		# Real shadows are the heaviest thing Refinado draws - every solid piece a second
-		# time - and the first thing given up; the painted contact shadows stay.
-		shadows = false
-		steps.append([msaa, scale, top, shadows])
-	if msaa == Viewport.MSAA_8X:
-		# The dearest thing on a phone's tiled GPU after shadows, and least missed at a glance.
-		msaa = Viewport.MSAA_4X
-		steps.append([msaa, scale, top, shadows])
-		msaa = Viewport.MSAA_2X
-		steps.append([msaa, scale, top, shadows])
+	var steps: Array = [[msaa, scale, top]]
+	while msaa > Viewport.MSAA_2X:
+		# The dearest thing on a phone's tiled GPU, and the one least missed at a glance.
+		msaa -= 1
+		steps.append([msaa, scale, top])
 	while scale > MIN_RENDER_SCALES[quality] + 0.01:
 		scale = maxf(MIN_RENDER_SCALES[quality], scale - 0.08)
-		steps.append([msaa, scale, top, shadows])
+		steps.append([msaa, scale, top])
 	if top > 60:
-		steps.append([msaa, scale, 60, shadows])
+		steps.append([msaa, scale, 60])
 	# 45 divides a 90 Hz panel evenly; on a 60 Hz one it paces unevenly, so it is skipped.
 	if top > 45 and refresh_rate >= 85.0:
-		steps.append([msaa, scale, 45, shadows])
+		steps.append([msaa, scale, 45])
 	if top > 30:
-		steps.append([msaa, scale, 30, shadows])
+		steps.append([msaa, scale, 30])
 	return steps
+
+func profile_msaa() -> int:
+	return mini(AA_LEVELS[quality], Viewport.MSAA_4X) if mobile else AA_LEVELS[quality]
 
 func use_step(viewport: Viewport) -> void:
 	var step: Array = ladder[level]
 	runtime_msaa = step[0]
 	runtime_scale = step[1]
 	runtime_fps = step[2]
-	runtime_shadows = step[3]
-	if arena_ref != null and is_instance_valid(arena_ref) and arena_ref.has_method("set_shadows"):
-		arena_ref.set_shadows(runtime_shadows)
 	viewport.msaa_3d = runtime_msaa
 	viewport.scaling_3d_scale = runtime_scale
 	Engine.max_fps = runtime_fps

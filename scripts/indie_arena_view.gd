@@ -89,6 +89,10 @@ var guide_angle = INF
 var soft_disc_nodes: Array = []
 var secondary_light: DirectionalLight3D
 var key_light: DirectionalLight3D
+# A phone gets Refinado without the real shadows. On the GL renderer a shadowed sun makes
+# every lit piece draw a second time - the frame-rate drops - and the picture is lit
+# differently with and without it, so the shadows are decided once, never mid-match.
+var phone = OS.has_feature("mobile")
 # Refinado only: slow motes of light hanging over the arena, like dust in stadium lights.
 var atmosphere: CPUParticles3D
 var quality_level = 0
@@ -333,10 +337,14 @@ func set_quality(level: int) -> void:
 		atmosphere.visible = quality_level == 2
 		atmosphere.emitting = quality_level == 2
 	if is_instance_valid(key_light):
-		key_light.shadow_enabled = quality_level == 2
+		key_light.shadow_enabled = real_shadows()
 		# A lower sun on Refinado, so the shadows are long enough to read from above.
 		key_light.rotation_degrees = Vector3(-40 if quality_level == 2 else -52, -35, 0)
-		key_light.light_energy = 1.45 if quality_level == 2 else 1.35
+		# The renderer lights a surface more with a shadowed sun than with a plain one; a
+		# phone's Refinado, which has none, gets the difference back in the sun's strength.
+		key_light.light_energy = (1.45 if real_shadows() else 1.45 * 2.0) if quality_level == 2 else 1.35
+	if presentation_environment != null and quality_level == 2 and not real_shadows():
+		presentation_environment.ambient_light_energy = 0.62
 	refresh_shadows(self)
 	for mat in materials.values():
 		if mat is StandardMaterial3D:
@@ -1023,11 +1031,8 @@ func set_skin(team: int, skin: int, tint: bool = false, hue: String = "") -> voi
 	old.queue_free()
 	refresh_shadows(self)
 
-func set_shadows(on: bool) -> void:
-	# The automatic frame-rate ladder switches the sun's shadow map off on a phone that
-	# cannot carry it; the painted contact shadows under everything stay either way.
-	if is_instance_valid(key_light):
-		key_light.shadow_enabled = on and quality_level == 2
+func real_shadows() -> bool:
+	return quality_level == 2 and not phone
 
 func casts_shadow(mat: Material) -> bool:
 	# Solid, lit surfaces only: glowing parts, glass, decals and effect cards never do.
@@ -1040,7 +1045,7 @@ func casts_shadow(mat: Material) -> bool:
 func refresh_shadows(from: Node) -> void:
 	# Refinado casts real shadows from everything solid - pilots, bricks, walls. The lighter
 	# profiles keep only the painted contact shadows, which cost nothing on a phone.
-	var mode = GeometryInstance3D.SHADOW_CASTING_SETTING_ON if quality_level == 2 else GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	var mode = GeometryInstance3D.SHADOW_CASTING_SETTING_ON if real_shadows() else GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	var stack: Array = [from]
 	while not stack.is_empty():
 		var node: Node = stack.pop_back()
@@ -2380,7 +2385,7 @@ func flash(at: Vector3, color: Color, energy: float, life: float, reach: float =
 	if quality_level == 0:
 		energy *= 0.6
 		life *= 0.7
-	if light_pool.is_empty() or active_lights >= [2, 4, 12][quality_level]: return
+	if light_pool.is_empty() or active_lights >= [2, 4, 6 if phone else 12][quality_level]: return
 	var lamp = light_pool.pop_back()
 	active_lights += 1
 	lamp.show()
@@ -2418,8 +2423,9 @@ func burst(pos: Vector2, color: Color, debris: bool = true) -> void:
 			effects.append({"node": node, "v": Vector3(cos(angle)*1.7, 1.5, sin(angle)*1.7), "ttl": life, "life": life, "gravity": true, "base": Vector3.ONE})
 	if effects.size() < effect_limit:
 		emitter(Vector3(pos.x, 0.48, pos.y), color, 9 if debris else 5, 0.28, 2.8, 72, 0.105, -4.0)
-	if debris and quality_level == 2:
-		# A brick going up lights its neighbours for an instant.
+	if debris and quality_level == 2 and not phone:
+		# A brick going up lights its neighbours for an instant. Not on a phone: on the GL
+		# renderer every lamp redraws everything in its reach, and bricks break by the dozen.
 		flash(Vector3(pos.x, 0.9, pos.y), color, 2.6, 0.18, 3.0)
 
 func explosion(pos: Vector2, radius: float) -> void:
@@ -3394,7 +3400,7 @@ func shot_feedback(team: int) -> void:
 	var direction = -units[team].get_node("Body").global_basis.z
 	for i in range(2 if quality_level == 0 else 4):
 		feedback_chip(origin, direction * (2.5 + i) + Vector3((i % 2 - 0.5) * 1.1, 0.3, 0), shot_colors[team], 0.09, Vector3.ONE * 0.06)
-	if quality_level == 2:
+	if quality_level == 2 and not phone:
 		# The muzzle lights the pilot and the floor in front of it for a couple of frames.
 		flash(origin + direction * 0.3, shot_colors[team], 1.8, 0.07, 2.4)
 
