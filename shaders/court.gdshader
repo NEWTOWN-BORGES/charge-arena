@@ -24,7 +24,9 @@ void fragment(){
  float r=length(p);
  float center=ring_line(r,2.12,0.018)+ring_line(r,2.28,0.009);
  float medallion=ring_line(r,1.86,0.008);
- float ticks=step(0.80,fract(atan(p.y,p.x)*20.0/6.28318));
+ // On Refinado the dial turns slowly, like a machine that is switched on.
+ float turn=finish_quality>1.5?TIME*0.08:0.0;
+ float ticks=step(0.80,fract((atan(p.y,p.x)+turn)*20.0/6.28318));
  float dial=ring_line(r,2.43,0.065)*ticks;
  base=mix(base,vec3(0.35,0.55,0.57),clamp(center+dial*0.6,0.0,1.0)*0.6);
  base=mix(base,vec3(0.61,0.44,0.19),medallion*0.7);
@@ -34,9 +36,21 @@ void fragment(){
  float wash=pow(smoothstep(3.0,9.0,abs(p.y)),2.0);
  ALBEDO=base;
  METALLIC=0.28;
- ROUGHNESS=mix(0.54,0.74,seam);
+ bool showcase=finish_quality>1.5;
+ // Refinado polishes the plates, so the flashes of shots and blasts run across the floor.
+ ROUGHNESS=showcase?mix(0.3,0.7,seam):mix(0.54,0.74,seam);
  SPECULAR=0.65;
- CLEARCOAT=finish_quality>1.5?0.25:0.0;
- CLEARCOAT_ROUGHNESS=0.4;
- EMISSION=team*wash*0.038+vec3(0.13,0.25,0.23)*center*0.10;
+ CLEARCOAT=showcase?0.55:0.0;
+ CLEARCOAT_ROUGHNESS=showcase?0.14:0.4;
+ vec3 glow=team*wash*0.038+vec3(0.13,0.25,0.23)*center*0.10;
+ if(showcase){
+  // Energy in the seams, each half in its own team's colour, pulsing outward from the
+  // centre line towards the walls: the arena looks powered.
+  float half_dist=abs(p.y);
+  float pulse=pow(0.5+0.5*sin(half_dist*1.35-TIME*2.6),8.0);
+  float live=seam*(0.06+0.94*pulse)*smoothstep(0.6,2.2,half_dist);
+  glow+=team*live*1.25;
+  glow+=vec3(0.35,0.75,0.8)*(center+dial*0.5)*(0.35+0.25*sin(TIME*1.7));
+ }
+ EMISSION=glow;
 }

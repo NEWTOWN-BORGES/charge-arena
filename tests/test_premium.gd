@@ -75,7 +75,9 @@ func run():
 	var bus = Audio.prepare_bus()
 	Audio.prepare_bus()
 	var index = AudioServer.get_bus_index(bus)
-	check(index > 0 and AudioServer.get_bus_effect_count(index) == 1 and AudioServer.get_bus_effect(index, 0) is AudioEffectHardLimiter, "Combat gets one dedicated limiter without changing Master")
+	var last = AudioServer.get_bus_effect_count(index) - 1
+	check(index > 0 and AudioServer.get_bus_effect_count(index) == 3 and AudioServer.get_bus_effect(index, 0) is AudioEffectCompressor and AudioServer.get_bus_effect(index, 1) is AudioEffectReverb and AudioServer.get_bus_effect(index, last) is AudioEffectHardLimiter, "Combat gets its own glue, arena reverb and a limiter last, without changing Master")
+	check(AudioServer.get_bus_index(Audio.LEFT) > 0 and AudioServer.get_bus_send(AudioServer.get_bus_index(Audio.LEFT)) == Audio.BUS and Audio.bus_for(-0.8) == Audio.LEFT and Audio.bus_for(0.8) == Audio.RIGHT and Audio.bus_for(0.0) == Audio.BUS, "Sounds are placed left, centre or right, all through the same combat bus")
 	view.free()
 	print("PREMIUM_RESULT failures=", failures)
 	quit(failures)

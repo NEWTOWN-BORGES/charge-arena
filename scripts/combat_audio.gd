@@ -87,6 +87,11 @@ const TRACKS = {
 }
 
 const BUS = &"ChargeCombat"
+# Left and right feeds into the combat bus: a blast on the left side of the arena is heard
+# on the left. Three positions are enough to place a sound on a phone speaker or earbuds.
+const LEFT = &"ChargeCombatLeft"
+const RIGHT = &"ChargeCombatRight"
+
 static func prepare_bus() -> StringName:
 	var index = AudioServer.get_bus_index(BUS)
 	if index < 0:
@@ -94,10 +99,48 @@ static func prepare_bus() -> StringName:
 		index = AudioServer.bus_count - 1
 		AudioServer.set_bus_name(index, BUS)
 		AudioServer.set_bus_send(index, &"Master")
+		# Glue: a gentle compressor gives shots and impacts body without making them louder
+		# at the peak.
+		var glue = AudioEffectCompressor.new()
+		glue.threshold = -16.0
+		glue.ratio = 3.0
+		glue.attack_us = 1500.0
+		glue.release_ms = 140.0
+		glue.gain = 2.0
+		AudioServer.add_bus_effect(index, glue)
+		# Space: a short, bright arena reverb under everything. The low end stays dry, so
+		# blasts keep their punch instead of turning to mud.
+		var room = AudioEffectReverb.new()
+		room.room_size = 0.38
+		room.damping = 0.55
+		room.spread = 0.85
+		room.hipass = 0.3
+		room.predelay_msec = 24.0
+		room.dry = 1.0
+		room.wet = 0.13
+		AudioServer.add_bus_effect(index, room)
 		# Catch rare stacks of transients, leaving room for the untouched music bus.
 		var limiter = AudioEffectHardLimiter.new()
 		limiter.pre_gain_db = 0.0
 		limiter.ceiling_db = -4.0
 		limiter.release = 0.08
 		AudioServer.add_bus_effect(index, limiter)
+	for side in [LEFT, RIGHT]:
+		if AudioServer.get_bus_index(side) >= 0:
+			continue
+		AudioServer.add_bus()
+		var feed = AudioServer.bus_count - 1
+		AudioServer.set_bus_name(feed, side)
+		AudioServer.set_bus_send(feed, BUS)
+		var panner = AudioEffectPanner.new()
+		panner.pan = -0.55 if side == LEFT else 0.55
+		AudioServer.add_bus_effect(feed, panner)
+	return BUS
+
+static func bus_for(pan: float) -> StringName:
+	# -1 is the left wall as the player sees it, +1 the right.
+	if pan < -0.3:
+		return LEFT
+	if pan > 0.3:
+		return RIGHT
 	return BUS

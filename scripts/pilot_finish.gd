@@ -99,6 +99,12 @@ static func _configure_material(mat: ShaderMaterial, level: int) -> void:
 		if quality == 0 and key in ["metal_amount", "surface_roughness"]:
 			continue
 		mat.set_shader_parameter(key, parameters[key])
+	if quality > 0:
+		# Refinado: glowing accents burn past the bloom threshold, and a cool rim of
+		# light traces every pilot's outline against the arena.
+		mat.set_shader_parameter("light_amount", float(parameters.light_amount) * (2.6 if quality == 2 else 1.0))
+		mat.set_shader_parameter("rim_amount", 0.55 if quality == 2 else 0.075)
+		mat.set_shader_parameter("rim_color", Vector3(0.78, 0.92, 1.0))
 	mat.set_meta("pilot_finish_quality", quality)
 
 static func _coat(view, node: MeshInstance3D, tint: Color, treatment: int) -> MeshInstance3D:

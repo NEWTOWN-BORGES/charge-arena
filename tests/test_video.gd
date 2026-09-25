@@ -40,7 +40,10 @@ func run() -> void:
 	restored.apply(root, game.arena)
 	for i in range(Settings.GRACE_WINDOWS + 4):
 		restored.adapt(root, 45, true)
-	check(restored.runtime_fps == 90 and root.msaa_3d == Viewport.MSAA_4X, "A phone that cannot hold 90 gives up antialiasing before a single frame")
+	check(restored.runtime_fps == 90 and not restored.runtime_shadows and not game.arena.key_light.shadow_enabled and root.msaa_3d == Settings.AA_LEVELS[2], "A phone that cannot hold 90 on Refinado gives up the real shadows first")
+	for i in range(Settings.GRACE_WINDOWS + 4):
+		restored.adapt(root, 45, true)
+	check(restored.runtime_fps == 90 and root.msaa_3d == Viewport.MSAA_4X, "Then antialiasing, still before a single frame")
 	for i in range(200):
 		if restored.runtime_fps < 90:
 			break

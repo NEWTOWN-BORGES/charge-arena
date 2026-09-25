@@ -61,6 +61,9 @@ var last_stuns: Array = [0.0, 0.0]
 var packets_received = 0
 var mouse_firing = false
 var fps_measuring = false
+# Stereo position of the event being played, set while play_events walks the list.
+var event_pan = 0.0
+const CombatAudio = preload("res://scripts/combat_audio.gd")
 var video = VideoSettings.new()
 var music
 var visual_packet_age = 0.0
@@ -800,6 +803,10 @@ func play_events() -> void:
 	# simulation; the client runs it off the events the host ships with each snapshot,
 	# which is the only way it sees a power go off at all.
 	for event in rules.events:
+		# Where it happened, left to right as this player sees the arena: the sound comes
+		# from that side.
+		var heard_at = event.get("p", null)
+		event_pan = clampf(float(heard_at.x) / Rules.HALF_WIDTH, -1.0, 1.0) * (1.0 if local_team == 0 else -1.0) if heard_at is Vector2 else 0.0
 		ArenaView.CombatFinish.event(arena, event, rules)
 		if event.kind == "shot":
 			var team = int(event.team)
@@ -946,6 +953,7 @@ func play_events() -> void:
 		elif event.kind == "explosion":
 			arena.explosion(event.p, event.radius)
 			play_tone("blast")
+	event_pan = 0.0
 
 func local_command() -> Dictionary:
 	if hud.video_overlay.visible or pve_paused:
@@ -1364,6 +1372,7 @@ func play_tone(sound: String, gain_db: float = 0.0) -> void:
 	voice.set_meta("secondary", weapon or sound in ["bounce", "metal", "ricochet", "sentry", "hit_0", "hit_1", "hit_2", "break_0", "break_1", "break_2"])
 	voice.volume_db += linear_to_db(maxf(game_settings.sfx_volume, 0.0001)) + (arena_duck_db if voice.get_meta("secondary") else 0.0)
 	voice.pitch_scale = 1.0
+	voice.bus = CombatAudio.bus_for(event_pan)
 	voice.stream = tones[sound]
 	voice.play()
 

@@ -4,7 +4,10 @@ render_mode diffuse_burley, specular_schlick_ggx;
 uniform vec4 paint_color : source_color = vec4(0.8, 0.85, 0.9, 1.0);
 uniform float metal_amount : hint_range(0.0, 1.0) = 0.2;
 uniform float surface_roughness : hint_range(0.0, 1.0) = 0.36;
-uniform float light_amount : hint_range(0.0, 3.0) = 0.0;
+uniform float light_amount : hint_range(0.0, 8.0) = 0.0;
+// A cool rim of sky light on the silhouette; stronger on Refinado.
+uniform float rim_amount : hint_range(0.0, 2.0) = 0.075;
+uniform vec3 rim_color = vec3(1.0);
 varying vec3 model_position;
 
 void vertex() {
@@ -24,5 +27,5 @@ void fragment() {
 	CLEARCOAT = 0.38;
 	CLEARCOAT_ROUGHNESS = 0.28;
 	float edge = pow(1.0 - clamp(dot(NORMAL, VIEW), 0.0, 1.0), 3.0);
-	EMISSION = paint_color.rgb * (light_amount + edge * 0.075);
+	EMISSION = paint_color.rgb * light_amount + mix(paint_color.rgb, rim_color, 0.6) * edge * rim_amount;
 }

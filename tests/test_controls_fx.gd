@@ -47,10 +47,10 @@ func run():
 	for i in range(300):
 		arena.emitter(Vector3.ZERO, Color.WHITE, 12, 0.3, 2, 30, 0.2)
 		arena.flash(Vector3.ZERO, Color.WHITE, 2, 0.2)
-	check(arena.active_particles > 0 and arena.active_particles <= 48 and arena.active_lights > 0 and arena.active_lights <= 8 and arena.effects.size() <= arena.effect_limit, "Simultaneous effects have bounded particle/light counts")
+	check(arena.active_particles > 0 and arena.active_particles <= arena.PARTICLE_POOL_LIMIT and arena.active_lights > 0 and arena.active_lights <= arena.LIGHT_POOL_LIMIT and arena.effects.size() <= arena.effect_limit, "Simultaneous effects have bounded particle/light counts")
 	check(arena.get_child_count() == count, "Effect burst allocates no new emitter or light nodes")
 	for i in range(120): arena.update_state(game.rules, 0, 1.0/60)
-	check(arena.particle_pool.size() == 48 and arena.light_pool.size() == 8, "Expired effects return to pools")
+	check(arena.particle_pool.size() == arena.PARTICLE_POOL_LIMIT and arena.light_pool.size() == arena.LIGHT_POOL_LIMIT, "Expired effects return to pools")
 	for i in range(50): arena.schedule(0, func(): callbacks += 1)
 	arena.update_state(game.rules, 0, 1.0/60)
 	check(callbacks == 4 and arena.pending.size() == 46, "Delayed visual work spreads across frames")

@@ -88,6 +88,9 @@ var guide_timer = 0.0
 var guide_angle = INF
 var soft_disc_nodes: Array = []
 var secondary_light: DirectionalLight3D
+var key_light: DirectionalLight3D
+# Refinado only: slow motes of light hanging over the arena, like dust in stadium lights.
+var atmosphere: CPUParticles3D
 var quality_level = 0
 # Camera shake: a strength that decays, added to the camera's resting place.
 var camera_home = Vector3(0, 26, 15)
@@ -102,8 +105,8 @@ var shake_seed = 0.0
 # Effects waiting for their moment: {"time": seconds, "call": Callable}.
 var pending: Array = []
 # Reuse render resources instead of creating/destroying emitters during ultimates.
-const PARTICLE_POOL_LIMIT = 48
-const LIGHT_POOL_LIMIT = 8
+const PARTICLE_POOL_LIMIT = 72
+const LIGHT_POOL_LIMIT = 12
 var particle_pool: Array[CPUParticles3D] = []
 var light_pool: Array[OmniLight3D] = []
 var active_particles = 0
@@ -124,7 +127,7 @@ func prepare_fx_pool() -> void:
 		light_pool.append(lamp)
 
 func take_particle() -> CPUParticles3D:
-	if effects.size() >= effect_limit or active_particles >= [16, 32, 48][quality_level] or particle_pool.is_empty():
+	if effects.size() >= effect_limit or active_particles >= [16, 32, 72][quality_level] or particle_pool.is_empty():
 		return null
 	var puff = particle_pool.pop_back()
 	active_particles += 1
@@ -325,6 +328,16 @@ func set_quality(level: int) -> void:
 			node.visible = quality_level > 0
 	if is_instance_valid(secondary_light):
 		secondary_light.visible = quality_level > 0
+		secondary_light.light_energy = 0.95 if quality_level == 2 else 0.72
+	if is_instance_valid(atmosphere):
+		atmosphere.visible = quality_level == 2
+		atmosphere.emitting = quality_level == 2
+	if is_instance_valid(key_light):
+		key_light.shadow_enabled = quality_level == 2
+		# A lower sun on Refinado, so the shadows are long enough to read from above.
+		key_light.rotation_degrees = Vector3(-40 if quality_level == 2 else -52, -35, 0)
+		key_light.light_energy = 1.45 if quality_level == 2 else 1.35
+	refresh_shadows(self)
 	for mat in materials.values():
 		if mat is StandardMaterial3D:
 			ArenaFinish.surface(mat, quality_level)
@@ -387,7 +400,17 @@ func build(new_map: Dictionary = {}) -> void:
 	light.light_color = Color("ffe9cc")
 	light.light_energy = 1.35
 	light.shadow_enabled = false
+	# Real shadows on Refinado: pilots, bricks and walls sit on the floor instead of
+	# floating over it. One orthogonal map covers the whole arena at this camera.
+	light.directional_shadow_mode = DirectionalLight3D.SHADOW_ORTHOGONAL
+	light.directional_shadow_max_distance = 60.0
+	light.shadow_bias = 0.04
+	light.shadow_normal_bias = 1.2
+	light.shadow_blur = 1.6
+	light.shadow_opacity = 0.85
 	add_child(light)
+	key_light = light
+	build_atmosphere()
 	secondary_light = DirectionalLight3D.new()
 	secondary_light.rotation_degrees = Vector3(-35, 145, 0)
 	secondary_light.light_color = Color("8fc8ff")
@@ -915,6 +938,7 @@ func build_player(color: Color, team: int, skin: int = 0, parent: Node3D = null,
 	box(body, Vector3(-0.20, 0.86, -0.265), Vector3(0.085, 0.12, 0.026), badge_color, false, 0.018)
 	for side in [-1, 1]:
 		box(body, Vector3(side*0.43, 1.00, -0.07), Vector3(0.22, 0.035, 0.24), badge_color, false, 0.015)
+	glaze_visor(body)
 	crafting_pilot = false
 	# Frost: a block of ice around the pilot with crystals standing off it, and a ring of
 	# spikes grown out of the floor. It is the heaviest of the worn effects on purpose -
@@ -997,6 +1021,33 @@ func set_skin(team: int, skin: int, tint: bool = false, hue: String = "") -> voi
 	# has to stay unmistakable, and make_brick works that out for itself.
 	set_brick_theme(team, skin, tint)
 	old.queue_free()
+	refresh_shadows(self)
+
+func set_shadows(on: bool) -> void:
+	# The automatic frame-rate ladder switches the sun's shadow map off on a phone that
+	# cannot carry it; the painted contact shadows under everything stay either way.
+	if is_instance_valid(key_light):
+		key_light.shadow_enabled = on and quality_level == 2
+
+func casts_shadow(mat: Material) -> bool:
+	# Solid, lit surfaces only: glowing parts, glass, decals and effect cards never do.
+	if mat is StandardMaterial3D:
+		return not mat.get_meta("always_unshaded", false) and mat.transparency == BaseMaterial3D.TRANSPARENCY_DISABLED
+	if mat is ShaderMaterial and mat.shader != null:
+		return mat.shader.resource_path.contains("pilot_enamel")
+	return false
+
+func refresh_shadows(from: Node) -> void:
+	# Refinado casts real shadows from everything solid - pilots, bricks, walls. The lighter
+	# profiles keep only the painted contact shadows, which cost nothing on a phone.
+	var mode = GeometryInstance3D.SHADOW_CASTING_SETTING_ON if quality_level == 2 else GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	var stack: Array = [from]
+	while not stack.is_empty():
+		var node: Node = stack.pop_back()
+		if node is MeshInstance3D or node is MultiMeshInstance3D:
+			if casts_shadow(node.material_override):
+				node.cast_shadow = mode
+		stack.append_array(node.get_children())
 
 # Station pilots are addressed from here up, well clear of the eleven skins in the shop.
 const STATION_SKIN = 100
@@ -1393,6 +1444,79 @@ func add_gun(body: Node3D) -> Node3D:
 func add_flash(gun: Node3D, z: float) -> void:
 	var flash = sphere(gun, Vector3(0.29, 0.7, z), Vector3.ONE * 0.01, Color("fff1c7"), true)
 	flash.name = "Flash"
+
+func build_atmosphere() -> void:
+	# One emitter for the whole arena, never recycled: a few dozen soft specks drifting up
+	# through the light. They are what makes the air above the floor read as a space.
+	atmosphere = CPUParticles3D.new()
+	atmosphere.name = "Atmosphere"
+	atmosphere.mesh = particle_mesh(0.07, Color("bfe9ff"))
+	atmosphere.amount = 70
+	atmosphere.lifetime = 9.0
+	atmosphere.preprocess = 9.0
+	atmosphere.randomness = 1.0
+	atmosphere.lifetime_randomness = 0.4
+	atmosphere.emission_shape = CPUParticles3D.EMISSION_SHAPE_BOX
+	atmosphere.emission_box_extents = Vector3(Rules.HALF_WIDTH * 1.1, 1.6, Rules.HALF_LENGTH * 1.1)
+	atmosphere.position = Vector3(0, 1.9, 0)
+	atmosphere.direction = Vector3.UP
+	atmosphere.spread = 60.0
+	atmosphere.gravity = Vector3(0.05, 0.08, 0)
+	atmosphere.initial_velocity_min = 0.04
+	atmosphere.initial_velocity_max = 0.22
+	atmosphere.scale_amount_min = 0.6
+	atmosphere.scale_amount_max = 1.8
+	atmosphere.scale_amount_curve = swell_curve()
+	var fade = Gradient.new()
+	fade.set_color(0, Color(1, 1, 1, 0))
+	fade.set_color(1, Color(1, 1, 1, 0))
+	fade.add_point(0.25, Color(1, 1, 1, 0.55))
+	fade.add_point(0.75, Color(1, 1, 1, 0.4))
+	var ramp = GradientTexture1D.new()
+	ramp.gradient = fade
+	atmosphere.color_ramp = ramp
+	atmosphere.emitting = quality_level == 2
+	atmosphere.visible = quality_level == 2
+	add_child(atmosphere)
+
+func visor_glass() -> StandardMaterial3D:
+	# Polished dark glass: near-black, mirror-smooth, lacquered, so it catches the sky and
+	# the arena lights as a moving highlight - the difference between a painted face and a
+	# helmet you could look into.
+	if materials.has("visor_glass"):
+		return materials["visor_glass"]
+	var mat = StandardMaterial3D.new()
+	mat.albedo_color = Color("0b1822")
+	mat.metallic = 0.55
+	mat.roughness = 0.06
+	mat.metallic_specular = 1.0
+	mat.clearcoat_enabled = true
+	mat.clearcoat = 1.0
+	mat.clearcoat_roughness = 0.04
+	mat.rim_enabled = true
+	mat.rim = 0.6
+	mat.rim_tint = 0.2
+	mat.set_meta("custom_finish", true)
+	materials["visor_glass"] = mat
+	return mat
+
+func glaze_visor(body: Node3D) -> void:
+	# Every hull builds its own visor - a dark sphere set into the front of the helmet - so
+	# the glass is fitted afterwards to whatever stands there, instead of in each builder.
+	for child in body.get_children():
+		if child is MeshInstance3D and child.mesh is SphereMesh and child.position.z < -0.2 and child.position.y > 1.1 and child.position.y < 1.5:
+			var mat = child.material_override
+			if mat is StandardMaterial3D and not mat.get_meta("always_unshaded", false) and mat.albedo_color.is_equal_approx(DARK):
+				child.material_override = visor_glass()
+				# A painted glint across the upper corner, laid on the curve of the glass:
+				# one long streak and a dot, the way a stylised helmet reads as glass.
+				var half: Vector3 = child.scale * 0.5
+				for glint in [[-0.56, 0.56, 0.3, 0.065, 0.55], [-0.24, 0.72, 0.075, 0.065, 0.45]]:
+					var depth = sqrt(maxf(0.0, 1.0 - glint[0] * glint[0] - glint[1] * glint[1]))
+					var at = child.position + Vector3(glint[0] * half.x, glint[1] * half.y, -depth * half.z - 0.012)
+					var streak = box(body, at, Vector3(glint[2] * child.scale.x, glint[3] * child.scale.y, 0.012), Color(1, 1, 1, glint[4]), true, 0.004)
+					streak.rotation_degrees.z = -16.0
+				break
 
 func pilot_head(body: Node3D) -> void:
 	# The classic ceramic helmet and dark visor most skins share.
@@ -2085,9 +2209,10 @@ func update_aim_guide(rules, local_team: int, dt: float) -> void:
 		_:
 			guide_marker.hide()
 
-func particle_mesh(size: float, color: Color) -> Mesh:
-	# One flat card per particle, unshaded and always facing the camera.
-	var key = "particle" + str(size) + str(color)
+func particle_mesh(size: float, color: Color, mixed: bool = false) -> Mesh:
+	# One flat card per particle, unshaded and always facing the camera. Additive by
+	# default, which is right for light; `mixed` for smoke, which has to be able to darken.
+	var key = "particle" + str(size) + str(color) + ("m" if mixed else "")
 	if shapes.has(key):
 		return shapes[key]
 	var card = QuadMesh.new()
@@ -2097,7 +2222,7 @@ func particle_mesh(size: float, color: Color) -> Mesh:
 	mat.albedo_texture = spark_texture()
 	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 	mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	mat.blend_mode = BaseMaterial3D.BLEND_MODE_ADD
+	mat.blend_mode = BaseMaterial3D.BLEND_MODE_MIX if mixed else BaseMaterial3D.BLEND_MODE_ADD
 	mat.billboard_mode = BaseMaterial3D.BILLBOARD_ENABLED
 	mat.vertex_color_use_as_albedo = true
 	mat.set_meta("always_unshaded", true)
@@ -2141,7 +2266,7 @@ func ember_ramp(color: Color) -> GradientTexture1D:
 func emitter(at: Vector3, color: Color, amount: int, life: float, speed: float, spread: float, size: float, gravity: float = -7.0, direction: Vector3 = Vector3.UP) -> CPUParticles3D:
 	# A one-shot puff of embers. CPU particles keep the GL compatibility renderer happy
 	# on phones, and the counts here stay small on purpose.
-	var count = maxi(4, int(amount * (0.45 if quality_level == 0 else (0.75 if quality_level == 1 else 1.0))))
+	var count = maxi(4, int(amount * (0.45 if quality_level == 0 else (0.75 if quality_level == 1 else 1.4))))
 	var puff = take_particle()
 	if puff == null: return null
 	puff.mesh = particle_mesh(size, color)
@@ -2176,14 +2301,14 @@ func emitter(at: Vector3, color: Color, amount: int, life: float, speed: float, 
 	effects.append({"node": puff, "particle_pool": true, "v": Vector3.ZERO, "ttl": life + 0.35, "life": life + 0.35, "gravity": false, "base": Vector3.ONE, "keep": true})
 	return puff
 
-func dust(at: Vector3, color: Color, amount: int, life: float, speed: float, size: float) -> void:
+func dust(at: Vector3, color: Color, amount: int, life: float, speed: float, size: float, mixed: bool = false) -> void:
 	# Heavy, slow and unlit: the smoke that hangs after an impact, not a spark.
 	if effects.size() >= effect_limit:
 		return
 	var count = maxi(3, int(amount * [0.45, 0.7, 1.0][quality_level]))
 	var cloud = take_particle()
 	if cloud == null: return
-	cloud.mesh = particle_mesh(size, Color(color, 0.5))
+	cloud.mesh = particle_mesh(size, Color(color, 0.5) if not mixed else Color.WHITE, mixed)
 	cloud.amount = count
 	cloud.lifetime = life
 	cloud.lifetime_randomness = 0.5
@@ -2255,7 +2380,7 @@ func flash(at: Vector3, color: Color, energy: float, life: float, reach: float =
 	if quality_level == 0:
 		energy *= 0.6
 		life *= 0.7
-	if light_pool.is_empty() or active_lights >= [2, 4, 8][quality_level]: return
+	if light_pool.is_empty() or active_lights >= [2, 4, 12][quality_level]: return
 	var lamp = light_pool.pop_back()
 	active_lights += 1
 	lamp.show()
@@ -2293,19 +2418,90 @@ func burst(pos: Vector2, color: Color, debris: bool = true) -> void:
 			effects.append({"node": node, "v": Vector3(cos(angle)*1.7, 1.5, sin(angle)*1.7), "ttl": life, "life": life, "gravity": true, "base": Vector3.ONE})
 	if effects.size() < effect_limit:
 		emitter(Vector3(pos.x, 0.48, pos.y), color, 9 if debris else 5, 0.28, 2.8, 72, 0.105, -4.0)
+	if debris and quality_level == 2:
+		# A brick going up lights its neighbours for an instant.
+		flash(Vector3(pos.x, 0.9, pos.y), color, 2.6, 0.18, 3.0)
 
 func explosion(pos: Vector2, radius: float) -> void:
-	# The blast radius has to be readable at a glance: a ring that opens to its real size.
+	# Built in layers, the way a blast reads on screen: a white-hot core, a ball of fire
+	# that swells and cools, a shock ring racing over the floor, sparks, debris, a smoke
+	# column that hangs after, and a flash of light thrown on everything nearby. The ring
+	# still opens to the real radius, so the reach stays readable at a glance.
 	var tint: Color = Rules.power_color("blast")
+	var at := Vector3(pos.x, 0.34, pos.y)
 	if effects.size() < effect_limit:
-		var ring = torus(self, Vector3(pos.x, 0.34, pos.y), radius, 0.09, Color(tint, 0.9), true)
+		var ring = torus(self, Vector3(pos.x, 0.3, pos.y), radius, 0.12 if quality_level == 2 else 0.09, Color(tint, 0.9), true)
 		ring.scale = Vector3.ONE * 0.25
 		effects.append({"node": ring, "v": Vector3.ZERO, "ttl": 0.42, "life": 0.42, "gravity": false, "base": Vector3.ONE, "grow": true, "tint": tint})
+	if quality_level > 0 and effects.size() < effect_limit:
+		var core = sphere(self, at + Vector3.UP * 0.25, Vector3.ONE * radius * 1.1, Color("fff1c2", 0.95), true)
+		effects.append({"node": core, "v": Vector3.UP * 0.8, "ttl": 0.18, "life": 0.18, "gravity": false, "base": core.scale, "grow": true, "tint": Color("ffd98a")})
 	burst(pos, tint, true)
 	if effects.size() + 2 < effect_limit:
-		emitter(Vector3(pos.x, 0.32, pos.y), Color("fff1d4"), 18, 0.35, 5.0, 85.0, 0.13, -7.0)
-		scorch(pos, radius * 1.4, tint, 0.65)
-	shake(0.12)
+		fire_cloud(at + Vector3.UP * 0.15, radius, 0.62)
+		emitter(at, Color("fff1d4"), 18, 0.35, 5.0, 85.0, 0.13, -7.0)
+		if quality_level == 2:
+			# Long hot sparks thrown high, falling back under gravity.
+			emitter(at + Vector3.UP * 0.2, Color("ffd36e"), 26, 0.75, 9.5, 70.0, 0.085, -11.0)
+		# The smoke rolls up once the fire has had its moment, not on top of it.
+		schedule(0.14, func(): dust(at + Vector3.UP * 0.45, Color("5d555c"), 9, 1.5, 1.4, 0.5, true))
+		scorch(pos, radius * 1.4, tint, 0.65 if quality_level < 2 else 1.4)
+	flash(at + Vector3.UP * 1.1, Color("ff9a4a"), 7.5, 0.4, radius * 4.5)
+	shake(0.12 if quality_level < 2 else 0.2)
+
+func fire_ramp() -> GradientTexture1D:
+	# Fire cools as it climbs: white, yellow, orange, a deep red, then gone.
+	if shapes.has("fire_ramp"):
+		return shapes["fire_ramp"]
+	var gradient = Gradient.new()
+	# Additive, so the alphas stay low: a dozen overlapping puffs must add up to orange
+	# fire, not to a white blot.
+	gradient.set_color(0, Color(1.0, 0.9, 0.6, 0.75))
+	gradient.set_color(1, Color(0.2, 0.02, 0.0, 0.0))
+	gradient.add_point(0.12, Color(1.0, 0.62, 0.16, 0.6))
+	gradient.add_point(0.4, Color(0.92, 0.3, 0.05, 0.42))
+	gradient.add_point(0.72, Color(0.5, 0.08, 0.02, 0.2))
+	var ramp = GradientTexture1D.new()
+	ramp.gradient = gradient
+	ramp.width = 64
+	shapes["fire_ramp"] = ramp
+	return ramp
+
+func fire_cloud(at: Vector3, radius: float, life: float) -> void:
+	# Big soft puffs that swell, rise and cool: the body of the blast.
+	if effects.size() >= effect_limit:
+		return
+	var cloud = take_particle()
+	if cloud == null: return
+	cloud.mesh = particle_mesh(0.9, Color("ff8a2a"))
+	cloud.amount = [6, 9, 12][quality_level]
+	cloud.lifetime = life
+	cloud.lifetime_randomness = 0.3
+	cloud.one_shot = true
+	cloud.explosiveness = 0.92
+	cloud.randomness = 0.5
+	cloud.direction = Vector3.UP
+	cloud.spread = 180.0
+	cloud.initial_velocity_min = radius * 0.8
+	cloud.initial_velocity_max = radius * 2.4
+	cloud.gravity = Vector3(0, 2.2, 0)
+	cloud.damping_min = radius * 2.0
+	cloud.damping_max = radius * 3.5
+	cloud.angle_min = -180.0
+	cloud.angle_max = 180.0
+	cloud.angular_velocity_min = -90.0
+	cloud.angular_velocity_max = 90.0
+	cloud.emission_shape = CPUParticles3D.EMISSION_SHAPE_SPHERE
+	cloud.emission_sphere_radius = radius * 0.35
+	cloud.scale_amount_min = radius * 0.7
+	cloud.scale_amount_max = radius * 1.5
+	cloud.scale_amount_curve = swell_curve()
+	cloud.color = Color.WHITE
+	cloud.color_ramp = fire_ramp()
+	cloud.position = at
+	cloud.restart()
+	cloud.emitting = true
+	effects.append({"node": cloud, "particle_pool": true, "v": Vector3.ZERO, "ttl": life + 0.35, "life": life + 0.35, "gravity": false, "base": Vector3.ONE, "keep": true})
 
 func power_flash(pos: Vector2, id: String) -> void:
 	var color = Rules.power_color(id)
@@ -3198,6 +3394,9 @@ func shot_feedback(team: int) -> void:
 	var direction = -units[team].get_node("Body").global_basis.z
 	for i in range(2 if quality_level == 0 else 4):
 		feedback_chip(origin, direction * (2.5 + i) + Vector3((i % 2 - 0.5) * 1.1, 0.3, 0), shot_colors[team], 0.09, Vector3.ONE * 0.06)
+	if quality_level == 2:
+		# The muzzle lights the pilot and the floor in front of it for a couple of frames.
+		flash(origin + direction * 0.3, shot_colors[team], 1.8, 0.07, 2.4)
 
 func impact_feedback(event: Dictionary) -> void:
 	var kind = String(event.kind)

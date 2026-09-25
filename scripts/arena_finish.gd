@@ -19,26 +19,48 @@ static func environment(env: Environment, quality: int) -> void:
 		studio_sky.sky_material = sky
 	env.sky = studio_sky
 	env.reflected_light_source = Environment.REFLECTION_SOURCE_SKY
-	env.ambient_light_energy = 0.42
+	env.ambient_light_energy = 0.42 if quality < 2 else 0.5
 	env.ambient_light_color = Color("91b5c5")
-	env.tonemap_mode = Environment.TONE_MAPPER_FILMIC
-	env.tonemap_exposure = 1.12
+	# Refinado is the showcase: ACES for rich, saturated highlights, a wide soft bloom so
+	# anything that emits light actually glows, and stronger colour grading. The lighter
+	# profiles keep the old, cheaper look.
+	env.tonemap_mode = Environment.TONE_MAPPER_ACES if quality == 2 else Environment.TONE_MAPPER_FILMIC
+	env.tonemap_exposure = 1.08 if quality == 2 else 1.12
+	env.tonemap_white = 4.0 if quality == 2 else 1.0
 	env.glow_enabled = quality == 2
-	env.glow_intensity = 0.65
-	env.glow_bloom = 0.03
-	env.glow_hdr_threshold = 1.12
-	env.glow_hdr_scale = 1.1
+	env.glow_normalized = false
+	env.glow_intensity = 0.95 if quality == 2 else 0.5
+	env.glow_strength = 1.05
+	env.glow_bloom = 0.0
+	env.glow_blend_mode = Environment.GLOW_BLEND_MODE_SCREEN if quality == 2 else Environment.GLOW_BLEND_MODE_SOFTLIGHT
+	env.glow_hdr_threshold = 1.75 if quality == 2 else 1.12
+	env.glow_hdr_scale = 2.2 if quality == 2 else 1.1
+	env.glow_hdr_luminance_cap = 16.0
+	# Mid levels carry the wide halo; level 1 keeps a tight core on small lights.
+	var levels = [0.6, 0.9, 1.0, 0.85, 0.6, 0.0, 0.0] if quality == 2 else [0.0, 0.0, 1.0, 0.0, 1.0, 0.0, 0.0]
+	for i in range(7):
+		env.set_glow_level(i, levels[i])
 	env.adjustment_enabled = quality > 0
-	env.adjustment_saturation = 1.13
-	env.adjustment_contrast = 1.04
+	env.adjustment_saturation = 1.3 if quality == 2 else 1.13
+	env.adjustment_contrast = 1.1 if quality == 2 else 1.04
+	env.adjustment_brightness = 1.0
 
 static func surface(mat: StandardMaterial3D, quality: int) -> void:
+	if mat.get_meta("custom_finish", false):
+		return
 	var luminous = bool(mat.get_meta("always_unshaded", false))
 	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED if quality == 0 or luminous else BaseMaterial3D.SHADING_MODE_PER_PIXEL
 	if luminous:
-		mat.emission_enabled = true
-		mat.emission = mat.albedo_color
-		mat.emission_energy_multiplier = 1.4 if mat.albedo_color.a >= 0.7 else 0.6
+		# An unshaded material ignores emission, so on Refinado the light is written into
+		# the colour itself, past white: that is what crosses the bloom threshold and makes
+		# eyes, neon lines, shots and rings actually glow. The original colour is kept so a
+		# lighter profile can put it back.
+		if not mat.has_meta("base_albedo"):
+			mat.set_meta("base_albedo", mat.albedo_color)
+		var base: Color = mat.get_meta("base_albedo")
+		var boost: float = (1.42 if base.a >= 0.7 else 1.2) if quality == 2 else 1.0
+		mat.albedo_color = Color(base.r * boost, base.g * boost, base.b * boost, base.a)
+		mat.emission_enabled = false
 		return
 	if mat.transparency != BaseMaterial3D.TRANSPARENCY_DISABLED: return
 	var kind = "alloy" if mat.metallic > 0.5 else ("graphite" if mat.albedo_color.v < 0.35 else "ceramic")
@@ -56,6 +78,10 @@ static func surface(mat: StandardMaterial3D, quality: int) -> void:
 	mat.clearcoat_enabled = quality == 2 and kind != "graphite"
 	mat.clearcoat = 0.45
 	mat.clearcoat_roughness = 0.25
+	# A light rim on every lit edge: pilots, bricks and walls separate from the floor.
+	mat.rim_enabled = quality == 2
+	mat.rim = 0.4
+	mat.rim_tint = 0.35
 
 static func architecture(view) -> void:
 	# Insets stay outside the playable wall; physics and all sightlines stay untouched.
