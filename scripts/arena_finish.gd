@@ -23,6 +23,31 @@ static func environment(env: Environment, quality: int) -> void:
 		studio_sky.sky_material = sky
 	env.sky = studio_sky
 	env.reflected_light_source = Environment.REFLECTION_SOURCE_SKY
+	if phone:
+		# A phone draws the 3D image without room above white, so the showcase grade -
+		# ACES rolling off highlights that were never kept, glow thresholds past 1 - came
+		# out grey and dim there, with anything lit hard burnt to white. Phones keep the
+		# grade they had before it, which was right on them.
+		env.ambient_light_energy = 0.42
+		env.ambient_light_color = Color("91b5c5")
+		env.tonemap_mode = Environment.TONE_MAPPER_FILMIC
+		env.tonemap_exposure = 1.12
+		env.tonemap_white = 1.0
+		env.glow_enabled = quality == 2
+		env.glow_normalized = false
+		env.glow_intensity = 0.65
+		env.glow_strength = 1.0
+		env.glow_bloom = 0.03
+		env.glow_blend_mode = Environment.GLOW_BLEND_MODE_SOFTLIGHT
+		env.glow_hdr_threshold = 1.12
+		env.glow_hdr_scale = 1.1
+		for i in range(7):
+			env.set_glow_level(i, [0.0, 0.0, 1.0, 0.0, 1.0, 0.0, 0.0][i])
+		env.adjustment_enabled = quality > 0
+		env.adjustment_saturation = 1.13
+		env.adjustment_contrast = 1.04
+		env.adjustment_brightness = 1.0
+		return
 	env.ambient_light_energy = 0.42 if quality < 2 else 0.5
 	env.ambient_light_color = Color("91b5c5")
 	# Refinado is the showcase: ACES for rich, saturated highlights, a wide soft bloom so
@@ -65,7 +90,7 @@ static func surface(mat: StandardMaterial3D, quality: int) -> void:
 		if not mat.has_meta("base_albedo"):
 			mat.set_meta("base_albedo", mat.albedo_color)
 		var base: Color = mat.get_meta("base_albedo")
-		var boost: float = (1.42 if base.a >= 0.7 else 1.2) if quality == 2 else 1.0
+		var boost: float = (1.42 if base.a >= 0.7 else 1.2) if quality == 2 and not phone else 1.0
 		mat.albedo_color = Color(base.r * boost, base.g * boost, base.b * boost, base.a)
 		mat.emission_enabled = false
 		return

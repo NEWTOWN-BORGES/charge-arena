@@ -171,6 +171,14 @@ func build_ladder(refresh_rate: float) -> Array:
 	var scale = RENDER_SCALES[quality]
 	var top: int = mini(fps, panel_cap) if panel_cap > 0 else fps
 	var steps: Array = [[msaa, scale, top]]
+	if mobile:
+		# On a phone the picture is never changed mid-match: resizing the 3D image there
+		# left the arena drawn small in a corner, and reallocating it darkened the frame.
+		# Only the frame limit steps down, and climbs back.
+		if top > 60: steps.append([msaa, scale, 60])
+		if top > 45 and refresh_rate >= 85.0: steps.append([msaa, scale, 45])
+		if top > 30: steps.append([msaa, scale, 30])
+		return steps
 	while msaa > Viewport.MSAA_2X:
 		# The dearest thing on a phone's tiled GPU, and the one least missed at a glance.
 		msaa -= 1

@@ -196,9 +196,9 @@ func run() -> void:
 	var play_bottom: float = hud.campaign_button.get_global_rect().end.y
 	check(menu_buttons.all(func(b): return b.get_global_rect().end.y <= play_bottom + 0.5) and hud.campaign_button.size.y >= 60, "JOGAR is a big key and nothing sits below it")
 	check(hud.campaign_button.get_global_rect().end.y > hud.size.y - 110, "In portrait the main action sits in the bottom thumb zone")
-	check(hud.quick_button != null and hud.campaign_button.text == "JOGAR" and hud.lobby.level_title.text.begins_with("NÍVEL 01"), "The lobby names the previewed level over a JOGAR key, with quick play one tap away")
+	check(hud.quick_button != null and hud.campaign_button.text == "JOGAR" and hud.lobby.lobby_mode == "historia", "The lobby opens on the story mode, with quick play one tap away")
 
-	# Carousel: swipe the stadium sideways to browse levels; the arena follows once settled.
+	# The campaign is the Taça now: the lobby has nothing to browse sideways.
 	var area: Rect2 = hud.swipe_area()
 	var swipe = func(from: Vector2, to: Vector2):
 		for pressed in [true, false]:
@@ -209,28 +209,21 @@ func run() -> void:
 			hud._input(touch)
 	var middle = area.get_center()
 	swipe.call(middle + Vector2(120, 0), middle - Vector2(120, 0))
-	check(game.menu_level == 1 and hud.menu_level == 1 and game.arena.map.id == "treino", "Swiping left selects the next level at once, before rebuilding")
+	check(game.menu_level == 0 and game.arena.map.id == "treino", "Sideways swipes in the lobby change nothing")
+	# The arena behind the lobby still follows the level it is set to.
+	game.step_menu_level(1)
+	check(game.menu_level == 1 and hud.menu_level == 1 and game.arena.map.id == "treino", "Stepping the level selects it at once, before rebuilding")
 	game._process(0.1)
 	game._process(0.1)
 	await process_frame
 	check(game.arena.map.id == "farol" and game.arena.unit_skins[1] == 1 and game.arena.brick_nodes[game.rules.bricks.size() / 2].get_meta("skin") == 1, "The stadium then shows level 2's arena, boss and bricks")
-	swipe.call(middle, middle + Vector2(30, 4))
-	check(game.menu_level == 1, "A tap or short drag does not change level")
-	swipe.call(middle + Vector2(0, -100), middle + Vector2(90, 120))
-	check(game.menu_level == 1, "A mostly vertical drag does not change level")
-	var over_keys: Vector2 = hud.campaign_button.get_global_rect().get_center()
-	swipe.call(over_keys, over_keys - Vector2(200, 0))
-	check(game.menu_level == 1, "Swipes over the menu buttons are ignored")
-	swipe.call(middle - Vector2(120, 0), middle + Vector2(120, 0))
-	swipe.call(middle - Vector2(120, 0), middle + Vector2(120, 0))
-	check(game.menu_level == 0, "Swiping right goes back and stops at level 1")
 	for i in range(Campaign.LEVELS.size() + 3):
 		game.step_menu_level(1)
 	check(game.menu_level == Campaign.LEVELS.size() - 1, "Browsing stops at the last level")
 	game.step_menu_level(-(Campaign.LEVELS.size() - 1))
 	game._process(0.3)
 	await process_frame
-	check(game.arena.map.id == "treino" and hud.lobby.level_title.text.begins_with("NÍVEL 01") and not hud.campaign_button.disabled, "Rapid browsing rebuilds only the level it settles on")
+	check(game.arena.map.id == "treino" and game.menu_level == 0, "Rapid browsing rebuilds only the level it settles on")
 	hud.open_pvp()
 	check(hud.pvp_overlay.visible and hud.ip.is_visible_in_tree(), "PvP moved to its own panel with the IP field")
 	hud.close_pvp()
@@ -272,9 +265,8 @@ func run() -> void:
 	hud.levels_button.pressed.emit()
 	await process_frame
 	check(game.mode == "menu" and hud.levels_overlay.visible and game.level_index == -1 and game.menu_level == 1 and game.arena.map.id == "farol", "NÍVEIS returns to the menu previewing the level just played")
-	hud.close_levels()
-	hud.campaign_button.pressed.emit()
-	check(game.mode == "pve" and game.level_index == 1, "JOGAR NÍVEL starts the previewed level")
+	hud.level_cards[1].pressed.emit()
+	check(game.mode == "pve" and game.level_index == 1, "An arena card in ARENAS replays that level")
 	game.return_to_menu()
 	hud.open_levels()
 	hud.close_levels()

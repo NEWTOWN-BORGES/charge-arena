@@ -9,7 +9,7 @@ const PowerShop = preload("res://scripts/powers.gd")
 const GameSettings = preload("res://scripts/game_settings.gd")
 const Campaign = preload("res://scripts/campaign.gd")
 const Cup = preload("res://scripts/cup.gd")
-const CupScreen = preload("res://scripts/cup_screen.gd")
+const CupScreen = preload("res://scripts/story_hub.gd")
 var cup = Cup.new()
 var cup_screen
 var cup_active = false
@@ -192,6 +192,8 @@ func _ready() -> void:
 	if cup.wins == Cup.FULL_MATCHES:
 		skins.defeat(11)
 	save_skins()
+	sync_story()
+	show_menu_preview()
 	cup_screen = CupScreen.new()
 	cup_screen.cup = cup
 	cup_screen.player_skin_provider = func(): return skins.selected
@@ -1407,14 +1409,19 @@ func cup_action(id: String) -> void:
 		"menu": return_to_menu()
 		"practice": start_pve()
 		"arenas": hud.open_levels()
+		"settings_open": hud.open_video()
 		"skins": hud.open_skins()
 		"powers": hud.open_powers()
 		"settings": hud.open_video()
 		"pvp": hud.open_pvp()
 
 func start_cup() -> void:
+	# A Taça match is the campaign level for that round, played exactly as the campaign
+	# plays it: its arena, its boss in its own colours, its kit, its pace and its theme.
 	if cup.confirmed_match().is_empty():
 		return
+	var index: int = cup.level_index()
+	var level: Dictionary = cup.level()
 	arena.show()
 	close_network()
 	pve_paused = false
@@ -1422,55 +1429,73 @@ func start_cup() -> void:
 	local_team = 0
 	network_status = ""
 	level_index = -1
-	var entry = cup.level()
-	use_map(entry.map)
+	menu_level = index
+	use_map(level.map)
 	rules.ai_profile = cup.profile(game_settings.difficulty)
-	use_loadouts(cup.kit(), cup.boss_id() if cup.local_wins() == cup.QUALIFIERS else 0, cup.ultimate())
+	use_loadouts(cup.kit(), int(level.boss), Campaign.level_ultimate(index))
 	rules.reset_match()
 	dress_pilots(0)
-	arena.set_skin(1, entry.boss, cup.local_wins() < cup.QUALIFIERS, entry.hue)
+	arena.set_skin(1, int(level.boss), Campaign.is_minor(index), Campaign.level_hue(index))
 	hud.team_hues = arena.unit_hues
-	hud.level_info = {"number": cup.wins + 1, "cup": true, "name": entry.name, "challenge": entry.get("challenge", "Vence para avançar na Taça Aurora."), "boss_name": cup.opponent(), "has_next": false}
+	hud.level_info = {"number": cup.step(), "cup": true, "round": cup.round_name().to_upper(), "name": level.name, "challenge": level.get("challenge", ""), "boss_name": cup.opponent().to_upper(), "has_next": false}
 	hud.level_result = ""
+	hud.level_skin = ""
 	hud.show_game(mode, 0)
 	sync_assist()
 	cup_screen.hide()
 	cup_active = true
 	cup_resolved = false
 	last_phase = ""
-	if not cup.entrance_passed:
-		music.play_skin(0)
-	elif cup.local_wins() == cup.QUALIFIERS:
-		music.play_skin(cup.boss_id())
-	else:
-		music.play_bot(cup.stage_index() * cup.QUALIFIERS + cup.local_wins() + 1)
+	music.play_skin(Campaign.level_music(index))
 
 func finish_cup() -> void:
+	# The result becomes part of the story: a win moves the draw on and prints the next
+	# edition; a defeat is remembered by the kiosk and nothing else. Either way the run
+	# comes back to the hub, never to a generic menu.
 	var won = rules.winner == 0
-	var rival = cup.opponent()
-	var new_rewards: Array = []
-	var reward_skin = cup.boss_id() if cup.local_wins() == cup.QUALIFIERS else 0
+	var step: int = cup.step()
+	var rival: String = cup.opponent()
+	var boss: int = cup.boss_id()
+	var index: int = cup.level_index()
 	var score = Array(rules.scores).duplicate()
 	bank_bricks()
+	var rewards: Array = []
 	if won:
 		cup.complete(score)
-		if cup.save() != OK:
-			push_warning("Não foi possível guardar a Taça.")
-		if reward_skin > 0 and skins.defeat(reward_skin):
-			new_rewards.append(Skins.CATALOG[reward_skin].name)
-		if cup.wins == Cup.FULL_MATCHES and skins.defeat(11):
-			new_rewards.append(Skins.CATALOG[11].name)
+		open_arena(index)
+		if step > 0 and boss > 0 and skins.defeat(boss):
+			rewards.append(Skins.CATALOG[boss].name)
+		if cup.champion() and skins.defeat(11):
+			rewards.append(Skins.CATALOG[11].name)
 		save_skins()
-	cup_screen.result = ("Vitória" if won else "Derrota") + " · %d–%d contra %s" % [score[0], score[1], rival]
-	if won and reward_skin > 0:
-		cup_screen.result += " · SKIN DESBLOQUEADA: " + Skins.CATALOG[reward_skin].name
-	if won and cup.wins == Cup.FULL_MATCHES:
-		cup_screen.result += " · PRÉMIO DA TAÇA: AUREL"
+	else:
+		cup.lose(score)
+	if cup.save() != OK:
+		push_warning("Não foi possível guardar a Taça.")
+	sync_story()
 	return_to_menu()
 	open_cup()
-	cup_screen.tab = 2 if won else 0
-	cup_screen.refresh()
-	hud.announce_unlock(new_rewards)
+	cup_screen.show_after({"won": won, "score": score, "rival": rival, "step": step, "reward": " · ".join(rewards)})
+
+func open_arena(index: int) -> void:
+	# A round won opens its arena for free play in ARENAS, whatever the build.
+	if not campaign.completed.has(index):
+		campaign.completed.append(index)
+	campaign.unlocked = clampi(maxi(campaign.unlocked, index + 2), 1, Campaign.LEVELS.size())
+	campaign.save_preferences()
+	hud.sync_campaign(campaign)
+
+func sync_story() -> void:
+	# What the lobby says about the story: the round to play and who waits in it.
+	if cup.champion():
+		hud.story_line = "Campeão da Taça Aurora"
+		hud.story_boss = -1
+	else:
+		var m: Dictionary = cup.confirmed_match()
+		hud.story_line = "%s  ·  vs %s" % [String(m.round_name).to_upper(), String(m.name).to_upper()]
+		hud.story_boss = int(m.boss)
+	menu_level = cup.level_index() if not cup.champion() else Campaign.menu_levels().back()
+	hud.sync_menu_level(menu_level)
 
 func open_cup() -> void:
 	cup_screen.show()

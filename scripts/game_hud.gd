@@ -22,6 +22,9 @@ const BODY_FONT = preload("res://art/fonts/Rajdhani-SemiBold.ttf")
 const Lobby = preload("res://scripts/lobby.gd")
 const YELLOW = Color("ffd23f")
 var lobby
+# The story as the lobby shows it: the round to play and the boss in it (-1 when won).
+var story_line = ""
+var story_boss = -1
 signal pvp_ai_requested
 signal play_requested
 signal host_requested
@@ -1717,6 +1720,10 @@ func swipe_area() -> Rect2:
 	return Rect2(left, 0, size.x - left, size.y)
 
 func menu_swipe(event: InputEvent) -> void:
+	# The lobby has nothing to browse sideways: the campaign is the Taça now.
+	if lobby != null:
+		swipe_start = Vector2.INF
+		return
 	if menu_overlay_open():
 		swipe_start = Vector2.INF
 		return
@@ -2795,7 +2802,7 @@ func _draw() -> void:
 	if vertical:
 		var round_text = "1º A %d GOLOS" % Rules.WIN_SCORE
 		if not level_info.is_empty():
-			round_text = ("FINAL" if level_info.number == 11 else "JOGO %d" % level_info.number) if level_info.get("cup", false) else "NÍVEL %d" % level_info.number
+			round_text = String(level_info.get("round", "TAÇA AURORA")) if level_info.get("cup", false) else "NÍVEL %d" % level_info.number
 		centered(round_text, Vector2(score_rect.get_center().x, s.y + 19), 10, LIME, true)
 		centered(str(match_data.scores[0]) + "  :  " + str(match_data.scores[1]), Vector2(score_rect.get_center().x, s.y + 44), 26, WHITE, true)
 		var mode_label = "TREINO / PvE" if mode == "pve" else "DUELO / PvP"

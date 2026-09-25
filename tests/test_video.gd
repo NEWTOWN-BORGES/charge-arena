@@ -72,10 +72,16 @@ func run() -> void:
 	restored.configure(90, 2, false, false)
 	restored.apply(root, game.arena)
 	check(root.msaa_3d == Viewport.MSAA_4X and restored.build_ladder(60.0)[0][0] == Viewport.MSAA_4X, "A phone's Refinado stops at 4x MSAA, as far as mobile GPUs go")
+	var phone_ladder: Array = restored.build_ladder(90.0)
+	check(phone_ladder.size() > 1 and phone_ladder.all(func(step): return step[0] == phone_ladder[0][0] and is_equal_approx(step[1], phone_ladder[0][1])), "On a phone the ladder only lowers the frame limit: the 3D image is never resized or re-sampled mid-match")
+	var Finish = preload("res://scripts/arena_finish.gd")
 	game.arena.phone = true
+	Finish.phone = true
 	game.arena.set_quality(2)
-	check(not game.arena.key_light.shadow_enabled and game.arena.key_light.light_energy > 2.5, "A phone's Refinado has no real shadows, with the sun made up for it from the start")
+	var env: Environment = game.arena.presentation_environment
+	check(not game.arena.key_light.shadow_enabled and is_equal_approx(game.arena.key_light.light_energy, 1.35) and env.tonemap_mode == Environment.TONE_MAPPER_FILMIC and is_equal_approx(env.tonemap_white, 1.0), "A phone's Refinado keeps the grade that works without light past white: no real shadows, the old sun, filmic")
 	game.arena.phone = false
+	Finish.phone = false
 	game.arena.set_quality(2)
 	restored.mobile = false
 	restored.configure(60, 0, false, false)

@@ -11,15 +11,14 @@ const GameSettings = preload("res://scripts/game_settings.gd")
 const YELLOW = Color("ffd23f")
 const GLASS = Color(0.025, 0.07, 0.09, 0.78)
 const MODES = {
-	"campanha": {"title": "CAMPANHA", "about": "Bosses e postos, nível a nível", "icon": "campaign"},
+	"historia": {"title": "MODO HISTÓRIA", "about": "A Taça Aurora: 1.024 pilotos, um campeão", "icon": "story"},
 	"rapido": {"title": "JOGO RÁPIDO", "about": "Uma partida contra a IA, já", "icon": "quick"},
-	"historia": {"title": "MODO HISTÓRIA", "about": "A Taça Aurora, combate a combate", "icon": "story"},
 	"pvp": {"title": "PvP", "about": "Dois jogadores na mesma rede, ou o Coliseu", "icon": "pvp"},
 }
-const MODE_ORDER = ["campanha", "rapido", "historia", "pvp"]
+const MODE_ORDER = ["historia", "rapido", "pvp"]
 
 var hud
-var lobby_mode = "campanha"
+var lobby_mode = "historia"
 var profile: Button
 var wallet: Button
 var settings: Button
@@ -249,7 +248,7 @@ func build_sheet() -> void:
 	var row = HBoxContainer.new()
 	row.add_theme_constant_override("separation", 12)
 	sheet_list.add_child(row)
-	levels_link = hud.make_button("TODOS OS NÍVEIS", false)
+	levels_link = hud.make_button("ARENAS", false)
 	levels_link.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	levels_link.pressed.connect(func(): close_sheet(); hud.open_levels())
 	row.add_child(levels_link)
@@ -275,8 +274,6 @@ func choose_mode(id: String) -> void:
 
 func start_mode() -> void:
 	match lobby_mode:
-		"campanha":
-			hud.level_selected.emit(hud.menu_level)
 		"rapido":
 			hud.play_requested.emit()
 		"historia":
@@ -285,22 +282,15 @@ func start_mode() -> void:
 			hud.open_pvp()
 
 func refresh_mode() -> void:
-	var campaign = lobby_mode == "campanha"
-	level_row.visible = campaign
+	# The level row is gone from the lobby: the campaign is the Taça now, and its arenas
+	# are replayed from ARENAS. The row keeps the story's round in its place.
+	level_row.visible = lobby_mode == "historia" and String(hud.story_line) != ""
+	level_prev.hide()
+	level_next.hide()
+	level_title.text = String(hud.story_line)
 	difficulty_row.visible = lobby_mode != "pvp"
-	if campaign:
-		var visible_levels = Campaign.menu_levels()
-		var page = visible_levels.find(hud.menu_level)
-		var open = hud.campaign_state == null or hud.campaign_state.is_unlocked(hud.menu_level)
-		var level: Dictionary = Campaign.LEVELS[hud.menu_level]
-		level_title.text = "NÍVEL %02d / %02d  ·  %s" % [page + 1, visible_levels.size(), String(level.name).to_upper()]
-		level_prev.disabled = page <= 0
-		level_next.disabled = page >= visible_levels.size() - 1
-		play.text = "JOGAR" if open else "BLOQUEADO"
-		play.disabled = not open
-	else:
-		play.text = "JOGAR"
-		play.disabled = false
+	play.text = "JOGAR"
+	play.disabled = false
 	redraw()
 
 func refresh_news(fresh_skins: bool, buyable: bool, skins_count: String, powers_count: String) -> void:
@@ -397,7 +387,8 @@ func arrange(screen: Vector2, safe_top: float, safe_bottom: float, tall: bool) -
 	redraw()
 
 func swipe_rect() -> Rect2:
-	# The stretch of arena around the pilot: sideways there browses the campaign.
+	# The stretch of arena around the pilot. Sideways swipes no longer browse anything:
+	# the campaign's arenas are the Taça's rounds.
 	var left = skins_button.get_rect().end.x + 10
 	var top = profile.get_rect().end.y + 10
 	return Rect2(left, top, size.x - left - 10, maxf(bottom_top - top - 10, 80))
@@ -478,21 +469,16 @@ func draw_mode_card(c: Control) -> void:
 	c.draw_string(hud.font_bold, Vector2(94, 22), "MODO  ▾", HORIZONTAL_ALIGNMENT_LEFT, -1, 12, hud.MUTED)
 	c.draw_string(hud.font_bold, Vector2(94, 52), String(info.title), HORIZONTAL_ALIGNMENT_LEFT, c.size.x - 170, 28, hud.WHITE)
 	var sub = String(info.about)
-	if lobby_mode == "campanha" and hud.campaign_state != null:
-		var level: Dictionary = Campaign.LEVELS[hud.menu_level]
-		sub = String(level.challenge) if hud.campaign_state.is_unlocked(hud.menu_level) else "Vence o nível anterior para abrir"
-	c.draw_string(hud.font, Vector2(94, 78), sub, HORIZONTAL_ALIGNMENT_LEFT, c.size.x - (180 if lobby_mode == "campanha" else 104), 14, hud.MUTED)
-	if lobby_mode == "campanha":
-		# The rival waiting at the end of this level.
-		var level: Dictionary = Campaign.LEVELS[hud.menu_level]
-		var station: bool = int(level.boss) >= 100
-		var beaten: bool = hud.skins_progress != null and int(level.boss) < Skins.CATALOG.size() and hud.skins_progress.is_unlocked(level.boss)
-		var hue: Color = Color(String(level.hue)) if level.has("hue") else hud.CORAL
+	var story = lobby_mode == "historia" and int(hud.story_boss) >= 0
+	c.draw_string(hud.font, Vector2(94, 78), sub, HORIZONTAL_ALIGNMENT_LEFT, c.size.x - (180 if story else 104), 14, hud.MUTED)
+	if story:
+		# The rival waiting in the story's next round.
+		var boss: int = int(hud.story_boss)
 		var at = Vector2(c.size.x - 46, c.size.y * 0.5 - 6)
 		c.draw_circle(at, 30, Color(0, 0.03, 0.04, 0.9), true, -1, true)
-		hud.portrait(at, hue if station else hud.CORAL, false, level.boss, c, station or not beaten)
+		hud.portrait(at, hud.CORAL, false, boss, c, true)
 		c.draw_arc(at, 31, 0, TAU, 40, Color(hud.CORAL, 0.8), 1.6, true)
-		var tag = "POSTO" if station else "BOSS"
+		var tag = "PRÓXIMO"
 		var tw = hud.font_bold.get_string_size(tag, HORIZONTAL_ALIGNMENT_LEFT, -1, 11).x
 		c.draw_string(hud.font_bold, Vector2(at.x - tw * 0.5, c.size.y - 8), tag, HORIZONTAL_ALIGNMENT_LEFT, -1, 11, hud.CORAL)
 

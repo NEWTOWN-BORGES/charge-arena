@@ -338,19 +338,19 @@ func set_quality(level: int) -> void:
 			node.visible = quality_level > 0
 	if is_instance_valid(secondary_light):
 		secondary_light.visible = quality_level > 0
-		secondary_light.light_energy = 0.95 if quality_level == 2 else 0.72
+		secondary_light.light_energy = 0.95 if quality_level == 2 and not phone else 0.72
 	if is_instance_valid(atmosphere):
 		atmosphere.visible = quality_level == 2
 		atmosphere.emitting = quality_level == 2
 	if is_instance_valid(key_light):
 		key_light.shadow_enabled = real_shadows()
 		# A lower sun on Refinado, so the shadows are long enough to read from above.
-		key_light.rotation_degrees = Vector3(-40 if quality_level == 2 else -52, -35, 0)
+		key_light.rotation_degrees = Vector3(-40 if real_shadows() else -52, -35, 0)
 		# The renderer lights a surface more with a shadowed sun than with a plain one; a
 		# phone's Refinado, which has none, gets the difference back in the sun's strength.
-		key_light.light_energy = (1.45 if real_shadows() else 1.45 * 2.0) if quality_level == 2 else 1.35
-	if presentation_environment != null and quality_level == 2 and not real_shadows():
-		presentation_environment.ambient_light_energy = 0.62
+		# A phone lights the arena the way it did before the showcase grade: that grade needs
+		# light past white, which a phone's 3D image does not keep.
+		key_light.light_energy = 1.45 if real_shadows() else 1.35
 	refresh_shadows(self)
 	for mat in materials.values():
 		if mat is StandardMaterial3D:
