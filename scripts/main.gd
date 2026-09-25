@@ -783,6 +783,7 @@ func play_events() -> void:
 	# simulation; the client runs it off the events the host ships with each snapshot,
 	# which is the only way it sees a power go off at all.
 	for event in rules.events:
+		ArenaView.CombatFinish.event(arena, event, rules)
 		if event.kind == "shot":
 			var team = int(event.team)
 			arena.shot_feedback(team)
@@ -807,11 +808,13 @@ func play_events() -> void:
 		elif event.kind == "power":
 			# Both sides are announced: a power launched at you should never be silent.
 			arena.power_flash(event.p, String(event.get("id", "")))
-			play_tone("power")
+			var ability_cue = "ability_" + String(event.get("id", ""))
+			play_tone(ability_cue if tones.has(ability_cue) else "power")
 			arena.shake(0.22)
 			if int(event.team) == local_team: haptic(22, 0.30)
 		elif event.kind == "laser":
 			arena.laser_beam(event.p, event.heading, event.team)
+			play_tone("laser_tick", -2.0)
 		elif event.kind == "rebuild":
 			var back: Array = event.bricks.map(func(i): return rules.bricks[i].p)
 			arena.rebuild_flash(back)
@@ -880,16 +883,16 @@ func play_events() -> void:
 			arena.weld_flash(mended)
 			for spot in mended:
 				arena.gain_mark(spot, int(event.get("heal", 0)), Rules.power_color("weld"))
-			play_tone("power")
+			play_tone("ability_weld")
 		elif event.kind == "freeze":
 			arena.frost_flash(event.p)
-			play_tone("power")
+			play_tone("ability_freeze")
 		elif event.kind == "magnet":
 			arena.magnet_flash(event.p)
-			play_tone("power")
+			play_tone("ability_magnet")
 		elif event.kind == "thorns":
 			arena.thorns_flash(int(event.team))
-			play_tone("power")
+			play_tone("ability_thorns")
 		elif event.kind == "thorns_bite":
 			arena.burst(event.p, Rules.power_color("thorns"), false)
 		elif event.kind == "plating":
@@ -1176,78 +1179,18 @@ func _process(dt: float) -> void:
 func build_audio() -> void:
 	# A pool lets weapon tails, ricochets and impacts overlap instead of every
 	# new effect cutting the sound already playing.
+	var combat_bus = preload("res://scripts/combat_audio.gd").prepare_bus()
 	for i in range(28):
 		var voice = AudioStreamPlayer.new()
+		voice.bus = combat_bus
 		voice.set_meta("weapon_voice", i < 12)
 		voice.volume_db = -16
 		add_child(voice)
 		audio_voices.append(voice)
 	audio = audio_voices[0]
+	tones = preload("res://scripts/combat_audio.gd").TRACKS.duplicate()
 	for skin in range(Skins.CATALOG.size()):
-		tones["shot_%d" % skin] = load(Skins.SHOT_SOUND % skin)
-	for sound in [["bounce", 1150, 0.07], ["stun", 150, 0.24], ["goal", 520, 0.45]]:
-		var wave = AudioStreamWAV.new()
-		wave.format = AudioStreamWAV.FORMAT_16_BITS
-		wave.mix_rate = 22050
-		var bytes = PackedByteArray()
-		var count = int(22050 * sound[2])
-		bytes.resize(count * 2)
-		for i in range(count):
-			var t = float(i) / 22050
-			var envelope = (1.0 - float(i) / count) * minf(t * 150, 1)
-			var frequency = float(sound[1]) * (1.0 - float(i) / count * 0.35)
-			bytes.encode_s16(i * 2, int(sin(t * TAU * frequency) * envelope * 18000))
-		wave.data = bytes
-		tones[sound[0]] = wave
-	# Rising two-note charge cue, clearly different from the short ricochet tick.
-	var boost_wave = AudioStreamWAV.new()
-	boost_wave.format = AudioStreamWAV.FORMAT_16_BITS
-	boost_wave.mix_rate = 22050
-	var boost_count = int(22050 * 0.30)
-	var boost_bytes = PackedByteArray()
-	boost_bytes.resize(boost_count * 2)
-	for i in range(boost_count):
-		var t = float(i) / 22050.0
-		var progress = float(i) / boost_count
-		var frequency = lerpf(310.0, 930.0, progress * progress)
-		var envelope = minf(t * 90.0, 1.0) * pow(1.0 - progress, 1.35)
-		var shimmer = sin(t * TAU * frequency) + 0.38 * sin(t * TAU * frequency * 2.01)
-		boost_bytes.encode_s16(i * 2, int(clampf(shimmer * envelope, -1.0, 1.0) * 19000))
-	boost_wave.data = boost_bytes
-	tones["boost"] = boost_wave
-	# Power cues: a charged thump on release, a bright chime when one fills up and a
-	# low rumble for the blast, all clearly apart from the ricochet tick.
-	tones["power"] = sweep_wave(0.26, 640.0, 250.0, 0.45)
-	tones["ready"] = chime_wave(0.48, 587.33)
-	tones["goal"] = chime_wave(0.95, 293.66)
-	tones["blast"] = sweep_wave(0.42, 300.0, 68.0, 0.8)
-	# Ultimates: two seconds of rising charge, a heavy discharge, and one voice each so
-	# the sun ray, the meteors, the storm, the bloom and the plunder never sound alike.
-	tones["charging"] = sweep_wave(1.9, 120.0, 940.0, 0.12)
-	tones["unleash"] = sweep_wave(0.75, 520.0, 52.0, 0.55)
-	tones["sun_ray"] = roar_wave(0.55, 210.0, 0.5)
-	tones["meteor"] = sweep_wave(0.34, 430.0, 74.0, 0.85)
-	tones["thunder"] = crack_wave(0.42)
-	tones["bloom"] = chime_wave(0.7, 523.25)
-	tones["plunder"] = sweep_wave(0.5, 180.0, 760.0, 0.3)
-	# Singularity: a note that falls into itself while the hole draws everything in, then
-	# the release, which is all low end at once.
-	tones["singularity"] = sweep_wave(1.35, 700.0, 46.0, 0.3)
-	tones["void_burst"] = roar_wave(0.6, 78.0, 0.75)
-	tones["void_wave"] = sweep_wave(0.5, 1250.0, 160.0, 0.4)
-	# The sentries: a dry mechanical tap, far lighter than the pilot's own gun.
-	tones["sentry"] = sweep_wave(0.09, 900.0, 430.0, 0.25)
-	# These kits formerly had only the common discharge: retain it, add their own voice.
-	tones["surge"] = roar_wave(0.38, 148.0, 0.16)
-	tones["volley"] = chime_wave(0.32, 392.0)
-	tones["plating"] = chime_wave(0.46, 784.0)
-	tones["sentries"] = sweep_wave(0.24, 780.0, 185.0, 0.32)
-	for skin in range(Skins.CATALOG.size()):
-		for variant in range(3):
-			var key = "shot_%d_%d" % [skin, variant]
-			tones[key] = load("res://audio/sfx/feedback/%s.wav" % key)
-	for key in ["metal", "ricochet", "shield", "defense", "hit_0", "hit_1", "hit_2", "break_0", "break_1", "break_2"]:
-		tones[key] = load("res://audio/sfx/feedback/%s.wav" % key)
+		tones["shot_%d" % skin] = tones["shot_%d_0" % skin]
 
 func roar_wave(seconds: float, base_hz: float, grit: float) -> AudioStreamWAV:
 	# A held, throaty beam: two detuned saws under a slow tremolo.

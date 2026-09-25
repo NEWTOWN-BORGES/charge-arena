@@ -161,7 +161,7 @@ func run() -> void:
 	hud.open_skins()
 	hud.preview_skin(3)
 	hud.animate_viewer(0.4)
-	check(hud.viewer_audio.stream != null and hud.viewer_audio.stream.resource_path.ends_with("shot_3.wav"), "Previewing a skin plays its weapon sound once")
+	check(hud.viewer_audio.stream == game.tones["shot_3_0"], "Skin preview plays the same mastered weapon sound used in combat")
 	hud.close_skins()
 
 	# The Jardineiro's dome uses the rim-lit glass shader.

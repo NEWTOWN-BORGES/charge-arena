@@ -2,7 +2,7 @@ extends RefCounted
 ## Cosmetic pilot skins. Every skin but the first is a campaign boss: beating its level
 ## unlocks it. Progress stays on this device.
 const CONFIG_PATH = "user://skins.cfg"
-const SHOT_SOUND = "res://audio/sfx/shot_%d.wav"
+const SHOT_SOUND = "res://audio/sfx/premium/shot_%d_0.wav"
 # "level" is the campaign level (2-11) whose boss wears the skin; 0 means always owned.
 # "ultimate" is the power in the third slot (see Powers.ULTIMATES); "" while one is missing.
 # Level 1 is a training bout against a copy of the standard pilot, so it unlocks nothing.

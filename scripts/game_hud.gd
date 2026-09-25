@@ -444,7 +444,7 @@ func build_skin_viewer() -> void:
 	environment.environment.background_mode = Environment.BG_CLEAR_COLOR
 	environment.environment.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
 	environment.environment.ambient_light_color = Color("b0c6c5")
-	environment.environment.ambient_light_energy = 0.55
+	preload("res://scripts/arena_finish.gd").environment(environment.environment, 2)
 	viewer_stage.add_child(environment)
 	# Same key and fill as the arena, plus a cool rim so the back of the model reads.
 	for rig in [[Vector3(-52, -35, 0), Color("ffe9cc"), 1.12], [Vector3(-35, 145, 0), Color("8bc6cf"), 0.42], [Vector3(-18, 180, 0), Color("c9d8ff"), 0.45]]:
@@ -461,6 +461,7 @@ func build_skin_viewer() -> void:
 	viewer_turntable = Node3D.new()
 	viewer_stage.add_child(viewer_turntable)
 	viewer_audio = AudioStreamPlayer.new()
+	viewer_audio.bus = preload("res://scripts/combat_audio.gd").prepare_bus()
 	viewer_audio.volume_db = -18
 	add_child(viewer_audio)
 

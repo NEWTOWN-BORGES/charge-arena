@@ -14,6 +14,9 @@ const Rules = preload("res://scripts/arena_rules.gd")
 const Skins = preload("res://scripts/skins.gd")
 const Powers = preload("res://scripts/powers.gd")
 const SOFT_DISC = preload("res://shaders/soft_disc.gdshader")
+const PilotFinish = preload("res://scripts/pilot_finish.gd")
+const CombatFinish = preload("res://scripts/combat_finish.gd")
+const ArenaFinish = preload("res://scripts/arena_finish.gd")
 const GLASS = preload("res://shaders/glass.gdshader")
 const GUIDE_DOTS = 30
 # Projectile size per power: normal, explosive, machine-gun round, air pellet.
@@ -28,6 +31,8 @@ var goals: Array = []
 var projectiles: Dictionary = {}
 var sentries: Dictionary = {}
 var effects: Array = []
+var presentation_environment: Environment
+var court_material: ShaderMaterial
 var camera: Camera3D
 var aim_line: Node3D
 var materials: Dictionary = {}
@@ -152,6 +157,7 @@ func material(color: Color, luminous: bool = false) -> StandardMaterial3D:
 	mat.set_meta("always_unshaded", luminous)
 	if color.a < 1:
 		mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	ArenaFinish.surface(mat, quality_level)
 	materials[key] = mat
 	return mat
 
@@ -309,6 +315,9 @@ func soft_disc(parent: Node3D, pos: Vector3, size_value: Vector2, color: Color) 
 
 func set_quality(level: int) -> void:
 	quality_level = clampi(level, 0, 2)
+	if presentation_environment != null: ArenaFinish.environment(presentation_environment, quality_level)
+	if court_material != null: court_material.set_shader_parameter("finish_quality", float(quality_level))
+	PilotFinish.set_quality(self, quality_level)
 	# Transparent contact decals are the largest group of separate draw calls.
 	# Keep them in the two prettier profiles and remove them entirely on Leve.
 	for node in soft_disc_nodes:
@@ -318,6 +327,7 @@ func set_quality(level: int) -> void:
 		secondary_light.visible = quality_level > 0
 	for mat in materials.values():
 		if mat is StandardMaterial3D:
+			ArenaFinish.surface(mat, quality_level)
 			# Flat lighting on Leve removes per-light passes and is also a clean
 			# indie look. Higher profiles restore the modeled ceramic shading.
 			mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED if quality_level == 0 or mat.get_meta("always_unshaded", false) else BaseMaterial3D.SHADING_MODE_PER_PIXEL
@@ -359,7 +369,8 @@ func build(new_map: Dictionary = {}) -> void:
 	environment.environment.background_canvas_max_layer = -1
 	environment.environment.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
 	environment.environment.ambient_light_color = Color("b0c6c5")
-	environment.environment.ambient_light_energy = 0.52
+	presentation_environment = environment.environment
+	ArenaFinish.environment(presentation_environment, quality_level)
 	add_child(environment)
 	var background_layer = CanvasLayer.new()
 	background_layer.layer = -1
@@ -374,13 +385,13 @@ func build(new_map: Dictionary = {}) -> void:
 	var light = DirectionalLight3D.new()
 	light.rotation_degrees = Vector3(-52, -35, 0)
 	light.light_color = Color("ffe9cc")
-	light.light_energy = 1.12
+	light.light_energy = 1.35
 	light.shadow_enabled = false
 	add_child(light)
 	secondary_light = DirectionalLight3D.new()
 	secondary_light.rotation_degrees = Vector3(-35, 145, 0)
-	secondary_light.light_color = Color("8bc6cf")
-	secondary_light.light_energy = 0.42
+	secondary_light.light_color = Color("8fc8ff")
+	secondary_light.light_energy = 0.72
 	add_child(secondary_light)
 	camera = Camera3D.new()
 	camera.projection = Camera3D.PROJECTION_ORTHOGONAL
@@ -401,6 +412,8 @@ func build(new_map: Dictionary = {}) -> void:
 	var court = platform(walls, 0.0, 0.28, Color.WHITE)
 	var court_mat = ShaderMaterial.new()
 	court_mat.shader = preload("res://shaders/court.gdshader")
+	court_mat.set_shader_parameter("surface_grain", ArenaFinish.SURFACES.ceramic[0])
+	court_material = court_mat
 	court_mat.set_shader_parameter("sector_tint", Color(["284551", "344653", "344b49", "414052"][absi(String(map.get("id", "")).hash()) % 4]))
 	court.material_override = court_mat
 	soft_disc(self, Vector3(0, -1.32, 0.3), Vector2(19, 23), Color(0.005, 0.015, 0.025, 0.7))
@@ -462,6 +475,8 @@ func build(new_map: Dictionary = {}) -> void:
 		guide_dots.append(cylinder(aim_guide, Vector3.ZERO, 0.045, 0.012, Color(CREAM, 0.7), true, 10))
 	guide_marker = torus(aim_guide, Vector3.ZERO, 0.42, 0.024, LIME)
 	aim_guide.hide()
+	CombatFinish.prepare(self)
+	ArenaFinish.architecture(self)
 	batch_bricks()
 	batch_static_geometry()
 
@@ -893,6 +908,7 @@ func build_player(color: Color, team: int, skin: int = 0, parent: Node3D = null,
 		build_station_pilot(body, palette.body, palette.light, color, skin - STATION_SKIN)
 	else:
 		build_aurora_pilot(body, color)
+	PilotFinish.apply(self, body, skin, palette, color)
 	# Small enamel competition badge and shoulder seams unify the collection without
 	# changing faces, silhouettes, weapon origins or hitboxes.
 	var badge_color = Color("e8bd78") if skin < STATION_SKIN else color.lightened(0.25)
@@ -1972,6 +1988,8 @@ func update_state(rules, local_team: int, dt: float, motion_alpha: float = 1.0) 
 			effect.v.y -= dt * 6
 		effect.node.position += effect.v * dt
 		var remaining = clampf(effect.ttl / effect.life, 0.001, 1)
+		if effect.get("combat_finish", false):
+			CombatFinish.animate(effect, remaining)
 		if effect.get("lamp", 0.0) > 0.0:
 			# A lamp dies down instead of shrinking.
 			effect.node.light_energy = effect.lamp * remaining * remaining
@@ -1993,7 +2011,9 @@ func update_state(rules, local_team: int, dt: float, motion_alpha: float = 1.0) 
 			# Lightning does not fade: it stutters and is gone.
 			effect.node.visible = fmod(effect.ttl, 0.07) > 0.025
 		if effect.ttl <= 0:
-			if effect.get("particle_pool", false):
+			if effect.get("combat_finish", false):
+				CombatFinish.recycle(self, effect.node)
+			elif effect.get("particle_pool", false):
 				effect.node.emitting = false
 				effect.node.hide()
 				particle_pool.append(effect.node)
